@@ -1,0 +1,226 @@
+import argparse
+import random
+from typing import Callable, Iterable, Sequence
+
+from toyopuc import ToyopucError, ToyopucHighLevelClient, resolve_device
+
+
+def _write_log(log_f, line: str) -> None:
+    if log_f:
+        log_f.write(line + "\n")
+        log_f.flush()
+
+
+def _format_value(value) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        if value <= 0xFF:
+            return f"0x{value:02X}"
+        if value <= 0xFFFF:
+            return f"0x{value:04X}"
+        return f"0x{value:X}"
+    return repr(value)
+
+
+def _run_case(name: str, fn: Callable[[], tuple[int, int]], log_f) -> tuple[int, int]:
+    header = f"=== {name} ==="
+    print(header)
+    _write_log(log_f, header)
+    ok, total = fn()
+    line = f"{name}: {ok}/{total}"
+    print(line)
+    _write_log(log_f, line)
+    return ok, total
+
+
+def _report_case_error(name: str, exc: Exception, log_f) -> tuple[int, int]:
+    line = f"{name}: ERROR {type(exc).__name__}: {exc}"
+    print(line)
+    _write_log(log_f, line)
+    return 0, 0
+
+
+def _single_bit_case(plc: ToyopucHighLevelClient, addr: str, log_f) -> tuple[int, int]:
+    ok = 0
+    total = 0
+    scheme = resolve_device(addr).scheme
+    for value in (0, 1):
+        plc.write(addr, value)
+        read_back = 1 if plc.read(addr) else 0
+        line = f"{addr} [{scheme}] write={value} read={read_back}"
+        print(line)
+        _write_log(log_f, line)
+        total += 1
+        if read_back == value:
+            ok += 1
+    return ok, total
+
+
+def _single_word_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
+    ok = 0
+    total = 0
+    scheme = resolve_device(addr).scheme
+    values = [rng.randint(0, 0xFFFF)]
+    values.append(values[0] ^ 0xFFFF)
+    for value in values:
+        plc.write(addr, value)
+        read_back = int(plc.read(addr))
+        line = f"{addr} [{scheme}] write={_format_value(value)} read={_format_value(read_back)}"
+        print(line)
+        _write_log(log_f, line)
+        total += 1
+        if read_back == value:
+            ok += 1
+    return ok, total
+
+
+def _single_byte_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
+    ok = 0
+    total = 0
+    scheme = resolve_device(addr).scheme
+    values = [rng.randint(0, 0xFF), rng.randint(0, 0xFF)]
+    for value in values:
+        plc.write(addr, value)
+        read_back = int(plc.read(addr))
+        line = f"{addr} [{scheme}] write={_format_value(value)} read={_format_value(read_back)}"
+        print(line)
+        _write_log(log_f, line)
+        total += 1
+        if read_back == value:
+            ok += 1
+    return ok, total
+
+
+def _sequence_case(plc: ToyopucHighLevelClient, base_addr: str, values: Sequence[int], log_f) -> tuple[int, int]:
+    scheme = resolve_device(base_addr).scheme
+    plc.write(base_addr, list(values))
+    read_back = list(plc.read(base_addr, count=len(values)))
+    line = f"{base_addr} [{scheme}] write={list(map(_format_value, values))} read={list(map(_format_value, read_back))}"
+    print(line)
+    _write_log(log_f, line)
+    return (1, 1) if read_back == list(values) else (0, 1)
+
+
+def _mixed_many_case(plc: ToyopucHighLevelClient, items: dict[str, int], log_f) -> tuple[int, int]:
+    plc.write_many(items)
+    read_back = plc.read_many(list(items.keys()))
+    ok = 0
+    total = len(items)
+    for (addr, expected), value in zip(items.items(), read_back):
+        if isinstance(value, bool):
+            actual = 1 if value else 0
+        else:
+            actual = int(value)
+        line = f"{addr} write_many={_format_value(expected)} read_many={_format_value(actual)}"
+        print(line)
+        _write_log(log_f, line)
+        if actual == expected:
+            ok += 1
+    return ok, total
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="High-level API verification tool for ToyopucHighLevelClient")
+    p.add_argument("--host", required=True)
+    p.add_argument("--port", type=int, required=True)
+    p.add_argument("--protocol", choices=["tcp", "udp"], default="tcp")
+    p.add_argument("--local-port", type=int, default=0)
+    p.add_argument("--timeout", type=float, default=3.0)
+    p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--seed", type=int, default=1234)
+    p.add_argument("--include-pc10-word", action="store_true")
+    p.add_argument("--skip-errors", action="store_true")
+    p.add_argument("--log", default="")
+    args = p.parse_args()
+
+    rng = random.Random(args.seed)
+    log_f = open(args.log, "w", encoding="utf-8") if args.log else None
+
+    totals_ok = 0
+    totals_all = 0
+    error_cases = 0
+
+    single_cases: list[tuple[str, Callable[[ToyopucHighLevelClient], tuple[int, int]]]] = [
+        ("single bit/basic", lambda plc: _single_bit_case(plc, "M0000", log_f)),
+        ("single word/basic", lambda plc: _single_word_case(plc, "D0000", rng, log_f)),
+        ("single byte/basic", lambda plc: _single_byte_case(plc, "D0000L", rng, log_f)),
+        ("single bit/prefixed", lambda plc: _single_bit_case(plc, "P1-M0000", log_f)),
+        ("single word/prefixed", lambda plc: _single_word_case(plc, "P1-D0000", rng, log_f)),
+        ("single bit/extended", lambda plc: _single_bit_case(plc, "EX0000", log_f)),
+        ("single word/extended", lambda plc: _single_word_case(plc, "ES0000", rng, log_f)),
+    ]
+    if args.include_pc10_word:
+        single_cases.append(("single word/pc10", lambda plc: _single_word_case(plc, "U08000", rng, log_f)))
+
+    sequence_cases: list[tuple[str, str, Sequence[int]]] = [
+        ("sequence words/basic", "D0000", [rng.randint(0, 0xFFFF) for _ in range(3)]),
+        ("sequence bytes/basic", "D0000L", [rng.randint(0, 0xFF) for _ in range(4)]),
+        ("sequence bits/basic", "M0000", [1, 0, 1, 1]),
+    ]
+
+    mixed_items = {
+        "D0000": 0x1234,
+        "M0000": 1,
+        "P1-R0000": 0x5678,
+        "ES0000": 0x9ABC,
+    }
+    if args.include_pc10_word:
+        mixed_items["U08000"] = 0xDEF0
+
+    with ToyopucHighLevelClient(
+        args.host,
+        args.port,
+        protocol=args.protocol,
+        local_port=args.local_port,
+        timeout=args.timeout,
+        retries=args.retries,
+    ) as plc:
+        for name, fn in single_cases:
+            try:
+                ok, total = _run_case(name, lambda fn=fn: fn(plc), log_f)
+            except (ToyopucError, ValueError) as exc:
+                error_cases += 1
+                if not args.skip_errors:
+                    _report_case_error(name, exc, log_f)
+                    continue
+                _report_case_error(name, exc, log_f)
+                continue
+            totals_ok += ok
+            totals_all += total
+
+        for name, addr, values in sequence_cases:
+            try:
+                ok, total = _run_case(name, lambda addr=addr, values=values: _sequence_case(plc, addr, values, log_f), log_f)
+            except (ToyopucError, ValueError) as exc:
+                error_cases += 1
+                if not args.skip_errors:
+                    _report_case_error(name, exc, log_f)
+                    continue
+                _report_case_error(name, exc, log_f)
+                continue
+            totals_ok += ok
+            totals_all += total
+
+        try:
+            ok, total = _run_case("mixed read_many/write_many", lambda: _mixed_many_case(plc, mixed_items, log_f), log_f)
+        except (ToyopucError, ValueError) as exc:
+            error_cases += 1
+            _report_case_error("mixed read_many/write_many", exc, log_f)
+        else:
+            totals_ok += ok
+            totals_all += total
+
+    summary = f"TOTAL: {totals_ok}/{totals_all}"
+    print(summary)
+    _write_log(log_f, summary)
+    error_line = f"ERROR CASES: {error_cases}"
+    print(error_line)
+    _write_log(log_f, error_line)
+    if log_f:
+        log_f.close()
+    return 0 if totals_ok == totals_all and error_cases == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
