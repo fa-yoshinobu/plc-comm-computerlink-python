@@ -579,7 +579,7 @@ def handle_command(mem: Memory, frame: bytes) -> bytes:
             idx += 4
         return build_response(cmd, b"")
 
-    if cmd in (0xCA, 0xA0):
+    if cmd in (0xC6, 0xCA, 0xA0):
         return build_response(cmd, b"")
 
     return build_response(cmd, b"", rc=0x01)

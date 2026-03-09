@@ -239,12 +239,12 @@ Status: `verified` for `CMD=94-99` paths currently used by this project.
 - PC10 block write: `CMD=C3`
 - PC10 multi read: `CMD=C4`
 - PC10 multi write: `CMD=C5`
-- FR register: `CMD=C6`
+- FR register: `CMD=CA`
 
 Status:
 
 - `CMD=C2-C5`: `verified` on the ranges used by this project
-- `CMD=C6`: `summary` only
+- `CMD=CA`: `summary` only
 
 ## 3. Base address tables
 
@@ -669,9 +669,9 @@ Example response:
 These commands exist in the protocol, but are not part of the current normal test and usage path:
 
 - `CMD=60` relay command
-- `CMD=C6` FR register
+- `CMD=CA` FR register
 
 Status:
 
 - `CMD=60`: `summary`
-- `CMD=C6`: `summary`
+- `CMD=CA`: `summary`

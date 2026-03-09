@@ -36,6 +36,7 @@ docs = ["pdoc"]
 [project.urls]
 Homepage = "https://github.com/fa-yoshinobu/pytoyopuc-computerlink"
 Repository = "https://github.com/fa-yoshinobu/pytoyopuc-computerlink"
+Documentation = "https://fa-yoshinobu.github.io/pytoyopuc-computerlink/"
 
 [tool.setuptools.packages.find]
 include = ["toyopuc"]

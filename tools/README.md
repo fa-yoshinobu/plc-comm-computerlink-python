@@ -6,8 +6,12 @@ Use this file as a short index for the `tools/` directory.
 
 - `tools/run_tcc6740_all.bat`
   Recommended broad validation batch for `TOYOPUC-Plus CPU (TCC-6740)`.
-- `tools/run_tcc6740_range_scan.bat`
-  Two-pass coarse/fine writable-range scan batch for `TOYOPUC-Plus CPU (TCC-6740)`.
+- `tools/run_device_range_scan.bat`
+  Two-pass coarse/fine writable-range scan batch for all documented device families except `FR`.
+- `tools/run_fr_range_scan.bat`
+  `FR`-only coarse/fine writable-range scan batch.
+- `tools/run_fr_probe.bat`
+  `FR` candidate access probe batch using `CMD=CA` and several read-path guesses.
 - `tools/auto_rw_test.py`
   Automated read/write test against a real PLC.
 - `tools/high_level_api_test.py`
@@ -63,5 +67,7 @@ Use this section as a quick picker:
 - `run_full_test.bat`: broad device coverage check
 - `run_block_test.bat`: contiguous transfer length check
 - `run_validation_all.bat`: broad validation sweep including recovery and tail-end probes
-- `run_tcc6740_range_scan.bat`: forward coarse-to-fine range scan for the currently discovered `TCC-6740` device families
+- `run_device_range_scan.bat`: forward coarse-to-fine range scan for all documented device families except `FR`; unsupported families are skipped automatically
+- `run_fr_range_scan.bat`: `FR`-only forward coarse-to-fine range scan
+- `run_fr_probe.bat`: direct `FR` probe using current mapping plus `CMD=CA` candidate paths
 - `run_sim_tests.bat`: simulator smoke test for high-level API, `W/H/L` addressing, clock, and CPU status

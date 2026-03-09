@@ -4,6 +4,8 @@ This file tracks items that are intentionally left open after the current round 
 
 ## Open Items
 
+### Unverified Features
+
 ### 1. FR final confirmation
 
 Status:
@@ -15,6 +17,7 @@ Current note:
 
 - `FR` is not part of the normal safe test path
 - it should be verified separately before being treated as normal coverage
+- on `Nano 10GX (TUC-1157)`, the generic coarse range scan still treated `FR` as unsupported when it was probed directly
 
 ### 2. `CMD=60` relay command
 
@@ -27,7 +30,7 @@ Open question:
 
 - whether the current implementation matches the actual relay path used in the target environment
 
-### 3. `CMD=C6` FR register
+### 3. `CMD=CA` FR register
 
 Status:
 
@@ -54,6 +57,31 @@ Suggested check:
 - keep using a fixed local UDP port when the PLC requires one
 - for `TOYOPUC-Plus`, UDP verification is effectively closed for supported areas
 - if needed, repeat UDP verification on a non-Plus environment with wider device support
+
+### Future Improvements
+
+### 10. High-level grouped dispatch optimization
+
+Status:
+
+- `resolve_device()` and `ToyopucHighLevelClient` now exist
+- high-level API is hardware-verified on supported TCP/UDP paths
+- however, `read_many()` and `write_many()` still dispatch one item at a time
+
+Open question:
+
+- whether to group requests by `scheme / unit / No. / Program No.` and use multi-point or block commands automatically
+
+Expected benefit:
+
+- fewer protocol round-trips
+- better performance for repeated `read_many()` / `write_many()` workloads
+- better fit for UDP in high-frequency access patterns
+
+Possible next step:
+
+- group same-family requests first
+- then add contiguous block coalescing for sequential ranges
 
 ## Specification Re-check Items
 
@@ -132,29 +160,6 @@ Open question:
 
 - whether these are true unsupported tail addresses, mode-dependent restrictions, or areas that need narrower default ranges in manual checks
 
-### 10. High-level grouped dispatch optimization
-
-Status:
-
-- `resolve_device()` and `ToyopucHighLevelClient` now exist
-- high-level API is hardware-verified on supported TCP/UDP paths
-- however, `read_many()` and `write_many()` still dispatch one item at a time
-
-Open question:
-
-- whether to group requests by `scheme / unit / No. / Program No.` and use multi-point or block commands automatically
-
-Expected benefit:
-
-- fewer protocol round-trips
-- better performance for repeated `read_many()` / `write_many()` workloads
-- better fit for UDP in high-frequency access patterns
-
-Possible next step:
-
-- group same-family requests first
-- then add contiguous block coalescing for sequential ranges
-
 ## Notes
 
 ### Simulator status
@@ -178,7 +183,7 @@ Current judgment:
 Suggested order:
 
 1. FR final confirmation
-2. `CMD=C6` FR register
+2. `CMD=CA` FR register
 3. `CMD=60` relay command
 4. `CMD=98/99` program-number interpretation
 5. `CMD=C4/C5` usage range

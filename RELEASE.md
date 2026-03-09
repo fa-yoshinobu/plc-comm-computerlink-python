@@ -6,6 +6,7 @@ Naming used by this project:
 
 - GitHub repository: `pytoyopuc-computerlink`
 - GitHub URL: `https://github.com/fa-yoshinobu/pytoyopuc-computerlink`
+- GitHub Pages: `https://fa-yoshinobu.github.io/pytoyopuc-computerlink/`
 - package name: `toyopuc-computerlink`
 - import name: `toyopuc`
 
@@ -199,9 +200,13 @@ Prepare a short release note with:
   - model notes
 - known limitations
   - `FR`
-  - `CMD=C6`
+  - `CMD=CA`
   - `CMD=60`
   - model-specific unsupported ranges
+
+Current release note file:
+
+- `RELEASE_NOTES.md`
 
 ## 12. Post-Release
 

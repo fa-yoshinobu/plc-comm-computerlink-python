@@ -46,7 +46,7 @@ Currently supported in the simulator:
 Not modeled accurately enough to treat as hardware-equivalent:
 
 - `FR`
-- `CMD=C6`
+- `CMD=CA`
 - hardware-specific NAK/error behavior
 - unsupported-area behavior by model
 - timing and cable recovery behavior
@@ -241,6 +241,33 @@ The helper prints:
 - program-running flags for programs 1/2/3
 
 Write test should be done only after confirming that clock writes are acceptable on the target PLC.
+
+## FR Probe
+
+Use this when `FR` is believed to exist on the target PLC but the normal `FR` mapping still fails.
+
+The probe tries:
+
+- direct current `FR` mapping from `encode_ext_no_address("FR", ...)`
+- `CMD=CA` with candidate register values
+- follow-up `read_ext_words()` using several candidate `No.` values
+
+Batch example:
+
+```bat
+tools\run_fr_probe.bat 192.168.250.101 1027 udp 12000 5 2 "0x0,0x8000" "0x40,0x41"
+```
+
+Direct Python example:
+
+```bash
+python -m tools.fr_probe --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --indexes "0x0,0x8000" --register-exnos "0x40,0x41"
+```
+
+Interpretation:
+
+- any `OK read=[...]` line means at least one `FR` access path succeeded
+- if all probes fail, the next thing to review is the `FR` `Ex No.` / address scheme, not the batch wrapper
 
 Low-level write example:
 
@@ -652,12 +679,13 @@ Meaning:
 - `run_block_test.bat`: contiguous block-length checks only
 - `run_validation_all.bat`: full + mixed + block + boundary + recovery write/read + last-writable probe
 - `run_tcc6740_all.bat`: broad `TOYOPUC-Plus CPU (TCC-6740)` sweep
-- `run_tcc6740_range_scan.bat`: two-pass coarse/fine range scan for `TCC-6740`
+- `run_device_range_scan.bat`: two-pass coarse/fine range scan for all documented device families except `FR`; unsupported families are skipped automatically
+- `run_fr_range_scan.bat`: two-pass coarse/fine range scan for `FR` only
 
 Example `TCC-6740` range scan:
 
 ```bat
-tools\run_tcc6740_range_scan.bat 192.168.250.101 1025 tcp 0 16 32
+tools\run_device_range_scan.bat 192.168.250.101 1025 tcp 0 16 32
 ```
 
 This runs:
@@ -665,15 +693,18 @@ This runs:
 - coarse forward scan with `step=16`
 - fine forward scan with `step=1`
 - the same target set for both passes
-- default target set covers the currently discovered `TCC-6740` device families:
-  - `P,K,V,T,C,L,X,Y,M,S,N,R,D`
-  - `P1/P2/P3` low-side supported families
-  - `EP,EK,EV,ET,EC,EL,EX,EY,EM,GX,GY,GM`
-  - `ES,EN,H,U`
+- default target set covers all documented device families except `FR`
+
+`FR` only:
+
+```bat
+tools\run_fr_range_scan.bat 192.168.250.101 1025 tcp 0 16 32
+```
 
 Note:
 
 - this batch is for broad range confirmation
+- `FR` is excluded from the default target set and should be scanned explicitly with `run_fr_range_scan.bat`
 - reverse scanning is still useful, but should be used only for tail-end discovery on a small target set such as `D,P1-D,P2-D,P3-D,U`
 
 Split runners:
@@ -711,6 +742,16 @@ Generated outputs:
 | Clock write/readback on `TCC-6740` | `successful` | checked on `2026-03-08`, write accepted and readback matched except for elapsed seconds |
 | Clock read/write on `TCC-6740` over UDP | `successful after re-check` | checked on `2026-03-08`, read was stable and write converged correctly; first immediate readback could lag once |
 | CPU status on `TCC-6740` | `decoded in RUN and STOP states` | checked on `2026-03-08`, decoded bits matched observed PLC state |
+| Nano 10GX / `TUC-1157` full test over UDP | `TOTAL: 818/818` | checked on `2026-03-09`, `B`, prefixed upper ranges, `U08000+`, and `EB` were all supported in the runtime test set |
+| Nano 10GX / `TUC-1157` `W/H/L` addressing over UDP | `TOTAL: 35/35` | checked on `2026-03-09`, word/byte relation and byte-to-bit relation both passed |
+| Nano 10GX / `TUC-1157` high-level API over UDP | `TOTAL: 21/21` | checked on `2026-03-09`, high-level read/write and `read_many` / `write_many` passed |
+| Nano 10GX / `TUC-1157` clock read/write over UDP | `successful` | checked on `2026-03-09`, write readback matched exactly |
+| Nano 10GX / `TUC-1157` CPU status over UDP | `decoded in RUN state` | checked on `2026-03-09`, `RUN=True`, `PC10 mode=True`, `Alarm=False`, programs 1/2/3 running |
+| Nano 10GX / `TUC-1157` full test over TCP | `TOTAL: 818/818` | checked on `2026-03-09`, TCP `1025` matched the UDP full-test result |
+| Nano 10GX / `TUC-1157` `W/H/L` addressing over TCP | `TOTAL: 35/35` | checked on `2026-03-09`, TCP `1025` matched the UDP `W/H/L` result |
+| Nano 10GX / `TUC-1157` high-level API over TCP | `TOTAL: 21/21` | checked on `2026-03-09`, TCP `1025` matched the UDP high-level result |
+| Nano 10GX / `TUC-1157` clock read over TCP | `successful` | checked on `2026-03-09`, valid calendar/time fields were returned over TCP `1025` |
+| Nano 10GX / `TUC-1157` CPU status over TCP | `decoded in RUN state` | checked on `2026-03-09`, `RUN=True`, `PC10 mode=True`, `Alarm=False`, programs 1/2/3 running over TCP `1025` |
 | Block test | `TOTAL: 198/198` | checked on `2026-03-07`, `TOLERATED: 12`, `BIT:V: 12` |
 | Boundary test | `TOTAL: 220/220` | checked on `2026-03-07`, `U/EB/L/M` boundary transitions passed |
 | Mixed `CMD=98/99` | `TOTAL: 198/198` | checked on `2026-03-07`, all current mixed cases passed |
@@ -897,6 +938,187 @@ Interpretation:
 
 - the CPU status command itself is working on `TOYOPUC-Plus CPU (TCC-6740)`
 - the decoded flag mapping is consistent with both observed RUN and STOP states
+
+### Nano 10GX / `TUC-1157` over UDP
+
+Connection that worked:
+
+```bash
+192.168.250.101:1027/udp with local_port=12000
+```
+
+Full runtime sweep:
+
+```bash
+tools\run_full_test.bat 192.168.250.101 1027 udp 4 5 2 12000
+```
+
+Observed:
+
+- `TOTAL: 818/818`
+- `TOLERATED: 10`
+- `BIT:V: 10`
+- `B` worked
+- prefixed upper ranges worked
+- `U08000-U1FFFF` worked
+- `EB` worked in the runtime test set
+
+`W/H/L` addressing:
+
+```bash
+python -m tools.whl_addressing_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log whl_nano10gx.log
+```
+
+Observed:
+
+- `TOTAL: 35/35`
+- `ERROR CASES: 0`
+
+High-level API:
+
+```bash
+python -m tools.high_level_api_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log high_level_nano10gx.log
+```
+
+Observed:
+
+- `TOTAL: 21/21`
+- `ERROR CASES: 0`
+
+Clock read:
+
+```bash
+python -m tools.clock_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2
+```
+
+Observed:
+
+```text
+raw: second=16 minute=45 hour=19 day=09 month=03 year=26 weekday=1
+datetime: 2026-03-09 19:45:16
+```
+
+Clock write/readback:
+
+```bash
+python -m tools.clock_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --set "2026-03-09 20:00:10"
+```
+
+Observed:
+
+```text
+setting: 2026-03-09 20:00:10
+readback raw: second=10 minute=00 hour=20 day=09 month=03 year=26 weekday=1
+readback datetime: 2026-03-09 20:00:10
+```
+
+CPU status:
+
+```bash
+python -m tools.cpu_status_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2
+```
+
+Observed:
+
+```text
+raw: 81 00 00 00 00 00 00 0F
+RUN: True
+PC10 mode: True
+Alarm: False
+Under program 1 running: True
+Under program 2 running: True
+Under program 3 running: True
+```
+
+Range-scan note:
+
+- `tools\run_device_range_scan.bat 192.168.250.101 1027 udp 12000 16 32`
+- coarse scan showed continuous acceptance for documented families with no holes
+- `B` and prefixed upper ranges were confirmed in the coarse scan
+- `U00000-U1FFFF` was confirmed in the coarse scan
+- `EB` was observed continuously at least through `EB41FF0` before the helper stopped after repeated upper-range errors
+- `FR` was intentionally removed from the default target set and moved to a dedicated scan
+- `tools\run_fr_range_scan.bat 192.168.250.101 1027 udp 12000 16 32`
+- dedicated FR scan reported `ok=0`, `holes: all unsupported`
+
+### Nano 10GX / `TUC-1157` over TCP
+
+Connection that worked:
+
+```bash
+192.168.250.101:1025/tcp
+```
+
+Full runtime sweep:
+
+```bash
+tools\run_full_test.bat 192.168.250.101 1025 tcp 4 5 0
+```
+
+Observed:
+
+- `TOTAL: 818/818`
+- `TOLERATED: 10`
+- `BIT:V: 10`
+- TCP `1025` matched the UDP runtime result on this model
+
+`W/H/L` addressing:
+
+```bash
+python -m tools.whl_addressing_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0 --log whl_nano10gx_tcp.log
+```
+
+Observed:
+
+- `TOTAL: 35/35`
+- `ERROR CASES: 0`
+
+High-level API:
+
+```bash
+python -m tools.high_level_api_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0 --log high_level_nano10gx_tcp.log
+```
+
+Observed:
+
+- `TOTAL: 21/21`
+- `ERROR CASES: 0`
+
+Clock read:
+
+```bash
+python -m tools.clock_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0
+```
+
+Observed:
+
+```text
+raw: second=54 minute=32 hour=20 day=09 month=03 year=26 weekday=1
+datetime: 2026-03-09 20:32:54
+```
+
+CPU status:
+
+```bash
+python -m tools.cpu_status_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0
+```
+
+Observed:
+
+```text
+raw: 81 00 00 00 00 00 00 0F
+RUN: True
+PC10 mode: True
+Alarm: False
+Under program 1 running: True
+Under program 2 running: True
+Under program 3 running: True
+```
+
+Interpretation:
+
+- this model is verified on both UDP `1027` and TCP `1025`
+- the same broad runtime coverage passed over both transports
 
 Observed:
 

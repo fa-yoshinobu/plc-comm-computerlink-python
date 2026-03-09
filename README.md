@@ -6,6 +6,7 @@ Names:
 
 - GitHub repository: `pytoyopuc-computerlink`
 - GitHub URL: `https://github.com/fa-yoshinobu/pytoyopuc-computerlink`
+- GitHub Pages: `https://fa-yoshinobu.github.io/pytoyopuc-computerlink/`
 - package name: `toyopuc-computerlink`
 - import name: `toyopuc`
 
@@ -21,6 +22,8 @@ This repository is organized as:
   Protocol summary, message formats, and address rules used by this project.
 - `RELEASE.md`
   Release checklist for packaging and publishing.
+- `RELEASE_NOTES.md`
+  Release summary and known limitations for published versions.
 - `tools/README.md`
   Short index of helper tools under `tools/`.
 - `examples/README.md`
@@ -52,7 +55,16 @@ with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
     plc.write("D0100", 0x1234)
 ```
 
-Read one device over UDP with a fixed local source port:
+TCP minimal example:
+
+```python
+from toyopuc import ToyopucHighLevelClient
+
+with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
+    print(hex(plc.read("D0100")))
+```
+
+UDP minimal example with a fixed local source port:
 
 ```python
 from toyopuc import ToyopucHighLevelClient
@@ -74,6 +86,7 @@ Where to go next:
 - test tools and verified results: `TESTING.md`
 - protocol summary: `COMPUTER_LINK_SPEC.md`
 - model-specific writable ranges: `MODEL_RANGES.md`
+  - currently includes `TOYOPUC-Plus CPU (TCC-6740)` and `Nano 10GX (TUC-1157)`
 
 ## Install
 
@@ -104,7 +117,7 @@ Generated files:
 
 GitHub Pages entry:
 
-- `docs/index.html`
+- `https://fa-yoshinobu.github.io/pytoyopuc-computerlink/`
 
 The generated API pages are docstring-based. If you want richer API reference
 output, expand docstrings on public classes and methods under `toyopuc/`.
@@ -237,7 +250,10 @@ Model note:
 
 - On `TOYOPUC-Plus CPU (TCC-6740)`, `U08000-U1FFFF` does not exist.
 - For that model, do not use `U08000` as a default example or test address.
-- See `MODEL_RANGES.md` for model-specific writable ranges.
+- `Nano 10GX (TUC-1157)` has been confirmed on both `TCP 1025` and `UDP 1027`.
+- See `MODEL_RANGES.md` for model-specific writable ranges, including:
+  - `TOYOPUC-Plus CPU (TCC-6740)`
+  - `Nano 10GX (TUC-1157)`
 
 If your model supports upper `U` range, a separate PC10 example is shown later in `PC10 Range Examples`.
 
