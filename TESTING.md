@@ -242,15 +242,35 @@ The helper prints:
 
 Write test should be done only after confirming that clock writes are acceptable on the target PLC.
 
+Raw `A0` check from Python:
+
+```bash
+python - <<'PY'
+from toyopuc import ToyopucClient
+
+with ToyopucClient("192.168.250.101", 1025, protocol="tcp") as plc:
+    print(plc.read_cpu_status_a0_raw().hex(" ").upper())
+PY
+```
+
+Notes:
+
+- normal decoded CPU status uses `CMD=32 / 11 00`
+- flash/FR completion flow also references `CMD=A0 / 01 10`
+- `CMD=A0 / 01 10` uses the same `Data1-Data8` bit layout as the normal CPU-status command
+- the current library exposes both `read_cpu_status_a0_raw()` and decoded `read_cpu_status_a0()`
+- on targets where `A0` is accepted, FR commit wait can use `Data7.bit4` / `Data7.bit5`
+- on `Nano 10GX (TUC-1157)`, `A0` was rejected with `0x24`, so FR commit wait falls back to `CMD=32 / 11 00` and uses the same `Data7.bit4` / `Data7.bit5` flags
+
 ## FR Probe
 
 Use this when `FR` is believed to exist on the target PLC but the normal `FR` mapping still fails.
 
 The probe tries:
 
-- direct current `FR` mapping from `encode_ext_no_address("FR", ...)`
-- `CMD=CA` with candidate register values
-- follow-up `read_ext_words()` using several candidate `No.` values
+- legacy `CMD=94` FR mapping from `encode_ext_no_address("FR", ...)`
+- PC10 block read (`CMD=C2`) using `encode_fr_word_addr32()`
+- optional `CMD=CA` acceptance check for candidate FR block `Ex No.` values
 
 Batch example:
 
@@ -266,8 +286,62 @@ python -m tools.fr_probe --host 192.168.250.101 --port 1027 --protocol udp --loc
 
 Interpretation:
 
-- any `OK read=[...]` line means at least one `FR` access path succeeded
-- if all probes fail, the next thing to review is the `FR` `Ex No.` / address scheme, not the batch wrapper
+- `legacy-cmd94` failing with `0x40` while `pc10-c2` succeeds means the FR path is PC10-based as expected
+- `CA` success means the registration command format was accepted; it does not by itself prove read-bank switching
+
+## FR Full-Range Read Scan
+
+Read-only FR scan helper:
+
+```bat
+tools\run_fr_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read_full.log
+```
+
+What it reports:
+
+- chunked `CMD=C2` progress
+- `ok_chunks` / `error_chunks`
+- `0x0000` / `0xFFFF` / `other` word counts
+- whole-range `crc32`
+- `holes`
+
+Interpretation:
+
+- `holes: none` means the requested FR span was readable end to end
+- matching `crc32` before and after CPU reset is the practical persistence check for full-range FR writes
+
+## FR Full-Range Write Scan
+
+Write/commit/verify helper:
+
+```bat
+tools\run_fr_write_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write_full.log
+```
+
+What it does:
+
+- writes the requested FR range with a deterministic pattern through chunked `CMD=C3`
+- performs one final commit phase after all writes finish
+- issues `CMD=CA` once for each touched `64-kbyte` FR block
+- waits for each block commit to complete before moving to the next block
+- verifies the written pattern through chunked `CMD=C2` readback
+
+Interpretation:
+
+- `expected_crc32 == actual_crc32` with `mismatch_words=0` means the write path and immediate readback both succeeded
+- reset, then run `run_fr_read_scan.bat` again to confirm persistence across CPU reset
+
+Low-level FR example:
+
+```bash
+python - <<'PY'
+from toyopuc import ToyopucClient
+
+with ToyopucClient("192.168.250.101", 1025, protocol="tcp") as plc:
+    print(plc.read_fr_words(0x000000, 1))
+    plc.write_fr_words_committed(0x000000, [0x1234])
+PY
+```
 
 Low-level write example:
 
@@ -305,6 +379,7 @@ It covers:
 - PC10 access
 - contiguous `read()` / `write()`
 - `read_many()` / `write_many()`
+- FR generic-write guard behavior
 
 Example:
 
@@ -635,26 +710,25 @@ python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp -
 - `00`: `EP/EK/EV/ET/EC/EL/EX/EY/EM`
 - `07`: `GX/GY/GM`
 - `01/02/03`: `P1/P2/P3`
-- Only these ranges use PC10 multi access `CMD=C4/C5`:
-- `L1000-L2FFF`
-- `M1000-M17FF`
-- `U08000-U1FFFF`
-- `EB00000-EB3FFFF`
+- `Nano 10GX (TUC-1157)` candidate-`no` probe on `2026-03-10` showed no alias across `00/01/02/03/07` for `EX/GX/P1/P2/P3`
+- `L1000-L2FFF` and `M1000-M17FF` use PC10 multi access `CMD=C4/C5` in the current implementation
+- `Nano 10GX (TUC-1157)` probe on `2026-03-10` also showed that `CMD=C4/C5` reaches the same points for the `U00000-U1FFFF` and `EB00000-EB3FFFF` spans
 - `U00000-U07FFF` stays on `CMD=94/95`
+- `U08000-U1FFFF` and `EB00000-EB3FFFF` currently use `CMD=C2/C3` for normal word/byte single-point and block access
 - `EB40000-EB7FFFF` stays on `CMD=94/95`
 
 ## Naming
 
-- User-facing shared names are `X/Y`, `T/C`, `EX/EY`, `ET/EC`.
-- User-facing shared names are also `GX/GY`.
+- User-facing paired names are `X/Y`, `T/C`, `EX/EY`, `ET/EC`, and `GX/GY`.
+- Internal aliases such as `GXY` remain implementation details only.
 
 ## Mixed Cases
 
 - `EX0000 + U0000(byte) + EN0000(word)`
-- `GX0000 + shared GX/GY byte(0001) + ES0000(word)`
+- `GX0000 + GX/GY byte(0001) + ES0000(word)`
 - `P1-M0000 + P1-D0000(byte) + P1-D0000(word)`
-- `GX0000 + shared GX/GY byte(0000)`
-- `shared GX/GY byte(0000) + ES0000(word)`
+- `GX0000 + GX/GY byte(0000)`
+- `GX/GY byte(0000) + ES0000(word)`
 - `GX0000 + ES0000(word)`
 
 ## Batch
@@ -747,6 +821,11 @@ Generated outputs:
 | Nano 10GX / `TUC-1157` high-level API over UDP | `TOTAL: 21/21` | checked on `2026-03-09`, high-level read/write and `read_many` / `write_many` passed |
 | Nano 10GX / `TUC-1157` clock read/write over UDP | `successful` | checked on `2026-03-09`, write readback matched exactly |
 | Nano 10GX / `TUC-1157` CPU status over UDP | `decoded in RUN state` | checked on `2026-03-09`, `RUN=True`, `PC10 mode=True`, `Alarm=False`, programs 1/2/3 running |
+| Nano 10GX / `TUC-1157` FR read/write/commit over UDP | `successful` | checked on `2026-03-10`, `FR000000` read via `CMD=C2`, write via `CMD=C3`, commit via `CMD=CA`, and the written value persisted after CPU reset |
+| Nano 10GX / `TUC-1157` `A0 01 10` during FR testing over UDP | `unsupported` | checked on `2026-03-10`, returned `0x24` (`Invalid subcommand code`) |
+| Nano 10GX / `TUC-1157` FR full-range read scan over UDP | `successful` | checked on `2026-03-10`, `FR000000-FR1FFFFF` read with `holes: none`, `error_chunks=0`, and `crc32=0x00BF8BD1` before the full-range write test |
+| Nano 10GX / `TUC-1157` FR full-range write/verify over UDP | `successful` | checked on `2026-03-10`, write pattern `seed=0xA500`, final commit phase across `64` FR blocks, `mismatch_words=0`, `expected_crc32=actual_crc32=0x6C5F5EB9` |
+| Nano 10GX / `TUC-1157` FR full-range persistence after reset over UDP | `successful` | checked on `2026-03-10`, after CPU reset the full-range read scan still returned `holes: none` and `crc32=0x6C5F5EB9` |
 | Nano 10GX / `TUC-1157` full test over TCP | `TOTAL: 818/818` | checked on `2026-03-09`, TCP `1025` matched the UDP full-test result |
 | Nano 10GX / `TUC-1157` `W/H/L` addressing over TCP | `TOTAL: 35/35` | checked on `2026-03-09`, TCP `1025` matched the UDP `W/H/L` result |
 | Nano 10GX / `TUC-1157` high-level API over TCP | `TOTAL: 21/21` | checked on `2026-03-09`, TCP `1025` matched the UDP high-level result |
@@ -1041,6 +1120,55 @@ Range-scan note:
 - `tools\run_fr_range_scan.bat 192.168.250.101 1027 udp 12000 16 32`
 - dedicated FR scan reported `ok=0`, `holes: all unsupported`
 
+FR full-range read scan:
+
+```bash
+tools\run_fr_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read_full.log
+```
+
+Observed before full-range write:
+
+- `ok_chunks=4096`
+- `error_chunks=0`
+- `ok_words=2097152`
+- `holes: none`
+- `crc32=0x00BF8BD1`
+
+FR full-range write/verify:
+
+```bash
+tools\run_fr_write_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write_full_wait2.log
+```
+
+Observed:
+
+- `commit_phase blocks=64`
+- `write_errors=0`
+- `verify_error_chunks=0`
+- `mismatch_words=0`
+- `expected_crc32=0x6C5F5EB9`
+- `actual_crc32=0x6C5F5EB9`
+
+Persistence re-check after CPU reset:
+
+```bash
+tools\run_fr_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read_full_after_reset_wait2.log
+```
+
+Observed after reset:
+
+- `ok_chunks=4096`
+- `error_chunks=0`
+- `holes: none`
+- `crc32=0x6C5F5EB9`
+
+Interpretation:
+
+- full-range FR read/write/commit persistence is confirmed on this model over UDP
+- `A0` is not part of the working path on this model
+- `CA` must be followed by completion wait per FR block
+- practical wait path on this model is `CMD=32 / 11 00`, checking `Data7.bit4` and `Data7.bit5`
+
 ### Nano 10GX / `TUC-1157` over TCP
 
 Connection that worked:
@@ -1277,10 +1405,10 @@ Observed:
 Observed:
 
 - `[EXT MULTI] EX0000 + U0000(byte) + EN0000(word): 1/1`
-- `[EXT MULTI] GX0000 + shared GX/GY byte(0001) + ES0000(word): 1/1`
+- `[EXT MULTI] GX0000 + GX/GY byte(0001) + ES0000(word): 1/1`
 - `[EXT MULTI] P1-M0000 + P1-D0000(byte) + P1-D0000(word): 1/1`
-- `[EXT MULTI] GX0000 + shared GX/GY byte(0000): 1/1`
-- `[EXT MULTI] shared GX/GY byte(0000) + ES0000(word): 1/1`
+- `[EXT MULTI] GX0000 + GX/GY byte(0000): 1/1`
+- `[EXT MULTI] GX/GY byte(0000) + ES0000(word): 1/1`
 - `[EXT MULTI] GX0000 + ES0000(word): 1/1`
 - `TOTAL: 198/198`
 - `TOLERATED: 10`

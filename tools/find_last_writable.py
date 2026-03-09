@@ -9,6 +9,7 @@ from toyopuc import (
     ToyopucError,
     encode_bit_address,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_word_address,
@@ -139,6 +140,18 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 )
             if area == "EB" and index <= 0x3FFFF:
                 addr32 = _pc10_eb_word_addr32(index)
+                return (
+                    Probe(
+                        label=label,
+                        kind="pc10-word",
+                        write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
+                            addr32, _pack_u16_le(value & 0xFFFF)
+                        ),
+                    ),
+                    0xFFFF,
+                )
+            if area == "FR":
+                addr32 = encode_fr_word_addr32(index)
                 return (
                     Probe(
                         label=label,

@@ -362,13 +362,40 @@ def split_u32_words(value: int) -> Tuple[int, int]:
     return low, high
 
 
+def fr_block_ex_no(index: int) -> int:
+    """Return the FR block ``Ex No.`` for a word index.
+
+    FR is organized in 0x8000-word blocks. The manual's FR registration
+    command (`CMD=CA`) uses the block `Ex No.` in the range ``0x40-0x7F``.
+    """
+    if index < 0x000000 or index > 0x1FFFFF:
+        raise ValueError('FR index out of range (0x000000-0x1FFFFF)')
+    return 0x40 + (index // 0x8000)
+
+
+def encode_fr_word_addr32(index: int) -> int:
+    """Encode an FR word index for PC10 block access (`CMD=C2/C3`).
+
+    Real hardware FR access uses PC10 block read/write with:
+    - high word: FR block `Ex No.` (`0x40-0x7F`)
+    - low word: byte offset inside the 0x8000-word block
+    """
+    ex_no = fr_block_ex_no(index)
+    byte_addr = (index % 0x8000) * 2
+    return encode_exno_byte_u32(ex_no, byte_addr)
+
+
 def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
     """Encode an extended-area address into `(No., 16-bit address)`.
 
     This is the main helper for `CMD=94-99` on areas such as:
     - `ES`, `EN`, `H`
-    - `U`, `EB`, `FR`
+    - `U`, `EB`
     - extended bit-device families when they are addressed by word/byte form
+
+    Note:
+    - real-hardware `FR` word access uses `encode_fr_word_addr32()` with
+      `CMD=C2/C3`, not `CMD=94-99`
     """
     area_u = area.upper()
     no: Optional[int] = None

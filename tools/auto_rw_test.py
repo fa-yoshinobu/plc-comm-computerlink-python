@@ -10,6 +10,7 @@ from toyopuc import (
     encode_byte_address,
     encode_exno_bit_u32,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_byte_address,
@@ -863,7 +864,7 @@ def test_ext_multi_mixed(
     )
     cases.append(
         (
-            "GX0000 + GXY0001(byte) + ES0000(word)",
+            "GX0000 + GX/GY byte(0001) + ES0000(word)",
             _ext_bit_point("GX", 0x0000),
             (encode_ext_no_address("GXY", 0x0001, "byte").no, encode_ext_no_address("GXY", 0x0001, "byte").addr),
             (encode_ext_no_address("ES", 0x0000, "word").no, encode_ext_no_address("ES", 0x0000, "word").addr),
@@ -896,13 +897,13 @@ def test_ext_multi_mixed(
 
     split_cases = [
         (
-            "GX0000 + shared GX/GY byte(0000)",
+            "GX0000 + GX/GY byte(0000)",
             _ext_bit_point("GX", 0x0000),
             (encode_ext_no_address("GXY", 0x0000, "byte").no, encode_ext_no_address("GXY", 0x0000, "byte").addr),
             None,
         ),
         (
-            "shared GX/GY byte(0000) + ES0000(word)",
+            "GX/GY byte(0000) + ES0000(word)",
             None,
             (encode_ext_no_address("GXY", 0x0000, "byte").no, encode_ext_no_address("GXY", 0x0000, "byte").addr),
             (encode_ext_no_address("ES", 0x0000, "word").no, encode_ext_no_address("ES", 0x0000, "word").addr),
@@ -1746,6 +1747,23 @@ def main() -> int:
                     _print_result("[EXT WORD]", label, ok1 + ok2, t1 + t2, log_f)
                     total_ok += ok1 + ok2
                     total += t1 + t2
+                    continue
+
+                if area == "FR":
+                    ok, t = _test_pc10_word_area_ranges_with_builder(
+                        plc,
+                        "FR",
+                        ranges,
+                        args.count,
+                        rng,
+                        encode_fr_word_addr32,
+                        log_f,
+                        skip_errors=args.skip_errors,
+                    )
+                    label = _ranges_label("FR", ranges)
+                    _print_result("[EXT WORD]", label, ok, t, log_f)
+                    total_ok += ok
+                    total += t
                     continue
 
                 encoder = _encode_pc10g_u if area == "U" else None

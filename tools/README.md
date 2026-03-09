@@ -10,8 +10,20 @@ Use this file as a short index for the `tools/` directory.
   Two-pass coarse/fine writable-range scan batch for all documented device families except `FR`.
 - `tools/run_fr_range_scan.bat`
   `FR`-only coarse/fine writable-range scan batch.
+- `tools/run_fr_read_scan.bat`
+  `FR`-only read-only full/range scan batch using `CMD=C2`.
+- `tools/run_fr_write_scan.bat`
+  `FR`-only write/verify scan batch using `CMD=C3`, with a final commit phase.
 - `tools/run_fr_probe.bat`
   `FR` candidate access probe batch using `CMD=CA` and several read-path guesses.
+- `tools/run_relay_test.bat`
+  `CMD=60` relay-command hardware test batch with outer/inner frame dump.
+- `tools/run_fr_commit_test.bat`
+  Simple `FR` read / write+commit batch for direct hardware confirmation.
+- `tools/run_program_no_probe.bat`
+  `CMD=98/99` program-number probe that compares current mapping against candidate `no` values.
+- `tools/run_c4c5_range_probe.bat`
+  Probe for current-vs-alternate `CMD=C4/C5` usage on selected `L/M/U/EB` ranges.
 - `tools/auto_rw_test.py`
   Automated read/write test against a real PLC.
 - `tools/high_level_api_test.py`
@@ -69,5 +81,11 @@ Use this section as a quick picker:
 - `run_validation_all.bat`: broad validation sweep including recovery and tail-end probes
 - `run_device_range_scan.bat`: forward coarse-to-fine range scan for all documented device families except `FR`; unsupported families are skipped automatically
 - `run_fr_range_scan.bat`: `FR`-only forward coarse-to-fine range scan
+- `run_fr_read_scan.bat`: `FR`-only read-only range scan with chunked `CMD=C2` reads
+- `run_fr_write_scan.bat`: `FR`-only write/readback range scan with chunked `CMD=C3/C2` and end-of-range commit phase
 - `run_fr_probe.bat`: direct `FR` probe using current mapping plus `CMD=CA` candidate paths
+- `run_relay_test.bat`: `CMD=60` relay-command test with `cpu-status`, `clock-read`, `word-read`, or raw inner frames
+- `run_fr_commit_test.bat`: direct `FR` read or write+commit check with `A0` status output
+- `run_program_no_probe.bat`: targeted `CMD=98/99` mapping probe for `EX/GX/P1/P2/P3`
+- `run_c4c5_range_probe.bat`: targeted `CMD=C4/C5` range probe for `L/M/U/EB`
 - `run_sim_tests.bat`: simulator smoke test for high-level API, `W/H/L` addressing, clock, and CPU status

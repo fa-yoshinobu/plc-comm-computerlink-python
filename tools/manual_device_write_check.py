@@ -9,6 +9,7 @@ from toyopuc import (
     ToyopucError,
     encode_bit_address,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_word_address,
@@ -245,6 +246,16 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                     )
                 elif area == "EB" and idx <= 0x3FFFF:
                     addr32 = _pc10_eb_word_addr32(idx)
+                    targets.append(
+                        Target(
+                            kind="PC10 WORD",
+                            label=label,
+                            value_text="FFFF",
+                            write=lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                        )
+                    )
+                elif area == "FR":
+                    addr32 = encode_fr_word_addr32(idx)
                     targets.append(
                         Target(
                             kind="PC10 WORD",

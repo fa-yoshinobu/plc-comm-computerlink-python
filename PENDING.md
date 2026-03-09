@@ -10,14 +10,21 @@ This file tracks items that are intentionally left open after the current round 
 
 Status:
 
-- code path remains in the project
-- real hardware behavior is not finalized yet
+- confirmed on `Nano 10GX (TUC-1157)` over UDP on `2026-03-10`
+- on that model, full-range `FR000000-FR1FFFFF` read/write/commit persistence is also confirmed
+- still open for other models until separately checked
 
 Current note:
 
 - `FR` is not part of the normal safe test path
-- it should be verified separately before being treated as normal coverage
-- on `Nano 10GX (TUC-1157)`, the generic coarse range scan still treated `FR` as unsupported when it was probed directly
+- on `Nano 10GX (TUC-1157)`:
+  - read path is `CMD=C2`
+  - write path is `CMD=C3`
+  - commit path is `CMD=CA`
+  - each committed FR block must wait for flash-write completion before the next `CA`
+  - practical wait path is `CMD=32 / 11 00` `Data7.bit4/bit5`
+  - persistence after CPU reset has been confirmed for the full FR range
+- the generic coarse range scan treated `FR` as unsupported only because it was using the old direct mapping assumption
 
 ### 2. `CMD=60` relay command
 
@@ -34,12 +41,13 @@ Open question:
 
 Status:
 
-- protocol summary exists in `COMPUTER_LINK_SPEC.md`
-- real hardware test has not been performed
+- confirmed on `Nano 10GX (TUC-1157)` as the FR commit path
+- confirmed on that model only when each `CA` is followed by completion wait
+- still open for other models until separately checked
 
 Open question:
 
-- whether the current implementation and actual FR behavior match on the target PLC
+- whether any model-specific differences exist outside the confirmed `Nano 10GX (TUC-1157)` path
 
 ### 4. UDP verification note
 
@@ -89,8 +97,10 @@ Possible next step:
 
 Status:
 
-- current implementation is hardware-verified for the tested paths
-- however, the exact scope of each program number should still be kept under review against the original specification
+- confirmed on `Nano 10GX (TUC-1157)` on `2026-03-10`
+- current mapping was probed against candidate `no` values `00/01/02/03/07`
+- `EX/GX/P1/P2/P3` showed no alias across the tested candidates
+- still open for other models until separately checked
 
 Re-check points:
 
@@ -102,31 +112,29 @@ Re-check points:
 
 Status:
 
-- project documents now use user-facing names
-- internal implementation still keeps some shared-area aliases for address conversion
+- documents, examples, and test labels now use user-facing paired names
+- internal aliases remain only as implementation details for address conversion
+- no active hardware question remains on `Nano 10GX (TUC-1157)`
 
 Re-check points:
 
-- `X/Y`
-- `T/C`
-- `EX/EY`
-- `ET/EC`
-- `GX/GY`
+- keep future outward-facing text on `X/Y`, `T/C`, `EX/EY`, `ET/EC`, and `GX/GY`
 
 ### 7. `CMD=C4/C5` usage range
 
 Status:
 
-- current implementation uses `CMD=C4/C5` only on selected ranges
-- this behavior is hardware-verified for current tests
+- confirmed on `Nano 10GX (TUC-1157)` on `2026-03-10`
+- `L1000-L2FFF` and `M1000-M17FF` should stay on `CMD=C4/C5`
+- basic `CMD=20/21` did not alias the same points for those upper `L/M` ranges
+- `CMD=C4/C5` also reached the same points for `U00000-U1FFFF` and `EB00000-EB3FFFF`
+- current implementation still keeps normal `U/EB` word-byte paths on `CMD=94/95` or `CMD=C2/C3`
+- still open only as a design choice for other models or future dispatch changes
 
 Re-check points:
 
-- `L1000-L2FFF`
-- `M1000-M17FF`
-- `U08000-U1FFFF`
-- `EB00000-EB3FFFF`
-- confirm whether any additional ranges should use `C4/C5`
+- whether `U/EB` should remain on the current normal path or be widened to `CMD=C4/C5`
+- whether any other model shows a different split
 
 ### 8. FR handling policy
 
@@ -134,6 +142,8 @@ Status:
 
 - `FR` support remains in code
 - normal test flow treats it as separate and cautious
+- current high-level policy rejects generic `write("FR...")` and `write_many()` entries that target `FR`
+- explicit `write_fr(..., commit=...)` / `commit_fr()` remains the supported path
 
 Re-check points:
 
@@ -187,11 +197,10 @@ Suggested order:
 3. `CMD=60` relay command
 4. `CMD=98/99` program-number interpretation
 5. `CMD=C4/C5` usage range
-6. shared-area naming vs. user-facing naming
-7. FR handling policy
-8. UDP verification on a non-Plus environment, if needed
-9. manual write-check tail-end rejects
-10. high-level grouped dispatch optimization
+6. FR handling policy
+7. UDP verification on a non-Plus environment, if needed
+8. manual write-check tail-end rejects
+9. high-level grouped dispatch optimization
 
 ## Related documents
 

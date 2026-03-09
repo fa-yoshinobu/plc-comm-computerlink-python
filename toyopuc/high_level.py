@@ -9,6 +9,7 @@ from .address import (
     encode_bit_address,
     encode_byte_address,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_byte_address,
@@ -256,6 +257,16 @@ def resolve_device(device: str) -> ResolvedDevice:
                 packed=parsed.packed,
                 addr32=_pc10_eb_addr32(parsed.index),
             )
+        if parsed.area == "FR":
+            return ResolvedDevice(
+                text=text,
+                scheme="pc10-word",
+                unit="word",
+                area=parsed.area,
+                index=parsed.index,
+                packed=parsed.packed,
+                addr32=encode_fr_word_addr32(parsed.index),
+            )
         ext_area = parsed.area
         if ext_area in {"GX", "GY"}:
             ext_area = "GXY"
@@ -304,6 +315,8 @@ def resolve_device(device: str) -> ResolvedDevice:
             packed=parsed.packed,
             addr32=_pc10_eb_addr32(parsed.index, byte=True, high=parsed.high),
         )
+    if parsed.area == "FR":
+        raise ValueError("FR does not support byte access; use word access via PC10 block commands")
 
     ext_area = parsed.area
     if ext_area in {"GX", "GY"}:
@@ -369,6 +382,12 @@ def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> List
     return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(len(addrs32))]
 
 
+def _raise_generic_fr_write_error() -> None:
+    raise ValueError(
+        "Generic FR writes are disabled; use write_fr(..., commit=False|True) or commit_fr() explicitly"
+    )
+
+
 class ToyopucHighLevelClient(ToyopucClient):
     """High-level client that accepts string device addresses.
 
@@ -383,6 +402,12 @@ class ToyopucHighLevelClient(ToyopucClient):
     def read_cpu_status(self):
         return super().read_cpu_status()
 
+    def read_cpu_status_a0(self):
+        return super().read_cpu_status_a0()
+
+    def read_cpu_status_a0_raw(self):
+        return super().read_cpu_status_a0_raw()
+
     def read_clock(self):
         return super().read_clock()
 
@@ -392,6 +417,63 @@ class ToyopucHighLevelClient(ToyopucClient):
     def resolve_device(self, device: str) -> ResolvedDevice:
         """Resolve a string address into a `ResolvedDevice`."""
         return resolve_device(device)
+
+    def read_fr(self, device: Union[str, ResolvedDevice], count: int = 1):
+        """Read one or more FR words using the dedicated FR path."""
+        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        if resolved.area != "FR" or resolved.unit != "word":
+            raise ValueError("read_fr() requires an FR word device such as FR000000")
+        values = self.read_fr_words(resolved.index, count)
+        return values[0] if count == 1 else values
+
+    def write_fr(
+        self,
+        device: Union[str, ResolvedDevice],
+        value,
+        *,
+        commit: bool = False,
+        wait: Optional[bool] = None,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> None:
+        """Write one or more FR words, optionally committing and waiting."""
+        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        if resolved.area != "FR" or resolved.unit != "word":
+            raise ValueError("write_fr() requires an FR word device such as FR000000")
+        if isinstance(value, (list, tuple)):
+            values = [int(item) for item in value]
+        else:
+            values = [int(value)]
+        should_wait = bool(commit) if wait is None else bool(wait)
+        self.write_fr_words_ex(
+            resolved.index,
+            values,
+            commit=commit,
+            wait=should_wait,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+
+    def commit_fr(
+        self,
+        device: Union[str, ResolvedDevice],
+        count: int = 1,
+        *,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> None:
+        """Commit every FR block touched by the given FR word range."""
+        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        if resolved.area != "FR" or resolved.unit != "word":
+            raise ValueError("commit_fr() requires an FR word device such as FR000000")
+        self.commit_fr_range(
+            resolved.index,
+            count,
+            wait=wait,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
 
     def read(self, device: Union[str, ResolvedDevice], count: int = 1):
         """Read one item or a contiguous sequence from a device address.
@@ -420,6 +502,8 @@ class ToyopucHighLevelClient(ToyopucClient):
                 target unit.
         """
         resolved = self.resolve_device(device) if isinstance(device, str) else device
+        if resolved.area == "FR":
+            _raise_generic_fr_write_error()
         if resolved.unit == "bit":
             if isinstance(value, (list, tuple)):
                 for i, item in enumerate(value):
@@ -463,8 +547,13 @@ class ToyopucHighLevelClient(ToyopucClient):
         Notes:
             This method currently dispatches each item independently.
         """
+        resolved_items = []
         for device, value in items.items():
             resolved = self.resolve_device(device) if isinstance(device, str) else device
+            if resolved.area == "FR":
+                _raise_generic_fr_write_error()
+            resolved_items.append((resolved, value))
+        for resolved, value in resolved_items:
             self._write_one(resolved, value)
 
     def _read_one(self, resolved: ResolvedDevice):
@@ -495,6 +584,8 @@ class ToyopucHighLevelClient(ToyopucClient):
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
     def _write_one(self, resolved: ResolvedDevice, value) -> None:
+        if resolved.area == "FR":
+            _raise_generic_fr_write_error()
         if resolved.scheme == "basic-bit":
             self.write_bit(resolved.basic_addr, bool(value))
             return

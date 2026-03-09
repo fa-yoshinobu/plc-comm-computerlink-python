@@ -325,4 +325,12 @@ Evidence:
 - CPU status was confirmed over both TCP and UDP on this model.
 - Coarse device-range scan showed continuous acceptance for the documented runtime-tested families with no holes.
 - `EB` was observed continuously at least through `EB41FF0` before repeated upper-range errors stopped the helper.
-- `FR` is still separate and was excluded from the default follow-up range scan after the scan helper was corrected.
+- `FR` was confirmed separately on `2026-03-10`:
+  - read path: `CMD=C2` with `Ex No.=0x40+block`
+  - write path: `CMD=C3`
+  - commit path: `CMD=CA`
+  - `CA` had to be followed by a block-completion wait before committing the next block
+  - on this model, the completion wait used normal CPU status `CMD=32 / 11 00` `Data7.bit4/bit5`
+  - full-range `FR000000-FR1FFFFF` read/write/commit persistence was confirmed by matching `crc32=0x6C5F5EB9` again after CPU reset
+- direct `CMD=94 no=0x40-0x7F` did not work for `FR` on this model
+- `CMD=A0 / 01 10` returned `0x24` (`Invalid subcommand code`) on this model during FR testing

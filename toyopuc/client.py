@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import socket
+import time
 from datetime import datetime
 from typing import Iterable, List, Optional, Tuple
 
+from .address import encode_fr_word_addr32, fr_block_ex_no
 from .exceptions import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
 from .protocol import (
     CpuStatusData,
@@ -17,6 +19,7 @@ from .protocol import (
     build_byte_write,
     build_command,
     build_cpu_status_read,
+    build_cpu_status_read_a0,
     build_clock_read,
     build_clock_write,
     build_ext_byte_read,
@@ -40,6 +43,8 @@ from .protocol import (
     build_word_write,
     parse_clock_data,
     parse_cpu_status_data,
+    parse_cpu_status_data_a0,
+    parse_cpu_status_data_a0_raw,
     parse_response,
     unpack_u16_le,
 )
@@ -76,6 +81,46 @@ ERROR_CODE_DESCRIPTIONS = {
 }
 
 
+_FR_BLOCK_WORDS = 0x8000
+_FR_MAX_INDEX = 0x1FFFFF
+_FR_IO_CHUNK_WORDS = 0x0200
+
+
+def _validate_fr_index(index: int) -> int:
+    idx = int(index)
+    if idx < 0 or idx > _FR_MAX_INDEX:
+        raise ValueError('FR index out of range (0x000000-0x1FFFFF)')
+    return idx
+
+
+def _iter_fr_segments(start_index: int, word_count: int):
+    index = _validate_fr_index(start_index)
+    remaining = int(word_count)
+    if remaining < 1:
+        raise ValueError('word_count must be >= 1')
+    while remaining > 0:
+        block_offset = index % _FR_BLOCK_WORDS
+        chunk = min(remaining, _FR_BLOCK_WORDS - block_offset)
+        yield index, chunk
+        index += chunk
+        remaining -= chunk
+
+
+def _iter_fr_io_segments(start_index: int, word_count: int, max_chunk_words: int = _FR_IO_CHUNK_WORDS):
+    if int(max_chunk_words) < 1:
+        raise ValueError('max_chunk_words must be >= 1')
+    for block_index, block_words in _iter_fr_segments(start_index, word_count):
+        offset = 0
+        while offset < block_words:
+            chunk = min(block_words - offset, int(max_chunk_words))
+            yield block_index + offset, chunk
+            offset += chunk
+
+
+def _fr_commit_blocks(start_index: int, word_count: int) -> List[int]:
+    return [segment_start for segment_start, _ in _iter_fr_segments(start_index, word_count)]
+
+
 def format_response_error(resp: ResponseFrame) -> str:
     msg = f'Response error rc=0x{resp.rc:02X}'
     if resp.rc == 0x10:
@@ -85,6 +130,18 @@ def format_response_error(resp: ResponseFrame) -> str:
         detail = ERROR_CODE_DESCRIPTIONS.get(err, 'Unknown error code')
         return f'{msg}, error_code=0x{err:02X} ({detail}), data={resp.data.hex()}'
     return f'{msg}, data={resp.data.hex()}'
+
+
+def _extract_response_error_code(frame: bytes | None) -> Optional[int]:
+    if not frame:
+        return None
+    try:
+        resp = parse_response(frame)
+    except Exception:
+        return None
+    if resp.rc != 0x10:
+        return None
+    return resp.data[-1] if resp.data else resp.cmd
 
 
 class ToyopucClient:
@@ -117,6 +174,7 @@ class ToyopucClient:
         self._sock: Optional[socket.socket] = None
         self._last_tx: Optional[bytes] = None
         self._last_rx: Optional[bytes] = None
+        self._fr_wait_prefers_a0: Optional[bool] = None
 
     def __enter__(self) -> 'ToyopucClient':
         self.connect()
@@ -389,6 +447,106 @@ class ToyopucClient:
         if resp.cmd != 0xC5:
             raise ToyopucProtocolError('Unexpected CMD in response')
 
+    def read_fr_words(self, index: int, count: int) -> List[int]:
+        """Read FR words via PC10 block read (`CMD=C2`).
+
+        `FR` real-hardware access uses 32-bit PC10 addressing with
+        `Ex No.=0x40-0x7F`, not `CMD=94`.
+        """
+        values: List[int] = []
+        for chunk_index, chunk_words in _iter_fr_io_segments(index, count):
+            data = self.pc10_block_read(encode_fr_word_addr32(chunk_index), chunk_words * 2)
+            values.extend(unpack_u16_le(data))
+        return values
+
+    def write_fr_words(self, index: int, values: Iterable[int], *, commit: bool = False) -> None:
+        """Write FR words via PC10 block write (`CMD=C3`).
+
+        This updates the FR work area. Persisting the block to flash requires
+        `CMD=CA`. Set `commit=True` to commit every affected FR block after the
+        write completes.
+        """
+        self.write_fr_words_ex(index, values, commit=commit, wait=commit)
+
+    def write_fr_words_ex(
+        self,
+        index: int,
+        values: Iterable[int],
+        *,
+        commit: bool = False,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> None:
+        """Write FR words, with optional commit and completion wait.
+
+        When ``commit=True``, this follows the manual's 64-kbyte block unit:
+        each affected FR block is written with `C3`, committed with `CA`, and
+        optionally waited on before moving to the next block.
+        """
+        vals = [int(v) & 0xFFFF for v in values]
+        if not vals:
+            raise ValueError('values must contain at least one word')
+        offset = 0
+        for block_index, block_words in _iter_fr_segments(index, len(vals)):
+            block_offset = 0
+            while block_offset < block_words:
+                chunk_words = min(block_words - block_offset, _FR_IO_CHUNK_WORDS)
+                chunk_vals = vals[offset : offset + chunk_words]
+                data = b''.join(v.to_bytes(2, 'little') for v in chunk_vals)
+                self.pc10_block_write(encode_fr_word_addr32(block_index + block_offset), data)
+                offset += chunk_words
+                block_offset += chunk_words
+            if commit:
+                self.commit_fr_block(
+                    block_index,
+                    wait=wait,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+
+    def commit_fr_block(
+        self,
+        index: int,
+        *,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> Optional[CpuStatusData]:
+        """Commit the FR block containing `index` via `CMD=CA`.
+
+        By default this waits until `Data7.bit4` (`under_writing_flash_register`)
+        clears and raises on `Data7.bit5` (`abnormal_write_flash_register`).
+        """
+        self.fr_register(fr_block_ex_no(index))
+        if wait:
+            return self.wait_fr_write_complete(timeout=timeout, poll_interval=poll_interval)
+        return None
+
+    def commit_fr_range(
+        self,
+        index: int,
+        count: int = 1,
+        *,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> Optional[CpuStatusData]:
+        """Commit every FR block touched by a contiguous word range."""
+        last_status: Optional[CpuStatusData] = None
+        for block_index in _fr_commit_blocks(index, count):
+            last_status = self.commit_fr_block(
+                block_index,
+                wait=wait,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        return last_status
+
+    def write_fr_words_committed(self, index: int, values: Iterable[int]) -> None:
+        """Write FR words and commit every affected FR block."""
+        self.write_fr_words_ex(index, values, commit=True, wait=True)
+
     def fr_register(self, ex_no: int) -> None:
         """Issue the FR-register command `CMD=CA`."""
         resp = self._send_and_recv(build_fr_register(ex_no))
@@ -426,6 +584,68 @@ class ToyopucClient:
             raise ToyopucProtocolError(
                 f'Failed to parse CPU status response data={resp.data.hex()}'
             ) from e
+
+    def read_cpu_status_a0_raw(self) -> bytes:
+        """Read raw 8-byte CPU status via `CMD=A0 / 01 10`.
+
+        This command path is used in the flash/FR completion flow. The library
+        currently returns the 8 raw status bytes because the exact bit mapping
+        for this path has not been finalized yet.
+        """
+        resp = self._send_and_recv(build_cpu_status_read_a0())
+        if resp.cmd != 0xA0:
+            raise ToyopucProtocolError('Unexpected CMD in response')
+        try:
+            return parse_cpu_status_data_a0_raw(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse A0 CPU status response data={resp.data.hex()}'
+            ) from e
+
+    def read_cpu_status_a0(self) -> CpuStatusData:
+        """Read decoded CPU status via `CMD=A0 / 01 10`."""
+        resp = self._send_and_recv(build_cpu_status_read_a0())
+        if resp.cmd != 0xA0:
+            raise ToyopucProtocolError('Unexpected CMD in response')
+        try:
+            return parse_cpu_status_data_a0(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse A0 CPU status response data={resp.data.hex()}'
+            ) from e
+
+    def wait_fr_write_complete(self, *, timeout: float = 30.0, poll_interval: float = 0.2) -> CpuStatusData:
+        """Poll FR flash-write completion status.
+
+        Prefer `CMD=A0 / 01 10` when available. If the target rejects `A0`
+        with an invalid-subcommand style error, fall back to normal CPU status
+        `CMD=32 / 11 00`, which exposes the same `Data7` flash-write bits on
+        the Nano 10GX tested in this project.
+        """
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        interval = max(0.01, float(poll_interval))
+        while True:
+            use_a0 = self._fr_wait_prefers_a0 is not False
+            if use_a0:
+                try:
+                    status = self.read_cpu_status_a0()
+                    self._fr_wait_prefers_a0 = True
+                except (ToyopucError, ToyopucProtocolError):
+                    err = _extract_response_error_code(self.last_rx)
+                    if err in (0x23, 0x24, 0x25):
+                        self._fr_wait_prefers_a0 = False
+                        status = self.read_cpu_status()
+                    else:
+                        raise
+            else:
+                status = self.read_cpu_status()
+            if status.abnormal_write_flash_register:
+                raise ToyopucError('FR flash write failed: abnormal_write_flash_register=1')
+            if not status.under_writing_flash_register:
+                return status
+            if time.monotonic() >= deadline:
+                raise ToyopucTimeoutError('Timed out waiting for FR flash write completion')
+            time.sleep(interval)
 
     def write_clock(self, value: datetime) -> None:
         """Set the CPU clock via `CMD=32 / 71 00`."""

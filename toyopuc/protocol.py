@@ -316,6 +316,16 @@ def build_cpu_status_read() -> bytes:
     return build_command(0x32, bytes([0x11, 0x00]))
 
 
+def build_cpu_status_read_a0() -> bytes:
+    """Build `CMD=A0 / 01 10` CPU-status-read command.
+
+    This path is documented separately from `CMD=32 / 11 00` and is used by
+    the FR/flash write completion flow. The current implementation exposes the
+    payload as raw 8 status bytes until bit-level interpretation is confirmed.
+    """
+    return build_command(0xA0, bytes([0x01, 0x10]))
+
+
 def build_clock_write(
     second: int,
     minute: int,
@@ -373,6 +383,27 @@ def parse_cpu_status_data(data: bytes) -> CpuStatusData:
         data7=data[8],
         data8=data[9],
     )
+
+
+def parse_cpu_status_data_a0(data: bytes) -> CpuStatusData:
+    """Parse a `CMD=A0 / 01 10` CPU-status payload into `CpuStatusData`."""
+    if len(data) != 10 or data[0] != 0x01 or data[1] != 0x10:
+        raise ToyopucProtocolError('A0 CPU status response must be 10 bytes starting with 01 10')
+    return CpuStatusData(
+        data1=data[2],
+        data2=data[3],
+        data3=data[4],
+        data4=data[5],
+        data5=data[6],
+        data6=data[7],
+        data7=data[8],
+        data8=data[9],
+    )
+
+
+def parse_cpu_status_data_a0_raw(data: bytes) -> bytes:
+    """Parse `CMD=A0 / 01 10` CPU-status payload and return raw status bytes."""
+    return parse_cpu_status_data_a0(data).raw_bytes
 
 
 def build_word_read(addr: int, count: int) -> bytes:

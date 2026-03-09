@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 import argparse
+import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Dict, Optional
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from toyopuc import ToyopucHighLevelClient, resolve_device
 

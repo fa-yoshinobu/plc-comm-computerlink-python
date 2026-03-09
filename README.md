@@ -138,6 +138,8 @@ Main entry points:
 - `encode_program_word_address()`
 - `encode_program_byte_address()`
 - `encode_ext_no_address()`
+- `encode_fr_word_addr32()`
+- `fr_block_ex_no()`
 - `encode_exno_bit_u32()`
 - `encode_exno_byte_u32()`
 
@@ -166,7 +168,11 @@ Meaning:
 - `encode_program_byte_address()`
   Converts a `P1/P2/P3` byte device into the 16-bit address used by `CMD=96/97`.
 - `encode_ext_no_address()`
-  Converts an extended-area device such as `ES`, `EN`, `H`, `U`, `EB`, or `FR` into `(No., 16-bit address)` for `CMD=94-99`.
+  Converts an extended-area device such as `ES`, `EN`, `H`, `U`, or `EB` into `(No., 16-bit address)` for `CMD=94-99`.
+- `encode_fr_word_addr32()`
+  Builds the 32-bit PC10 block address used to read or write `FR` with `CMD=C2/C3`.
+- `fr_block_ex_no()`
+  Returns the `FR` block `Ex No.` (`0x40-0x7F`) used by `CMD=CA`.
 - `encode_exno_bit_u32()`
   Builds a 32-bit PC10 bit address from `Ex No.` and bit address for `CMD=C4/C5`.
 - `encode_exno_byte_u32()`
@@ -201,13 +207,23 @@ Main high-level methods:
 - `read(device, count=1)`
   Reads one item or a contiguous sequence starting at the given address.
 - `write(device, value)`
-  Writes one item or a contiguous sequence.
+  Writes one item or a contiguous sequence. `FR` is intentionally excluded from this generic write path.
 - `read_many([addr1, addr2, ...])`
   Reads many addresses with one call at the wrapper level.
 - `write_many({addr: value, ...})`
-  Writes many addresses with one call at the wrapper level.
+  Writes many addresses with one call at the wrapper level. `FR` entries are intentionally rejected.
+- `read_fr(device, count=1)`
+  Reads `FR` words through the dedicated PC10 FR path.
+- `write_fr(device, value, commit=False)`
+  Writes `FR` words and optionally commits touched FR blocks. When `commit=True`, the client waits for each touched FR block to finish flash registration before moving on.
+- `commit_fr(device, count=1)`
+  Issues `CMD=CA` for every FR block touched by the given range.
 - `read_clock()`
   Reads the PLC CPU clock and returns `ClockData`.
+- `read_cpu_status_a0()`
+  Reads decoded CPU status through `CMD=A0 / 01 10`.
+- `read_cpu_status_a0_raw()`
+  Reads the raw 8-byte `A0` CPU status payload.
 - `write_clock(datetime)`
   Sets the PLC CPU clock from `datetime`.
 
@@ -287,10 +303,12 @@ Rule of thumb:
   use `parse_address()` + `encode_bit_address()` / `encode_word_address()` / `encode_byte_address()`
 - `P1/P2/P3`:
   split by prefix, then use `encode_program_*()`
-- extended `ES/EN/H/U/EB/FR`:
+- extended `ES/EN/H/U/EB`:
   use `encode_ext_no_address()`
 - PC10 32-bit ranges:
   use `encode_exno_bit_u32()` or `encode_exno_byte_u32()`
+- `FR`:
+  use `encode_fr_word_addr32()` and PC10 block `CMD=C2/C3`; persist writes with `CMD=CA`
 
 W/H/L addressing note:
 
@@ -352,6 +370,45 @@ Notes:
 
 - `local_port` is mainly relevant for UDP when the PLC expects a fixed PC-side source port.
 - `retries` only retries send/receive failures. It does not hide protocol response errors like `rc=0x10`.
+
+## PLC Ethernet Setup
+
+The following screenshots show a working PLC-side communication setup.
+These setting items are the same across PLC models.
+
+### Ethernet
+
+![PLC Ethernet settings](screenshot/PCWin_Link1.png)
+
+- Own Node IP Address: `192.168.250.101`
+- Connection 1:
+  - Open Protocol: `TCP Destination Non-Specified Passive Open`
+  - Own Node Port No.: `1025`
+  - Other Node Table No.: `0`
+- Connection 2:
+  - Open Protocol: `TCP Destination-Specified Passive Open`
+  - Own Node Port No.: `1026`
+  - Other Node Table No.: `1`
+- Connection 3:
+  - Open Protocol: `UDP`
+  - Own Node Port No.: `1027`
+  - Other Node Table No.: `2`
+- Initialize:
+  - `Initialization based on Link Parameter`
+
+### Other Node Table
+
+![PLC Other Node Table](screenshot/PCWin_Link2.png)
+
+- Table 1: `192.168.250.102:12000`
+- Table 2: `192.168.250.102:12000`
+
+### Configuration Notes
+
+- `Own Node IP Address` and `Own Node Port No.` are the PLC-side IP address and port number.
+- When `TCP Destination Non-Specified Passive Open` is selected, PC-side IP address and port do not need to be specified.
+- When `TCP Destination-Specified Passive Open` or `UDP` is selected, PC-side IP address and port must be configured in `Other Node Table`.
+- Use `Initialization based on Link Parameter`.
 
 ## Clock Access
 
@@ -422,6 +479,21 @@ Notes:
 - CPU status uses `CMD=32` with subcommand `11 00`
 - the response contains 8 status bytes
 - the library exposes raw bytes and decoded flags
+- `CMD=A0 / 01 10` uses the same `Data1-Data8` bit layout
+- `CMD=A0 / 01 10` is also available as `read_cpu_status_a0_raw()`
+- `read_cpu_status_a0_raw()` returns the 8 raw status bytes and is intended for flash/FR completion flow handling
+- `read_cpu_status_a0()` returns decoded flags for targets that accept `A0`
+- FR commit completion waiting prefers `A0` when available and falls back to normal CPU status `CMD=32 / 11 00` when `A0` is unsupported
+
+Raw `A0` example:
+
+```python
+from toyopuc import ToyopucClient
+
+with ToyopucClient("192.168.250.101", 1025, protocol="tcp") as plc:
+    data = plc.read_cpu_status_a0_raw()
+    print(data.hex(" ").upper())
+```
 
 ## Basic Device Examples
 
@@ -585,6 +657,32 @@ with ToyopucClient("192.168.250.101", 1025, protocol="tcp") as plc:
     print(data.hex())
 ```
 
+### Read and commit `FR`
+
+```python
+from toyopuc import ToyopucHighLevelClient
+
+with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
+    before = plc.read_fr("FR000000")
+    plc.write_fr("FR000000", 0x1234, commit=True)
+    after = plc.read_fr("FR000000")
+    print(hex(before), hex(after))
+```
+
+Notes:
+
+- at initialization, flash-memory data is copied into the `FR` work area in RAM
+- after that, normal `FR` reads and writes operate on the RAM-side work area, similarly to `EB`
+- writing `FR` with ordinary commands does not persist the value to flash by itself
+- if power is turned off or the CPU is reset before `CMD=CA`, the original flash content is restored
+- use `write_fr(..., commit=True)` or `write_fr_words_committed()` when you intend to persist the change
+- generic `write("FR...")` and `write_many({"FR...": ...})` are intentionally disabled to avoid accidental volatile or unintended flash-related writes
+- commit is done per touched `64-kbyte` FR block
+- practical safe flow is: write the block with `C3`, issue `CA`, then wait for flash-write completion before committing the next block
+- on `Nano 10GX (TUC-1157)`, `FR` full-range read/write/commit persistence was confirmed on `2026-03-10`
+- on that same model, `CMD=A0 / 01 10` returned `0x24`, so FR commit waiting uses `CMD=32 / 11 00` `Data7.bit4/bit5` instead
+- on that model, a full-range write pattern committed successfully, and the same `crc32=0x6C5F5EB9` was confirmed again after CPU reset
+
 ## Prefixed `P1/P2/P3` Examples
 
 ### Read `P1-D0000`
@@ -706,10 +804,11 @@ except ToyopucError as e:
 - `V` is often overwritten by PLC-side behavior. A mismatch there is not always a transport issue.
 - `S` can also be state-dependent on some hardware.
 - `TOYOPUC-Plus` supports fewer device families than a full PC10 environment.
-- In the current project rules, these ranges use `CMD=C4/C5`:
-  - `L1000-L2FFF`
-  - `M1000-M17FF`
-  - `U08000-U1FFFF`
+- User-facing paired names are `X/Y`, `T/C`, `EX/EY`, `ET/EC`, and `GX/GY`; internal aliases such as `GXY` are not part of the public API.
+- In the current project rules, `L1000-L2FFF` and `M1000-M17FF` use `CMD=C4/C5`.
+- `U/EB` word and byte access use 32-bit PC10 addressing, but normal single-point and block paths stay on `CMD=C2/C3` or `CMD=94/95`.
+- On `Nano 10GX (TUC-1157)`, probe tests on `2026-03-10` confirmed that `CMD=C4/C5` also reaches the same points for:
+  - `U00000-U1FFFF`
   - `EB00000-EB3FFFF`
 - `FR` is intentionally kept out of the normal safe path.
 

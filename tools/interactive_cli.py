@@ -10,6 +10,7 @@ from toyopuc import (
     encode_byte_address,
     encode_exno_bit_u32,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_word_address,
@@ -356,14 +357,21 @@ def main() -> int:
                     area = args[0]
                     index = _parse_ints([args[1]])[0]
                     count = _parse_ints([args[2]])[0]
-                    ext = encode_ext_no_address(area, index, "word")
-                    payload = build_ext_word_read(ext.no, ext.addr, count)
+                    if area.upper() == "FR":
+                        payload = build_pc10_block_read(encode_fr_word_addr32(index), count * 2)
+                    else:
+                        ext = encode_ext_no_address(area, index, "word")
+                        payload = build_ext_word_read(ext.no, ext.addr, count)
                 elif cmd == "xww":
                     area = args[0]
                     index = _parse_ints([args[1]])[0]
                     values = _parse_ints(args[2:])
-                    ext = encode_ext_no_address(area, index, "word")
-                    payload = build_ext_word_write(ext.no, ext.addr, values)
+                    if area.upper() == "FR":
+                        data = b"".join(_pack_u16_le(v) for v in values)
+                        payload = build_pc10_block_write(encode_fr_word_addr32(index), data)
+                    else:
+                        ext = encode_ext_no_address(area, index, "word")
+                        payload = build_ext_word_write(ext.no, ext.addr, values)
                 elif cmd == "xbr":
                     area = args[0]
                     index = _parse_ints([args[1]])[0]

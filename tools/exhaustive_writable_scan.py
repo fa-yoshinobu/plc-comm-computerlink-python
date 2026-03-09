@@ -8,6 +8,7 @@ from toyopuc import (
     ToyopucError,
     encode_bit_address,
     encode_exno_byte_u32,
+    encode_fr_word_addr32,
     encode_ext_no_address,
     encode_program_bit_address,
     encode_program_word_address,
@@ -175,6 +176,9 @@ def _ext_word_writer(area: str) -> Callable[[ToyopucClient, int], None]:
             return
         if area == "EB" and index <= 0x3FFFF:
             plc.pc10_block_write(_pc10_eb_addr32(index), _pack_u16_le(0xFFFF))
+            return
+        if area == "FR":
+            plc.pc10_block_write(encode_fr_word_addr32(index), _pack_u16_le(0xFFFF))
             return
         ext = encode_ext_no_address(area, index, "word")
         plc.write_ext_words(ext.no, ext.addr, [0xFFFF])

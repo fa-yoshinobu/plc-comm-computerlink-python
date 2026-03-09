@@ -120,6 +120,39 @@ def _mixed_many_case(plc: ToyopucHighLevelClient, items: dict[str, int], log_f) 
     return ok, total
 
 
+def _fr_guard_case(plc: ToyopucHighLevelClient, log_f) -> tuple[int, int]:
+    total = 0
+    ok = 0
+
+    total += 1
+    try:
+        plc.write("FR000000", 0x1234)
+    except ValueError as exc:
+        line = f'FR generic write guard = OK ({exc})'
+        print(line)
+        _write_log(log_f, line)
+        ok += 1
+    else:
+        line = "FR generic write guard = FAIL (write() unexpectedly accepted FR)"
+        print(line)
+        _write_log(log_f, line)
+
+    total += 1
+    try:
+        plc.write_many({"FR000000": 0x1234, "D0000": 0x5678})
+    except ValueError as exc:
+        line = f'FR write_many guard = OK ({exc})'
+        print(line)
+        _write_log(log_f, line)
+        ok += 1
+    else:
+        line = "FR write_many guard = FAIL (write_many() unexpectedly accepted FR)"
+        print(line)
+        _write_log(log_f, line)
+
+    return ok, total
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="High-level API verification tool for ToyopucHighLevelClient")
     p.add_argument("--host", required=True)
@@ -207,6 +240,15 @@ def main() -> int:
         except (ToyopucError, ValueError) as exc:
             error_cases += 1
             _report_case_error("mixed read_many/write_many", exc, log_f)
+        else:
+            totals_ok += ok
+            totals_all += total
+
+        try:
+            ok, total = _run_case("FR write guard", lambda: _fr_guard_case(plc, log_f), log_f)
+        except (ToyopucError, ValueError) as exc:
+            error_cases += 1
+            _report_case_error("FR write guard", exc, log_f)
         else:
             totals_ok += ok
             totals_all += total

@@ -100,6 +100,7 @@ Status: `summary` from manufacturer error code table
 ### Base area access
 
 - CPU status read: `CMD=32`, subcommand `11 00`
+- CPU status read for flash/FR flow: `CMD=A0`, subcommand `01 10`
 - clock read: `CMD=32`, subcommand `70 00`
 - clock write: `CMD=32`, subcommand `71 00`
 - word read: `CMD=1C`
@@ -164,6 +165,29 @@ Implementation note:
   - `00 00 03 00 32 11 00`
 - CPU status read response:
   - `80 RC 0B 00 32 11 00 D1 D2 D3 D4 D5 D6 D7 D8`
+
+### CPU status access for flash/FR flow
+
+- CPU status read request:
+  - `00 00 03 00 A0 01 10`
+- CPU status read response:
+  - `80 RC 0B 00 A0 01 10 D1 D2 D3 D4 D5 D6 D7 D8`
+
+Notes:
+
+- this is a separate command path from `CMD=32 / 11 00`
+- it is referenced in the flash-register write completion flow
+- the 8 status bytes use the same `Data1-Data8` bit layout as the existing CPU-status table below
+- in the current project, FR write completion is checked mainly with:
+  - `Data7.bit4`: under writing flash register
+  - `Data7.bit5`: abnormal write flash register
+- practical completion rule:
+  - wait until `Data7.bit4 == 0`
+  - treat `Data7.bit5 == 1` as flash-write failure
+- practical transport rule:
+  - prefer `CMD=A0 / 01 10` when the target accepts it
+  - if the target rejects `A0` with `0x23/0x24/0x25`, use normal CPU status `CMD=32 / 11 00` instead
+  - on `Nano 10GX (TUC-1157)`, `A0` returned `0x24`, and `CMD=32 / 11 00` `Data7.bit4/bit5` was used successfully for FR commit waiting
 
 Data bytes:
 
@@ -244,7 +268,7 @@ Status: `verified` for `CMD=94-99` paths currently used by this project.
 Status:
 
 - `CMD=C2-C5`: `verified` on the ranges used by this project
-- `CMD=CA`: `summary` only
+- `CMD=CA`: `verified` on `Nano 10GX (TUC-1157)` for FR block commit
 
 ## 3. Base address tables
 
@@ -334,8 +358,12 @@ Shared-area aliases exist internally, but user-facing names in this project are:
 - `T/C`
 - `EX/EY`
 - `ET/EC`
+- `GX/GY`
 
-- `GX/GY` also share one internal byte area.
+Notes:
+
+- internal aliases are implementation details only
+- `GX/GY` also share one internal byte area
 
 ## 5. `CMD=98/99` layout
 
@@ -354,7 +382,7 @@ For bit points, one byte packs:
 - `02`: `P2`
 - `03`: `P3`
 
-Status: `implementation rule`
+Status: `confirmed on Nano 10GX (TUC-1157)` against candidate `no` values `00/01/02/03/07` on `2026-03-10`
 
 ### Mixed multi-point limits
 
@@ -367,21 +395,32 @@ Status: `summary`
 
 ## 6. PC10 `CMD=C4/C5` usage
 
-The current implementation uses PC10 multi access only for these ranges:
+The current implementation uses PC10 multi access (`CMD=C4/C5`) for these ranges:
 
 - `L1000-L2FFF`
 - `M1000-M17FF`
-- `U08000-U1FFFF`
-- `EB00000-EB3FFFF`
 
-Status: `implementation rule`
+Status: `confirmed on Nano 10GX (TUC-1157)` for current use on `2026-03-10`
 
-The current implementation keeps these on `CMD=94/95`:
+For `U/EB`, the normal word/byte path in the current implementation is not `CMD=C4/C5`:
 
 - `U00000-U07FFF`
+- `U08000-U1FFFF`
+- `EB00000-EB3FFFF`
 - `EB40000-EB7FFFF`
 
-Status: `implementation rule`
+Path summary:
+
+- `U00000-U07FFF`: `CMD=94/95`
+- `U08000-U1FFFF`: `CMD=C2/C3`
+- `EB00000-EB3FFFF`: `CMD=C2/C3`
+- `EB40000-EB7FFFF`: `CMD=94/95`
+
+Additional Nano 10GX probe result on `2026-03-10`:
+
+- `CMD=C4/C5` also reached the same points for `U00000-U1FFFF`
+- `CMD=C4/C5` also reached the same points for `EB00000-EB3FFFF`
+- `L1000-L2FFF` and `M1000-M17FF` did not alias to basic `CMD=20/21`, so those upper bit ranges should stay on `CMD=C4/C5`
 
 ## 7. Prefixed areas `P1/P2/P3`
 
@@ -472,10 +511,31 @@ Flash register `FR`:
 
 - `Ex No. 40-7F`
 - each block covers `0x8000` words
+- read/write path: PC10 block read/write (`CMD=C2/C3`)
+- commit path after write: FR register registration (`CMD=CA`)
 - examples:
   - `40`: `FR000000-FR007FFF`
   - `41`: `FR008000-FR00FFFF`
   - `7F`: `FR1F8000-FR1FFFFF`
+
+Implementation note:
+
+- direct `CMD=94 no=40-7F` is not the real-hardware FR read path
+- write flow is `C3 -> CA -> completion check`
+- `CA` is a registration / commit step for the written FR block, not a read bank-select command
+- each `CA` applies to one `64-kbyte` FR block
+- when multiple FR blocks are written, `CA` must be issued once per affected block
+- practical safe flow is:
+  - write the block with `C3`
+  - issue `CA` for that block
+  - wait for completion before issuing `CA` for the next block
+- on `Nano 10GX (TUC-1157)`, the completion wait used `CMD=32 / 11 00` `Data7.bit4/bit5` because `A0` was unsupported
+- during initialization, flash-memory data is transferred into the FR area in RAM
+- after initialization, normal direct access targets the FR work area in RAM, similar to `EB`
+- writing the FR area with normal commands updates RAM only
+- writing flash memory itself requires the special FR registration flow
+- if `CA` is not issued, the original flash content is restored on power-off or CPU reset
+- full-range `FR000000-FR1FFFFF` read/write/commit persistence was verified on `Nano 10GX (TUC-1157)` over UDP on `2026-03-10`
 
 ## 9. Examples
 
@@ -669,9 +729,9 @@ Example response:
 These commands exist in the protocol, but are not part of the current normal test and usage path:
 
 - `CMD=60` relay command
-- `CMD=CA` FR register
+- `CMD=CA` FR register outside FR-specific flows
 
 Status:
 
 - `CMD=60`: `summary`
-- `CMD=CA`: `summary`
+- `CMD=CA`: `verified` for `FR` commit on `Nano 10GX (TUC-1157)`
