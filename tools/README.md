@@ -24,6 +24,10 @@ Use this file as a short index for the `tools/` directory.
   `CMD=98/99` program-number probe that compares current mapping against candidate `no` values.
 - `tools/run_c4c5_range_probe.bat`
   Probe for current-vs-alternate `CMD=C4/C5` usage on selected `L/M/U/EB` ranges.
+- `tools/run_device_full_scan.bat`
+  Combined helper that first runs the fast word-oriented scan (`run_device_read_scan`) for basic/extended/PC10/FR areas and then runs the prefixed/program-number probe (`run_program_no_probe`) for `P1/P2/P3` cases.
+- `tools/run_device_read_scan.bat`
+  Read-only range scan that uses word-oriented access (bit areas are bundled through `...W` addressing). `targets` may mix basic word (`S/N/R/D`), basic bit (`P/K/V/T/C/L/X/Y/M`), extended bit (`EP/EK/EV/ET/EC/EL/EX/EY/EM/GX/GY/GM`), PC10 block (`U/EB/FR`), and prefixed program areas such as `P1-D`, `P2-M`, `P3-X`.
 - `tools/auto_rw_test.py`
   Automated read/write test against a real PLC.
 - `tools/high_level_api_test.py`
@@ -73,19 +77,24 @@ Use this file as a short index for the `tools/` directory.
 
 Use this section as a quick picker:
 
-- `run_tcc6740_all.bat`: recommended broad validation sweep for `TCC-6740`
-- `run_auto_tests.bat`: standard end-to-end sweep
-- `run_quick_test.bat`: fast basic communication check
-- `run_full_test.bat`: broad device coverage check
-- `run_block_test.bat`: contiguous transfer length check
-- `run_validation_all.bat`: broad validation sweep including recovery and tail-end probes
-- `run_device_range_scan.bat`: forward coarse-to-fine range scan for all documented device families except `FR`; unsupported families are skipped automatically
-- `run_fr_range_scan.bat`: `FR`-only forward coarse-to-fine range scan
+- `run_device_full_scan.bat`: fast all-in-one device check (basic/extended/PC10/FR + prefixed probes)
+- `run_device_read_scan.bat`: single-run word scan for basic/extended/PC10/FR ranges
+- `run_device_range_scan.bat`: coarse-to-fine writable range exploration (use when bringing up a new model)
 - `run_fr_read_scan.bat`: `FR`-only read-only range scan with chunked `CMD=C2` reads
 - `run_fr_write_scan.bat`: `FR`-only write/readback range scan with chunked `CMD=C3/C2` and end-of-range commit phase
-- `run_fr_probe.bat`: direct `FR` probe using current mapping plus `CMD=CA` candidate paths
-- `run_relay_test.bat`: `CMD=60` relay-command test with `cpu-status`, `clock-read`, `word-read`, or raw inner frames
-- `run_fr_commit_test.bat`: direct `FR` read or write+commit check with `A0` status output
 - `run_program_no_probe.bat`: targeted `CMD=98/99` mapping probe for `EX/GX/P1/P2/P3`
 - `run_c4c5_range_probe.bat`: targeted `CMD=C4/C5` range probe for `L/M/U/EB`
 - `run_sim_tests.bat`: simulator smoke test for high-level API, `W/H/L` addressing, clock, and CPU status
+
+### Nano 10GX UDP quick commands
+
+```bat
+tools\run_device_full_scan.bat 192.168.250.101 1027 udp 12000 5 2 512 device_full
+tools\run_device_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 S,N,R,D,P,K,V,T,C,L,X,Y,M,EP,EX,GX,GY,GM,U,EB,FR 512 device_read.log
+tools\run_device_range_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 16 device_range.log
+tools\run_fr_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read.log
+tools\run_fr_write_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write.log
+tools\run_program_no_probe.bat 192.168.250.101 1027 udp 12000 5 2 ext00,gx07,p1,p2,p3 0x00,0x01,0x02,0x03,0x07 program_no_probe.log
+tools\run_c4c5_range_probe.bat 192.168.250.101 1027 udp 12000 5 2 l1000,m1000,u00000,u08000,eb00000 c4c5_range.log
+tools\run_sim_tests.bat 192.168.250.101 1027 udp 12000 5 2
+```

@@ -244,7 +244,74 @@ Status: `summary`
 
 ### Relay command
 
-- relay command: `CMD=60`
+Status: `summary` (manufacturer spec) — hardware verification pending as of `2026-03-10`
+
+- command code: `CMD=60`
+- purpose: tunnel any CPU command (`CMD=01-42`) through a chain of FL-net / HPC Link modules
+- maximum payload: **< 550 bytes** for both request and response (manufacturer caution)
+
+#### Single-hop format
+
+```
+Request:
+00 00 LL LH 60 LinkNo ExNo 00 05 LL' LH' <inner command...>
+
+Response (success):
+80 RC LL LH 60 LinkNo ExNo 00 06 LL' LH' <inner response...> [padding]
+
+Response (error):
+80 00 .. .. 60 LinkNo ExNo 00 15 .. .. <error payload> [padding]
+```
+
+- `LinkNo`: target FL-net link number (8-bit)
+- `ExNo`: target exchange number (8-bit)
+- `00`: reserved byte
+- `05` / `06` / `15`: fixed bytes representing `ENQ` / `ACK` / `NAK`
+- `LL/LH`: outer transfer byte count (excluding 5-byte frame header)
+- `LL'/LH'`: inner command byte count (excluding the relay wrapper)
+- `<inner command...>`: literal frame payload for the command destined to the remote CPU (e.g., word read `CMD=1C`)
+- `<inner response...>`: literal response payload produced by the remote CPU
+- `<error payload>`: manufacturer error format (`EC` + details); refer to “Response Data Error Code Table”
+
+If the downstream CPU rejects the command, the relay wrapper still uses `NAK=0x15` and propagates the CPU’s error payload.
+If the downstream PLC is unreachable, no reply may arrive for up to **5 seconds**; retries must wait >5 seconds between attempts.
+Repeated relays toward an unreachable address can raise hardware fault **H9** on the relay PLC; recovery requires CPU reset.
+
+#### Example: read `D0100-D0102` on Link No.2 / Exchange No.3
+
+```
+Request:
+00 00 0D 00 60 02 03 00 05 05 00 1C 00 11 03 00 00
+
+Response (values 0100/0302/0504):
+80 00 0F 00 60 02 03 00 06 07 00 1C 00 01 02 03 04 05 XX
+```
+
+`XX` indicates undefined trailing padding.
+
+#### Hierarchical relay (multi-hop)
+
+CMD=60 wrappers can be nested up to **four stages**. Each hop prepends its own `(LinkNo, ExNo, ENQ, length)` tuple in front of the downstream relay block.
+
+Example: three-hop relay reaching “III CPU” (partial bytes):
+
+```
+00 00 15 00
+  60 02 01 00 05 0D 00   ; outer hop (I)
+    60 02 01 00 05 05 00 ; middle hop (II)
+      1C 00 11 03 00 00  ; inner command to III CPU
+```
+
+The response mirrors the nesting order, replacing each `05` with `06` and appending the inner CPU data (`D0100-D0102`).
+
+Four-hop relays (`IV CPU`) follow the same pattern with another wrapper (`Transfer Byte No.(4)` etc.).
+
+#### Practical guidance
+
+- Always calculate `LL/LH` after the inner payload is assembled.
+- Ensure every wrapper uses the correct `Link No.` / `Exchange No.` pair for its stage.
+- Because latency compounds (each level can wait up to 5 seconds for timeouts), clients should set generous timeouts and back off aggressively when no response is seen.
+- Hardware verification of relay flow (particularly multi-hop) is **pending**; the project currently treats CMD=60 as documentation-only.
 
 ### Extended area access
 

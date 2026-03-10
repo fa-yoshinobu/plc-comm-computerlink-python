@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 from toyopuc import ResolvedDevice, ToyopucClient, ToyopucError, resolve_device
 
@@ -85,6 +85,12 @@ def _next_distinct_16(value: int, salt: int, *avoid: Optional[int]) -> int:
     return candidate
 
 
+def _require_field(value: Optional[int], context: str) -> int:
+    if value is None:
+        raise ValueError(context)
+    return value
+
+
 @dataclass(frozen=True)
 class ProbeSnapshot:
     bit: Optional[int] = None
@@ -125,7 +131,11 @@ def _make_case(
     bit = resolve_device(bit_device) if bit_device else None
     byte = resolve_device(byte_device) if byte_device else None
     word = resolve_device(word_device) if word_device else None
-    expected_values = [item.no for item in (bit, byte, word) if item is not None]
+    expected_values: list[int] = []
+    for device in (bit, byte, word):
+        if device is None:
+            continue
+        expected_values.append(_require_field(device.no, f"{key}: resolved device missing number"))
     if not expected_values:
         raise ValueError(f"{key}: case has no points")
     expected_no = expected_values[0]
@@ -178,11 +188,15 @@ def _read_snapshot(plc: ToyopucClient, case: ProbeCase, no: int) -> ProbeSnapsho
     byte_points = []
     word_points = []
     if case.bit is not None:
-        bit_points.append((no, case.bit.bit_no, case.bit.addr))
+        bit_no = _require_field(case.bit.bit_no, f"{case.key}: bit case missing bit_no")
+        addr = _require_field(case.bit.addr, f"{case.key}: bit case missing addr")
+        bit_points.append((no, bit_no, addr))
     if case.byte is not None:
-        byte_points.append((no, case.byte.addr))
+        addr = _require_field(case.byte.addr, f"{case.key}: byte case missing addr")
+        byte_points.append((no, addr))
     if case.word is not None:
-        word_points.append((no, case.word.addr))
+        addr = _require_field(case.word.addr, f"{case.key}: word case missing addr")
+        word_points.append((no, addr))
     data = plc.read_ext_multi(bit_points, byte_points, word_points)
     bit_count, byte_count, word_count = case.counts()
     bits, bytes_out, words_out = _decode_ext_multi_read_data(data, bit_count, byte_count, word_count)
@@ -198,11 +212,15 @@ def _write_snapshot(plc: ToyopucClient, case: ProbeCase, no: int, snapshot: Prob
     byte_points = []
     word_points = []
     if case.bit is not None and snapshot.bit is not None:
-        bit_points.append((no, case.bit.bit_no, case.bit.addr, int(snapshot.bit) & 0x01))
+        bit_no = _require_field(case.bit.bit_no, f"{case.key}: bit case missing bit_no")
+        addr = _require_field(case.bit.addr, f"{case.key}: bit case missing addr")
+        bit_points.append((no, bit_no, addr, int(snapshot.bit) & 0x01))
     if case.byte is not None and snapshot.byte is not None:
-        byte_points.append((no, case.byte.addr, int(snapshot.byte) & 0xFF))
+        addr = _require_field(case.byte.addr, f"{case.key}: byte case missing addr")
+        byte_points.append((no, addr, int(snapshot.byte) & 0xFF))
     if case.word is not None and snapshot.word is not None:
-        word_points.append((no, case.word.addr, int(snapshot.word) & 0xFFFF))
+        addr = _require_field(case.word.addr, f"{case.key}: word case missing addr")
+        word_points.append((no, addr, int(snapshot.word) & 0xFFFF))
     plc.write_ext_multi(bit_points, byte_points, word_points)
 
 

@@ -3,7 +3,7 @@ import argparse
 import socket
 import threading
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict, Mapping, MutableMapping, Tuple, TypeVar
 
 from toyopuc.protocol import FT_COMMAND, FT_RESPONSE
 
@@ -111,11 +111,14 @@ def _ext_byte_key(no: int, addr: int) -> int | None:
     return None
 
 
-def _read_u16_from_map(store: Dict[object, int], low_key: object, high_key: object) -> int:
+K = TypeVar("K")
+
+
+def _read_u16_from_map(store: Mapping[K, int], low_key: K, high_key: K) -> int:
     return (store.get(low_key, 0) & 0xFF) | ((store.get(high_key, 0) & 0xFF) << 8)
 
 
-def _write_u16_to_map(store: Dict[object, int], low_key: object, high_key: object, value: int) -> None:
+def _write_u16_to_map(store: MutableMapping[K, int], low_key: K, high_key: K, value: int) -> None:
     store[low_key] = value & 0xFF
     store[high_key] = (value >> 8) & 0xFF
 

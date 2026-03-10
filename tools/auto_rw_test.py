@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import random
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from toyopuc import (
     ToyopucClient,
@@ -109,7 +109,7 @@ def _pc10_multi_read_bits(plc: ToyopucClient, addrs32: List[int]) -> List[int]:
     if len(data) < 4:
         raise ValueError("PC10 multi read response too short")
     data = data[4:]
-    out = []
+    out: List[int] = []
     if bit_cnt == 0:
         return out
     for i in range(bit_cnt):
@@ -417,7 +417,7 @@ def _test_ext_word_indices(
     return ok, total
 
 
-def test_bit_area_ranges(
+def run_bit_area_ranges(
     plc: ToyopucClient,
     area: str,
     ranges: List[Tuple[int, int]],
@@ -436,7 +436,7 @@ def test_bit_area_ranges(
     return ok, total
 
 
-def test_word_area_ranges(
+def run_word_area_ranges(
     plc: ToyopucClient,
     area: str,
     ranges: List[Tuple[int, int]],
@@ -455,7 +455,7 @@ def test_word_area_ranges(
     return ok, total
 
 
-def test_ext_word_area_ranges(
+def run_ext_word_area_ranges(
     plc: ToyopucClient,
     area: str,
     ranges: List[Tuple[int, int]],
@@ -477,7 +477,7 @@ def test_ext_word_area_ranges(
     return ok, total
 
 
-def test_word_area(
+def run_word_area(
     plc: ToyopucClient,
     area: str,
     start: int,
@@ -497,7 +497,7 @@ def test_word_area(
     )
 
 
-def test_byte_area(
+def run_byte_area(
     plc: ToyopucClient,
     area: str,
     start: int,
@@ -532,7 +532,7 @@ def test_byte_area(
     return ok, total
 
 
-def test_bit_area(
+def run_bit_area(
     plc: ToyopucClient,
     area: str,
     start: int,
@@ -552,7 +552,7 @@ def test_bit_area(
     )
 
 
-def test_ext_word_area(
+def run_ext_word_area(
     plc: ToyopucClient,
     area: str,
     start: int,
@@ -572,7 +572,7 @@ def test_ext_word_area(
     )
 
 
-def test_ext_byte_area(
+def run_ext_byte_area(
     plc: ToyopucClient,
     area: str,
     start: int,
@@ -607,7 +607,7 @@ def test_ext_byte_area(
     return ok, total
 
 
-def test_max_block_lengths(
+def run_max_block_lengths(
     plc: ToyopucClient,
     rng: random.Random,
     log_f=None,
@@ -845,7 +845,7 @@ def _verify_ext_multi_pair_case(
     return 1, 1
 
 
-def test_ext_multi_mixed(
+def run_ext_multi_mixed(
     plc: ToyopucClient,
     rng: random.Random,
     log_f=None,
@@ -853,7 +853,7 @@ def test_ext_multi_mixed(
 ) -> List[Tuple[str, int, int]]:
     results: List[Tuple[str, int, int]] = []
 
-    cases = []
+    cases: List[Tuple[str, Tuple[int, int, int], Tuple[int, int], Tuple[int, int]]] = []
     cases.append(
         (
             "EX0000 + U0000(byte) + EN0000(word)",
@@ -895,7 +895,14 @@ def test_ext_multi_mixed(
             continue
         results.append((label, ok, total))
 
-    split_cases = [
+    split_cases: List[
+        Tuple[
+            str,
+            Optional[Tuple[int, int, int]],
+            Optional[Tuple[int, int]],
+            Optional[Tuple[int, int]],
+        ]
+    ] = [
         (
             "GX0000 + GX/GY byte(0000)",
             _ext_bit_point("GX", 0x0000),
@@ -915,23 +922,23 @@ def test_ext_multi_mixed(
             (encode_ext_no_address("ES", 0x0000, "word").no, encode_ext_no_address("ES", 0x0000, "word").addr),
         ),
     ]
-    for label, bit_point, byte_point, word_point in split_cases:
+    for label_split, bit_point_opt, byte_point_opt, word_point_opt in split_cases:
         try:
             ok, total = _verify_ext_multi_pair_case(
-                plc, label, bit_point, byte_point, word_point, rng, log_f
+                plc, label_split, bit_point_opt, byte_point_opt, word_point_opt, rng, log_f
             )
         except (ToyopucError, ValueError) as e:
             if not skip_errors:
                 raise
             if log_f:
-                log_f.write(f"[EXT MULTI] ERROR {label} {e}\n")
-            results.append((f"{label} SKIP", 0, 0))
+                log_f.write(f"[EXT MULTI] ERROR {label_split} {e}\n")
+            results.append((f"{label_split} SKIP", 0, 0))
             continue
-        results.append((label, ok, total))
+        results.append((label_split, ok, total))
     return results
 
 
-def test_boundary_values(
+def run_boundary_values(
     plc: ToyopucClient,
     rng: random.Random,
     log_f=None,
@@ -953,7 +960,7 @@ def test_boundary_values(
 
     run(
         "U07FFE-U08001 transition",
-        lambda: test_ext_word_area_ranges(
+        lambda: run_ext_word_area_ranges(
             plc,
             "U",
             [(0x07FFE, 0x08001)],
@@ -966,7 +973,7 @@ def test_boundary_values(
     )
     run(
         "EB3FFFE-EB40001 transition",
-        lambda: test_ext_word_area_ranges(
+        lambda: run_ext_word_area_ranges(
             plc,
             "EB",
             [(0x3FFFE, 0x40001)],
@@ -1408,14 +1415,20 @@ def main() -> int:
 
     rng = random.Random(args.seed)
 
+    bit_areas: Dict[str, Tuple[int, int]] = {}
+    word_areas: Dict[str, Tuple[int, int]] = {}
+    byte_areas: Dict[str, Tuple[int, int]] = {}
+    ext_word_areas: Dict[str, Tuple[int, int]] = {}
+    ext_byte_areas: Dict[str, Tuple[int, int]] = {}
+
     # Define test ranges by area index (hex)
     if args.pc10g_full:
         bit_area_ranges = {
-            "P": [(0x000, 0x1FF), (0x1000, 0x17FF)],
+            "P": [(0x000, 0x1FF)],
             "K": [(0x000, 0x2FF)],
-            "V": [(0x000, 0x0FF), (0x1000, 0x17FF)],
-            "T": [(0x000, 0x1FF), (0x1000, 0x17FF)],
-            "C": [(0x000, 0x1FF), (0x1000, 0x17FF)],
+            "V": [(0x000, 0x0FF)],
+            "T": [(0x000, 0x1FF)],
+            "C": [(0x000, 0x1FF)],
             "L": [(0x000, 0x7FF), (0x1000, 0x2FFF)],
             "X": [(0x000, 0x7FF)],
             "Y": [(0x000, 0x7FF)],
@@ -1477,11 +1490,6 @@ def main() -> int:
         ]
         if args.include_fr:
             ext_word_area_ranges["FR"] = [(0x000000, 0x1FFFFF)]
-        bit_areas = {}
-        word_areas = {}
-        byte_areas = {}
-        ext_word_areas = {}
-        ext_byte_areas = {}
     else:
         bit_areas = {
             "K": (0x000, 0x2FF),
@@ -1526,21 +1534,21 @@ def main() -> int:
         retries=args.retries,
     ) as plc:
         if args.ext_multi_test:
-            for label, ok, t in test_ext_multi_mixed(
+            for label, ok, t in run_ext_multi_mixed(
                 plc, rng, log_f, skip_errors=args.skip_errors
             ):
                 _print_result("[EXT MULTI]", label, ok, t, log_f)
                 total_ok += ok
                 total += t
         if args.boundary_test:
-            for label, ok, t in test_boundary_values(
+            for label, ok, t in run_boundary_values(
                 plc, rng, log_f, skip_errors=args.skip_errors
             ):
                 _print_result("[BOUNDARY]", label, ok, t, log_f)
                 total_ok += ok
                 total += t
         if args.max_block_test:
-            for label, ok, t in test_max_block_lengths(
+            for label, ok, t in run_max_block_lengths(
                 plc, rng, log_f, skip_errors=args.skip_errors, pc10_word_count=args.pc10_block_words
             ):
                 _print_result("[BLOCK]", label, ok, t, log_f)
@@ -1556,7 +1564,7 @@ def main() -> int:
                         log_f.write(f"[BIT] {area}: SKIP (unsupported)\n")
                     continue
                 if area == "L":
-                    ok1, t1 = test_bit_area_ranges(
+                    ok1, t1 = run_bit_area_ranges(
                         plc,
                         area,
                         [(0x000, 0x7FF)],
@@ -1582,7 +1590,7 @@ def main() -> int:
                     continue
 
                 if area == "M":
-                    ok1, t1 = test_bit_area_ranges(
+                    ok1, t1 = run_bit_area_ranges(
                         plc,
                         area,
                         [(0x000, 0x7FF)],
@@ -1607,7 +1615,7 @@ def main() -> int:
                     total += t1 + t2
                     continue
 
-                ok, t = test_bit_area_ranges(
+                ok, t = run_bit_area_ranges(
                     plc, area, ranges, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _ranges_label(area, ranges)
@@ -1623,7 +1631,7 @@ def main() -> int:
                     if log_f:
                         log_f.write(f"[WORD] {area}: SKIP (unsupported)\n")
                     continue
-                ok, t = test_word_area_ranges(
+                ok, t = run_word_area_ranges(
                     plc, area, ranges, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _ranges_label(area, ranges)
@@ -1696,7 +1704,7 @@ def main() -> int:
                     continue
 
                 if area == "U":
-                    ok1, t1 = test_ext_word_area_ranges(
+                    ok1, t1 = run_ext_word_area_ranges(
                         plc,
                         area,
                         [(0x00000, 0x07FFF)],
@@ -1733,7 +1741,7 @@ def main() -> int:
                         log_f,
                         skip_errors=args.skip_errors,
                     )
-                    ok2, t2 = test_ext_word_area_ranges(
+                    ok2, t2 = run_ext_word_area_ranges(
                         plc,
                         area,
                         [(0x40000, 0x7FFFF)],
@@ -1767,7 +1775,7 @@ def main() -> int:
                     continue
 
                 encoder = _encode_pc10g_u if area == "U" else None
-                ok, t = test_ext_word_area_ranges(
+                ok, t = run_ext_word_area_ranges(
                     plc,
                     area,
                     ranges,
@@ -1783,7 +1791,7 @@ def main() -> int:
                 total += t
         else:
             for area, (s, e) in bit_areas.items():
-                ok, t = test_bit_area(
+                ok, t = run_bit_area(
                     plc, area, s, e, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _range_label(area, s, e, max(4, len(f"{e:X}")))
@@ -1792,7 +1800,7 @@ def main() -> int:
                 total += t
 
             for area, (s, e) in word_areas.items():
-                ok, t = test_word_area(
+                ok, t = run_word_area(
                     plc, area, s, e, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _range_label(area, s, e, max(4, len(f"{e:X}")))
@@ -1801,7 +1809,7 @@ def main() -> int:
                 total += t
 
             for area, (s, e) in byte_areas.items():
-                ok, t = test_byte_area(
+                ok, t = run_byte_area(
                     plc, area, s, e, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _range_label(area, s, e, max(4, len(f"{e:X}")))
@@ -1810,7 +1818,7 @@ def main() -> int:
                 total += t
 
             for area, (s, e) in ext_word_areas.items():
-                ok, t = test_ext_word_area(
+                ok, t = run_ext_word_area(
                     plc,
                     area,
                     s,
@@ -1826,7 +1834,7 @@ def main() -> int:
                 total += t
 
             for area, (s, e) in ext_byte_areas.items():
-                ok, t = test_ext_byte_area(
+                ok, t = run_ext_byte_area(
                     plc, area, s, e, args.count, rng, log_f, skip_errors=args.skip_errors
                 )
                 label = _range_label(area, s, e, max(4, len(f"{e:X}")))

@@ -1,6 +1,6 @@
 import argparse
 import random
-from typing import Callable, Sequence
+from typing import Callable
 
 from toyopuc import ToyopucError, ToyopucHighLevelClient, resolve_device
 
@@ -197,7 +197,10 @@ def main() -> int:
     ) as plc:
         for name, fn in cases:
             try:
-                ok, total = _run_case(name, lambda fn=fn: fn(plc), log_f)
+                def _case(fn=fn, plc=plc) -> tuple[int, int]:
+                    return fn(plc)
+
+                ok, total = _run_case(name, _case, log_f)
             except (ToyopucError, ValueError) as exc:
                 error_cases += 1
                 _report_case_error(name, exc, log_f)

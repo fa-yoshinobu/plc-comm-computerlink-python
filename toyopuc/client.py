@@ -4,7 +4,7 @@ from __future__ import annotations
 import socket
 import time
 from datetime import datetime
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Self
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .exceptions import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
@@ -176,7 +176,7 @@ class ToyopucClient:
         self._last_rx: Optional[bytes] = None
         self._fr_wait_prefers_a0: Optional[bool] = None
 
-    def __enter__(self) -> 'ToyopucClient':
+    def __enter__(self) -> Self:
         self.connect()
         return self
 

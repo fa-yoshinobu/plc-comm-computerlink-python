@@ -4,7 +4,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Optional, Tuple
+from typing import Callable, Tuple
 
 from toyopuc import (
     ToyopucClient,
@@ -43,13 +43,17 @@ EXT_BIT_SPECS = {
 }
 
 
+WriteFn = Callable[[ToyopucClient, int], None]
+ReadFn = Callable[[ToyopucClient], int]
+
+
 @dataclass
 class Target:
     label: str
     kind: str
     default_value: int
-    write: Callable[[ToyopucClient, int], None]
-    read: Callable[[ToyopucClient], int]
+    write: WriteFn
+    read: ReadFn
 
 
 def _pack_u16_le(value: int) -> bytes:
@@ -107,85 +111,130 @@ def _pc10_eb_word_addr32(index: int) -> int:
     return encode_exno_byte_u32(ex_no, byte_addr)
 
 
+def _basic_bit_rw(addr: int) -> Tuple[WriteFn, ReadFn]:
+    def write(plc: ToyopucClient, value: int) -> None:
+        plc.write_bit(addr, bool(value))
+
+    def read(plc: ToyopucClient) -> int:
+        return 1 if plc.read_bit(addr) else 0
+
+    return write, read
+
+
+def _basic_word_rw(addr: int) -> Tuple[WriteFn, ReadFn]:
+    def write(plc: ToyopucClient, value: int) -> None:
+        plc.write_words(addr, [value & 0xFFFF])
+
+    def read(plc: ToyopucClient) -> int:
+        return int(plc.read_words(addr, 1)[0])
+
+    return write, read
+
+
+def _ext_bit_rw(no: int, bit_no: int, addr: int) -> Tuple[WriteFn, ReadFn]:
+    def write(plc: ToyopucClient, value: int) -> None:
+        plc.write_ext_multi([(no, bit_no, addr, value & 0x01)], [], [])
+
+    def read(plc: ToyopucClient) -> int:
+        return plc.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01
+
+    return write, read
+
+
+def _ext_word_rw(no: int, addr: int) -> Tuple[WriteFn, ReadFn]:
+    def write(plc: ToyopucClient, value: int) -> None:
+        plc.write_ext_words(no, addr, [value & 0xFFFF])
+
+    def read(plc: ToyopucClient) -> int:
+        return int(plc.read_ext_words(no, addr, 1)[0])
+
+    return write, read
+
+
+def _pc10_word_rw(addr32: int) -> Tuple[WriteFn, ReadFn]:
+    def write(plc: ToyopucClient, value: int) -> None:
+        plc.pc10_block_write(addr32, _pack_u16_le(value & 0xFFFF))
+
+    def read(plc: ToyopucClient) -> int:
+        return int.from_bytes(plc.pc10_block_read(addr32, 2), "little")
+
+    return write, read
+
+
 def _resolve_non_prefixed(target_text: str) -> Target:
     area, index = _split_area_index(target_text)
     if area in BASE_BIT_AREAS:
         parsed = parse_address(f"{area}{index:04X}", "bit")
         addr = encode_bit_address(parsed)
+        write_fn, read_fn = _basic_bit_rw(addr)
         return Target(
             label=f"{area}{index:04X}",
             kind="bit",
             default_value=1,
-            write=lambda plc, value, addr=addr: plc.write_bit(addr, bool(value)),
-            read=lambda plc, addr=addr: 1 if plc.read_bit(addr) else 0,
+            write=write_fn,
+            read=read_fn,
         )
     if area in BASE_WORD_AREAS:
         parsed = parse_address(f"{area}{index:04X}", "word")
         addr = encode_word_address(parsed)
+        write_fn, read_fn = _basic_word_rw(addr)
         return Target(
             label=f"{area}{index:04X}",
             kind="word",
             default_value=0xFFFF,
-            write=lambda plc, value, addr=addr: plc.write_words(addr, [value & 0xFFFF]),
-            read=lambda plc, addr=addr: plc.read_words(addr, 1)[0],
+            write=write_fn,
+            read=read_fn,
         )
     if area in EXT_BIT_AREAS:
         no, bit_no, addr = _ext_bit_addr(area, index)
+        write_fn, read_fn = _ext_bit_rw(no, bit_no, addr)
         return Target(
             label=f"{area}{index:04X}",
             kind="ext-bit",
             default_value=1,
-            write=lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                [(no, bit_no, addr, value & 0x01)], [], []
-            ),
-            read=lambda plc, no=no, bit_no=bit_no, addr=addr: (
-                plc.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01
-            ),
+            write=write_fn,
+            read=read_fn,
         )
     if area in EXT_WORD_AREAS:
         label = f"{area}{index:0{max(4, len(f'{index:X}'))}X}"
         if area == "U" and index >= 0x08000:
             addr32 = _pc10_u_word_addr32(index)
+            write_fn, read_fn = _pc10_word_rw(addr32)
             return Target(
                 label=label,
                 kind="pc10-word",
                 default_value=0xFFFF,
-                write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                    addr32, _pack_u16_le(value & 0xFFFF)
-                ),
-                read=lambda plc, addr32=addr32: int.from_bytes(plc.pc10_block_read(addr32, 2), "little"),
+                write=write_fn,
+                read=read_fn,
             )
         if area == "EB" and index <= 0x3FFFF:
             addr32 = _pc10_eb_word_addr32(index)
+            write_fn, read_fn = _pc10_word_rw(addr32)
             return Target(
                 label=label,
                 kind="pc10-word",
                 default_value=0xFFFF,
-                write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                    addr32, _pack_u16_le(value & 0xFFFF)
-                ),
-                read=lambda plc, addr32=addr32: int.from_bytes(plc.pc10_block_read(addr32, 2), "little"),
+                write=write_fn,
+                read=read_fn,
             )
         if area == "FR":
             addr32 = encode_fr_word_addr32(index)
+            write_fn, read_fn = _pc10_word_rw(addr32)
             return Target(
                 label=label,
                 kind="pc10-word",
                 default_value=0xFFFF,
-                write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                    addr32, _pack_u16_le(value & 0xFFFF)
-                ),
-                read=lambda plc, addr32=addr32: int.from_bytes(plc.pc10_block_read(addr32, 2), "little"),
+                write=write_fn,
+                read=read_fn,
             )
         ext = encode_ext_no_address(area, index, "word")
+        write_fn, read_fn = _ext_word_rw(ext.no, ext.addr)
         return Target(
             label=label,
             kind="ext-word",
             default_value=0xFFFF,
-            write=lambda plc, value, no=ext.no, addr=ext.addr: plc.write_ext_words(
-                no, addr, [value & 0xFFFF]
-            ),
-            read=lambda plc, no=ext.no, addr=ext.addr: plc.read_ext_words(no, addr, 1)[0],
+            write=write_fn,
+            read=read_fn,
         )
     raise ValueError(f"Unsupported target area: {target_text}")
 
@@ -200,27 +249,23 @@ def resolve_target(target_text: str) -> Target:
     area, index = _split_area_index(rest)
     if area in BASE_BIT_AREAS:
         no, bit_no, addr = _prefixed_bit_addr(prefix, area, index)
+        write_fn, read_fn = _ext_bit_rw(no, bit_no, addr)
         return Target(
             label=f"{prefix}-{area}{index:04X}",
             kind="pref-bit",
             default_value=1,
-            write=lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                [(no, bit_no, addr, value & 0x01)], [], []
-            ),
-            read=lambda plc, no=no, bit_no=bit_no, addr=addr: (
-                plc.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01
-            ),
+            write=write_fn,
+            read=read_fn,
         )
     if area in BASE_WORD_AREAS:
         no, addr = _prefixed_word_addr(prefix, area, index)
+        write_fn, read_fn = _ext_word_rw(no, addr)
         return Target(
             label=f"{prefix}-{area}{index:04X}",
             kind="pref-word",
             default_value=0xFFFF,
-            write=lambda plc, value, no=no, addr=addr: plc.write_ext_words(
-                no, addr, [value & 0xFFFF]
-            ),
-            read=lambda plc, no=no, addr=addr: plc.read_ext_words(no, addr, 1)[0],
+            write=write_fn,
+            read=read_fn,
         )
     raise ValueError(f"Unsupported prefixed target area: {target_text}")
 

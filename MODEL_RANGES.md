@@ -159,6 +159,12 @@ Evidence:
 | final range | exhaustive scan |
 | supported behavior | runtime tests |
 
+### FR
+
+| Device | Range | Notes |
+| --- | --- | --- |
+| `FR` | *(not exposed on this CPU)* | No FR read/write path was observed during Plus CPU testing. |
+
 Does not exist on this model:
 - `U08000-U1FFFF`
 
@@ -224,7 +230,7 @@ Evidence:
 | `N` | `N0000-N17FF` |
 | `R` | `R0000-R07FF` |
 | `D` | `D0000-D2FFF` |
-| `B` | `B0000-B1FFF` |
+| `B` | *(not present on this model)* |
 
 Evidence:
 
@@ -272,7 +278,8 @@ Evidence:
 
 Note:
 
-- prefixed `B` is not part of the current documented default range set for this project and is not treated as a confirmed family yet
+- このモデルには `B` エリア (basic / prefixed) が存在しません。
+
 
 ### Extension Bit
 
@@ -306,7 +313,7 @@ Evidence:
 | `EN` | `EN0000-EN07FF` |
 | `H` | `H0000-H07FF` |
 | `U` | `U00000-U1FFFF` |
-| `EB` | runtime-tested across lower and upper ranges; coarse scan observed at least `EB00000-EB41FF0` |
+| `EB` | `EB00000-EB3FFFF` (runtime-tested, Ex No. `0x10-0x17`); coarse scan reached ~`EB41FF0` but upper range beyond `EB3FFFF` is not guaranteed |
 
 Evidence:
 
@@ -325,12 +332,191 @@ Evidence:
 - CPU status was confirmed over both TCP and UDP on this model.
 - Coarse device-range scan showed continuous acceptance for the documented runtime-tested families with no holes.
 - `EB` was observed continuously at least through `EB41FF0` before repeated upper-range errors stopped the helper.
-- `FR` was confirmed separately on `2026-03-10`:
-  - read path: `CMD=C2` with `Ex No.=0x40+block`
-  - write path: `CMD=C3`
-  - commit path: `CMD=CA`
-  - `CA` had to be followed by a block-completion wait before committing the next block
-  - on this model, the completion wait used normal CPU status `CMD=32 / 11 00` `Data7.bit4/bit5`
-  - full-range `FR000000-FR1FFFFF` read/write/commit persistence was confirmed by matching `crc32=0x6C5F5EB9` again after CPU reset
 - direct `CMD=94 no=0x40-0x7F` did not work for `FR` on this model
 - `CMD=A0 / 01 10` returned `0x24` (`Invalid subcommand code`) on this model during FR testing
+
+### FR
+
+| Device | Range | Notes |
+| --- | --- | --- |
+| `FR` | `FR000000-FR1FFFFF` | read `CMD=C2`, write `CMD=C3`, commit `CMD=CA` per 64 kB block with completion wait via `CMD=32 / 11 00`; full-range persistence confirmed on `2026-03-10`; `CMD=A0` unsupported |
+
+## PC3JX-D CPU (TCC-6902)
+
+Source commands:
+
+```text
+python -m tools.cpu_status_test --host <HOST> --port 1025 --protocol tcp --timeout 5 --retries 0
+python -m tools.auto_rw_test --host <HOST> --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc3jx.log
+tools\run_full_test.bat <HOST> 1025 tcp 4 5 0
+```
+
+Notes:
+
+- PC3 mode (`pc3_mode=True` / `pc10_mode=False`): prefixed上位 (`P1-M1000` など) と PC10系 (`U/EB/FR`) は未実装。
+- Plus Expansion Mode（PC10 mode=True）に切り替えても `EB` と `FR` は未実装。`U00000-U1FFFF` は有効になる。
+- いずれのモードでも FR コマンド (`CMD=C2/C3/CA`) は常に `error_code=0x40` を返す。
+
+### Basic Bit / Word (共通)
+
+| Device | Writable range |
+| --- | --- |
+| `P` | `P0000-P17FF` |
+| `K` | `K0000-K02FF` |
+| `V` | `V0000-V17FF` |
+| `T` | `T0000-T17FF` |
+| `C` | `C0000-C17FF` |
+| `L` | `L0000-L2FFF` |
+| `X` | `X0000-X07FF` |
+| `Y` | `Y0000-Y07FF` |
+| `M` | `M0000-M17FF` |
+| `S` | `S0000-S13FF` |
+| `N` | `N0000-N17FF` |
+| `R` | `R0000-R07FF` |
+| `D` | `D0000-D2FFF` |
+
+### Prefixed Bit / Word (`P1/P2/P3`)
+
+| Device | Writable range |
+| --- | --- |
+| `P` | `P000-P1FF` |
+| `K` | `K000-K2FF` |
+| `V` | `V000-V0FF` |
+| `T` | `T000-T1FF` |
+| `C` | `C000-C1FF` |
+| `L` | `L000-L7FF` |
+| `X` | `X000-X7FF` |
+| `Y` | `Y000-Y7FF` |
+| `M` | `M000-M7FF` |
+| `S` | `S0000-S03FF` |
+| `N` | `N0000-N01FF` |
+| `R` | `R0000-R07FF` |
+| `D` | `D0000-D2FFF` |
+
+Prefixed上位 (`1000` 番台) は PC3 mode / Plus Expansion Mode ともに未実装。
+
+### Extended Bit / Word
+
+| Device | Writable range |
+| --- | --- |
+| `EP/EK/EV/ET/EC/EL/EX/EY/EM` | 同シリーズ既定の範囲 (PC3 mode/PC10 mode 共通) |
+| `GX/GY/GM` | `GX/GY/GM0000-GX/GY/GMFFFF` |
+| `ES/EN/H` | `ES0000-ES07FF`, `EN0000-EN07FF`, `H0000-H07FF` |
+| `U` | `U00000-U1FFFF` *(PC10 mode のみ)* |
+| `EB` | *(not present)* |
+
+### FR
+
+| Device | Range | Notes |
+| --- | --- | --- |
+| `FR` | *(not exposed on this CPU)* | `CMD=C2/C3/CA` は常に `0x40` を返す。 |
+
+## PC10G-CPU (TCC-6353)
+
+Source commands (UDP unless noted):
+
+```text
+tools\run_device_full_scan.bat 192.168.250.101 1027 udp 12000 5 2 512 device_full
+tools\run_device_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 S,N,R,D,P,K,V,T,C,L,X,Y,M,EP,EX,GX,GY,GM,U,EB,FR 512 device_read.log
+tools\run_fr_read_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read.log
+tools\run_fr_write_scan.bat 192.168.250.101 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write.log
+tools\run_program_no_probe.bat 192.168.250.101 1027 udp 12000 5 2 ext00,gx07,p1,p2,p3 0x00,0x01,0x02,0x03,0x07 program_no_probe.log
+tools\run_c4c5_range_probe.bat 192.168.250.101 1027 udp 12000 5 2 l1000,m1000,u00000,u08000,eb00000 c4c5_range.log
+tools\run_sim_tests.bat 192.168.250.101 1027 udp 12000 5 2
+python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --ext-multi-test --skip-errors --log auto_ext_multi.log
+python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --boundary-test --skip-errors --log auto_boundary.log
+python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --max-block-test --pc10-block-words 0x200 --skip-errors --log auto_block.log
+python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc10g_p123.log
+```
+
+Evidence:
+
+- `run_device_full_scan` + `run_device_read_scan` reported zero errors across the accepted spans listed below and cleanly identified the first failing chunk at each upper boundary.
+- `auto_rw_test --pc10g-full` sampled every documented basic/prefixed/extended range (bits, words, bytes) plus PC10 block access without mismatches (`TOTAL: 768/768`, only tolerated V-bit transient warnings).
+- Prefixed-device numbers for `EX/ES` (`0x00`), `GX` (`0x07`), and `P1/P2/P3` (`0x01/0x02/0x03`) were reconfirmed via `run_program_no_probe`.
+- `run_c4c5_range_probe` showed that `U00000`, `U08000`, and `EB00000` via PC10 block addressing alias the same storage as the normal `CMD=C4/C5` helpers; `L1000` / `M1000` rely on higher-level guards rather than direct `CMD=20/21`.
+- Full-range FR read/write/commit scans (`fr_read.log`, `fr_write.log`) completed with perfect CRC agreement (`0x6C5F5EB9`) and verified that `CMD=A0` remains unavailable (`0x24`).
+
+### Basic Bit
+
+| Device | Writable range |
+| --- | --- |
+| `P` | `P0000-P17FF` |
+| `K` | `K0000-K02FF` |
+| `V` | `V0000-V17FF` |
+| `T` | `T0000-T17FF` |
+| `C` | `C0000-C17FF` |
+| `L` | `L0000-L2FFF` |
+| `X` | `X0000-X07FF` |
+| `Y` | `Y0000-Y07FF` |
+| `M` | `M0000-M17FF` |
+
+### Basic Word
+
+| Device | Writable range |
+| --- | --- |
+| `S` | `S0000-S13FF` |
+| `N` | `N0000-N17FF` |
+| `R` | `R0000-R07FF` |
+| `D` | `D0000-D2FFF` |
+
+### Prefixed Bit (`P1/P2/P3`)
+
+| Device | Writable range |
+| --- | --- |
+| `P` | `P000-P17FF` |
+| `K` | `K000-K2FF` |
+| `V` | `V000-V17FF` |
+| `T` | `T000-T17FF` |
+| `C` | `C000-C17FF` |
+| `L` | `L000-L2FFF` |
+| `X` | `X000-X7FF` |
+| `Y` | `Y000-Y7FF` |
+| `M` | `M000-M17FF` |
+
+Note: Prefixed addresses starting at `1000` (`P1-M1000` etc.) are valid on this CPU but are blocked on Nano 10GX; keep guards device-specific.
+
+### Prefixed Word (`P1/P2/P3`)
+
+| Device | Writable range |
+| --- | --- |
+| `S` | `S0000-S13FF` |
+| `N` | `N0000-N17FF` |
+| `R` | `R0000-R07FF` |
+| `D` | `D0000-D2FFF` |
+
+### Extension Bit
+
+| Device | Writable range |
+| --- | --- |
+| `EP` | `EP0000-EP0FFF` |
+| `EK` | `EK0000-EK0FFF` |
+| `EV` | `EV0000-EV0FFF` |
+| `ET` | `ET0000-ET07FF` |
+| `EC` | `EC0000-EC07FF` |
+| `EL` | `EL0000-EL1FFF` |
+| `EX` | `EX0000-EX07FF` |
+| `EY` | `EY0000-EY07FF` |
+| `EM` | `EM0000-EM1FFF` |
+| `GX` | `GX0000-GXFFFF` |
+| `GY` | `GY0000-GYFFFF` |
+| `GM` | `GM0000-GMFFFF` |
+
+### Extension Word
+
+| Device | Writable range |
+| --- | --- |
+| `ES` | `ES0000-ES07FF` |
+| `EN` | `EN0000-EN07FF` |
+| `H` | `H0000-H07FF` |
+| `U` | `U00000-U1FFFF` |
+| `EB` | `EB00000-EB3FFFF` (Ex No. `0x10-0x17`; higher codes such as `0x18` are rejected) |
+
+### Notes
+
+- `tools\run_device_full_scan.bat` + `tools\run_device_read_scan.bat` cover the full scan in less than a minute when using 512-word chunks; the combined output is stored in `device_full*` / `device_read.log`.
+- `tools\run_device_full_scan.bat` already chains the FR scan and the prefixed program-number probe, so re-running that single batch file is enough for future regressions.
+- `B` area is not implemented on the tested PC10G unit, so block/byte tests mark `B0000-B1FFF` as `SKIP (unsupported)`.
+- PC10 multi (`CMD=C4/C5`) is still required for `L1000+`, `M1000+`, `U`, and `EB`; direct basic bit/word commands stay on `CMD=20/21` or `CMD=94/95`.
+- EB access uses Ex No. `0x10-0x17` consistently; the helper rejects anything higher to avoid undefined ranges.
+- FR (`CMD=C2/C3/CA`) is not exposed on the tested PC10G unit; all FR attempts returned `error_code=0x40`.

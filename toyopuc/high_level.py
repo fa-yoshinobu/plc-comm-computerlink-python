@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, List, Mapping, Optional, Sequence, Union
+from typing import List, Mapping, Optional, Sequence, TypeVar, Union
 
 from .address import (
     ParsedAddress,
@@ -40,6 +40,14 @@ _EXT_BIT_SPECS = {
     "GY": (0x07, 0x0000),
     "GM": (0x07, 0x2000),
 }
+
+T = TypeVar("T")
+
+
+def _require(value: Optional[T], label: str) -> T:
+    if value is None:
+        raise ValueError(f"Resolved device missing {label}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -558,69 +566,109 @@ class ToyopucHighLevelClient(ToyopucClient):
 
     def _read_one(self, resolved: ResolvedDevice):
         if resolved.scheme == "basic-bit":
-            return self.read_bit(resolved.basic_addr)
+            addr = _require(resolved.basic_addr, "basic_addr")
+            return self.read_bit(addr)
         if resolved.scheme == "basic-word":
-            return self.read_words(resolved.basic_addr, 1)[0]
+            addr = _require(resolved.basic_addr, "basic_addr")
+            return self.read_words(addr, 1)[0]
         if resolved.scheme == "basic-byte":
-            return self.read_bytes(resolved.basic_addr, 1)[0]
+            addr = _require(resolved.basic_addr, "basic_addr")
+            return self.read_bytes(addr, 1)[0]
         if resolved.scheme == "program-bit":
-            return bool(self.read_ext_multi([(resolved.no, resolved.bit_no, resolved.addr)], [], [])[0] & 0x01)
+            no = _require(resolved.no, "program number")
+            bit_no = _require(resolved.bit_no, "program bit")
+            addr = _require(resolved.addr, "program addr")
+            return bool(self.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01)
         if resolved.scheme == "program-word":
-            return self.read_ext_words(resolved.no, resolved.addr, 1)[0]
+            no = _require(resolved.no, "program number")
+            addr = _require(resolved.addr, "program addr")
+            return self.read_ext_words(no, addr, 1)[0]
         if resolved.scheme == "program-byte":
-            return self.read_ext_bytes(resolved.no, resolved.addr, 1)[0]
+            no = _require(resolved.no, "program number")
+            addr = _require(resolved.addr, "program addr")
+            return self.read_ext_bytes(no, addr, 1)[0]
         if resolved.scheme == "ext-bit":
-            return bool(self.read_ext_multi([(resolved.no, resolved.bit_no, resolved.addr)], [], [])[0] & 0x01)
+            no = _require(resolved.no, "extended number")
+            bit_no = _require(resolved.bit_no, "extended bit")
+            addr = _require(resolved.addr, "extended addr")
+            return bool(self.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01)
         if resolved.scheme == "ext-word":
-            return self.read_ext_words(resolved.no, resolved.addr, 1)[0]
+            no = _require(resolved.no, "extended number")
+            addr = _require(resolved.addr, "extended addr")
+            return self.read_ext_words(no, addr, 1)[0]
         if resolved.scheme == "ext-byte":
-            return self.read_ext_bytes(resolved.no, resolved.addr, 1)[0]
+            no = _require(resolved.no, "extended number")
+            addr = _require(resolved.addr, "extended addr")
+            return self.read_ext_bytes(no, addr, 1)[0]
         if resolved.scheme == "pc10-bit":
-            return bool(_read_pc10_multi_bits(self, [resolved.addr32])[0])
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            return bool(_read_pc10_multi_bits(self, [addr32])[0])
         if resolved.scheme == "pc10-word":
-            return _read_pc10_block_word(self, resolved.addr32)
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            return _read_pc10_block_word(self, addr32)
         if resolved.scheme == "pc10-byte":
-            return self.pc10_block_read(resolved.addr32, 1)[0]
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            return self.pc10_block_read(addr32, 1)[0]
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
     def _write_one(self, resolved: ResolvedDevice, value) -> None:
         if resolved.area == "FR":
             _raise_generic_fr_write_error()
         if resolved.scheme == "basic-bit":
-            self.write_bit(resolved.basic_addr, bool(value))
+            addr = _require(resolved.basic_addr, "basic_addr")
+            self.write_bit(addr, bool(value))
             return
         if resolved.scheme == "basic-word":
-            self.write_words(resolved.basic_addr, [int(value)])
+            addr = _require(resolved.basic_addr, "basic_addr")
+            self.write_words(addr, [int(value)])
             return
         if resolved.scheme == "basic-byte":
-            self.write_bytes(resolved.basic_addr, [int(value)])
+            addr = _require(resolved.basic_addr, "basic_addr")
+            self.write_bytes(addr, [int(value)])
             return
         if resolved.scheme == "program-bit":
-            self.write_ext_multi([(resolved.no, resolved.bit_no, resolved.addr, int(value) & 0x01)], [], [])
+            no = _require(resolved.no, "program number")
+            bit_no = _require(resolved.bit_no, "program bit")
+            addr = _require(resolved.addr, "program addr")
+            self.write_ext_multi([(no, bit_no, addr, int(value) & 0x01)], [], [])
             return
         if resolved.scheme == "program-word":
-            self.write_ext_words(resolved.no, resolved.addr, [int(value)])
+            no = _require(resolved.no, "program number")
+            addr = _require(resolved.addr, "program addr")
+            self.write_ext_words(no, addr, [int(value)])
             return
         if resolved.scheme == "program-byte":
-            self.write_ext_bytes(resolved.no, resolved.addr, [int(value)])
+            no = _require(resolved.no, "program number")
+            addr = _require(resolved.addr, "program addr")
+            self.write_ext_bytes(no, addr, [int(value)])
             return
         if resolved.scheme == "ext-bit":
-            self.write_ext_multi([(resolved.no, resolved.bit_no, resolved.addr, int(value) & 0x01)], [], [])
+            no = _require(resolved.no, "extended number")
+            bit_no = _require(resolved.bit_no, "extended bit")
+            addr = _require(resolved.addr, "extended addr")
+            self.write_ext_multi([(no, bit_no, addr, int(value) & 0x01)], [], [])
             return
         if resolved.scheme == "ext-word":
-            self.write_ext_words(resolved.no, resolved.addr, [int(value)])
+            no = _require(resolved.no, "extended number")
+            addr = _require(resolved.addr, "extended addr")
+            self.write_ext_words(no, addr, [int(value)])
             return
         if resolved.scheme == "ext-byte":
-            self.write_ext_bytes(resolved.no, resolved.addr, [int(value)])
+            no = _require(resolved.no, "extended number")
+            addr = _require(resolved.addr, "extended addr")
+            self.write_ext_bytes(no, addr, [int(value)])
             return
         if resolved.scheme == "pc10-bit":
-            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(resolved.addr32, int(value) & 0x01)]))
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, int(value) & 0x01)]))
             return
         if resolved.scheme == "pc10-word":
-            _write_pc10_block_word(self, resolved.addr32, int(value))
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            _write_pc10_block_word(self, addr32, int(value))
             return
         if resolved.scheme == "pc10-byte":
-            self.pc10_block_write(resolved.addr32, bytes([int(value) & 0xFF]))
+            addr32 = _require(resolved.addr32, "pc10 addr32")
+            self.pc10_block_write(addr32, bytes([int(value) & 0xFF]))
             return
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 

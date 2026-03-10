@@ -2,6 +2,7 @@
 import argparse
 import sys
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Dict, Optional
@@ -18,7 +19,7 @@ class MonitorApp:
         self.args = args
         self.root.title('toyopuc Device Monitor')
         self.client: Optional[ToyopucHighLevelClient] = None
-        self.poll_job = None
+        self.poll_job: Optional[str] = None
         self.last_values: Dict[str, object] = {}
         self.units: Dict[str, str] = {}
         self.interval_ms = int(args.interval * 1000)
@@ -97,19 +98,29 @@ class MonitorApp:
         self.log_text.insert('end', line + '\n')
         self.log_text.see('end')
 
+    @staticmethod
+    def _as_int(value: object) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        raise TypeError(f'unsupported value type: {type(value)!r}')
+
     def _format_value(self, unit: str, value: object) -> str:
         if unit == 'bit':
             return '1' if bool(value) else '0'
         if unit == 'byte':
-            return f'0x{int(value) & 0xFF:02X}'
-        return f'0x{int(value) & 0xFFFF:04X}'
+            ivalue = self._as_int(value)
+            return f'0x{ivalue & 0xFF:02X}'
+        ivalue = self._as_int(value)
+        return f'0x{ivalue & 0xFFFF:04X}'
 
     def _selected_device(self) -> Optional[str]:
         selection = self.tree.selection()
         if selection:
-            return selection[0]
+            return str(selection[0])
         device = self.device_var.get().strip().upper()
-        return device or None
+        return device if device else None
 
     def _add_device(self, device: str):
         resolved = resolve_device(device)

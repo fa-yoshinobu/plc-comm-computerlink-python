@@ -86,7 +86,11 @@ Where to go next:
 - test tools and verified results: `TESTING.md`
 - protocol summary: `COMPUTER_LINK_SPEC.md`
 - model-specific writable ranges: `MODEL_RANGES.md`
-  - currently includes `TOYOPUC-Plus CPU (TCC-6740)` and `Nano 10GX (TUC-1157)`
+  - Verified CPUs:
+    - `TOYOPUC-Plus CPU (TCC-6740)`
+    - `Nano 10GX (TUC-1157)`
+    - `PC3JX-D (TCC-6902)` (PC3 mode and Plus Expansion mode)
+    - `PC10G CPU (TCC-6353)`
 
 ## Install
 
@@ -215,7 +219,7 @@ Main high-level methods:
 - `read_fr(device, count=1)`
   Reads `FR` words through the dedicated PC10 FR path.
 - `write_fr(device, value, commit=False)`
-  Writes `FR` words and optionally commits touched FR blocks. When `commit=True`, the client waits for each touched FR block to finish flash registration before moving on.
+  Writes `FR` words. `commit=False` updates the RAM work area only (lost on reset). `commit=True` triggers flash registration for every touched block and waits for completion.
 - `commit_fr(device, count=1)`
   Issues `CMD=CA` for every FR block touched by the given range.
 - `read_clock()`
@@ -290,7 +294,7 @@ In practice, the address decides which parser and encoder you should use.
 | `EX0000` | extended bit | bit | direct area/index | project-specific `No + bit + addr` mapping |
 | `U0000` | extended | word | direct area/index | `encode_ext_no_address()` |
 | `U08000` | PC10 range | word | direct area/index | `encode_exno_byte_u32()` |
-| `EB00000` | PC10 range | word | direct area/index | `encode_exno_byte_u32()` |
+| `EB00000` | PC10 range | word | direct area/index | `encode_exno_byte_u32()` (`Ex No.=0x10`) |
 | `GX0000` | extended bit | bit | direct area/index | project-specific `No + bit + addr` mapping |
 | `M0010W` | basic bit device via `W/H/L` | word | `parse_address()` | `encode_word_address()` |
 | `X0010H` | basic bit device via `W/H/L` | byte | `parse_address()` | `encode_byte_address()` |
@@ -671,6 +675,8 @@ with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
 
 Notes:
 
+- `commit=False` keeps the change in the FR RAM work area only; it disappears after CPU reset or power-off
+- `commit=True` performs the FR registration (`CMD=CA`) and waits for the flash programming phase to complete
 - at initialization, flash-memory data is copied into the `FR` work area in RAM
 - after that, normal `FR` reads and writes operate on the RAM-side work area, similarly to `EB`
 - writing `FR` with ordinary commands does not persist the value to flash by itself
@@ -679,9 +685,11 @@ Notes:
 - generic `write("FR...")` and `write_many({"FR...": ...})` are intentionally disabled to avoid accidental volatile or unintended flash-related writes
 - commit is done per touched `64-kbyte` FR block
 - practical safe flow is: write the block with `C3`, issue `CA`, then wait for flash-write completion before committing the next block
+- generic `write("FR...")` / `write_many()` calls reject FR devices on purpose; always use `read_fr` / `write_fr` / `commit_fr`
 - on `Nano 10GX (TUC-1157)`, `FR` full-range read/write/commit persistence was confirmed on `2026-03-10`
 - on that same model, `CMD=A0 / 01 10` returned `0x24`, so FR commit waiting uses `CMD=32 / 11 00` `Data7.bit4/bit5` instead
 - on that model, a full-range write pattern committed successfully, and the same `crc32=0x6C5F5EB9` was confirmed again after CPU reset
+- some CPUs (e.g., PC3JX-D, the tested PC10G unit) do not expose FR at all; FR commands return `error_code=0x40` on those models
 
 ## Prefixed `P1/P2/P3` Examples
 
@@ -811,6 +819,7 @@ except ToyopucError as e:
   - `U00000-U1FFFF`
   - `EB00000-EB3FFFF`
 - `FR` is intentionally kept out of the normal safe path.
+- The high-level resolver enforces documented bit ranges (e.g., `M0000-M07FF`); addresses beyond the published range raise `ValueError` even if the PLC would accept them.
 
 For the full command and mapping rules, use `COMPUTER_LINK_SPEC.md`.
 

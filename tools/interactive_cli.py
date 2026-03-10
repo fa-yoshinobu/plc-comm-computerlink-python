@@ -8,7 +8,6 @@ from toyopuc import (
     ToyopucClient,
     encode_bit_address,
     encode_byte_address,
-    encode_exno_bit_u32,
     encode_exno_byte_u32,
     encode_fr_word_addr32,
     encode_ext_no_address,
@@ -16,7 +15,6 @@ from toyopuc import (
     encode_program_word_address,
     encode_word_address,
     parse_address,
-    parse_prefixed_address,
 )
 from toyopuc.protocol import (
     build_bit_read,
@@ -39,7 +37,6 @@ from toyopuc.protocol import (
     build_pc10_multi_write,
     build_word_read,
     build_word_write,
-    parse_response,
 )
 
 

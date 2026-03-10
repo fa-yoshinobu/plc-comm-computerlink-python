@@ -1,6 +1,6 @@
 import argparse
 import random
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Sequence
 
 from toyopuc import ToyopucError, ToyopucHighLevelClient, resolve_device
 

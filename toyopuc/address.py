@@ -101,6 +101,18 @@ _BIT_BASE = {
     'M': 0x1800,
 }
 
+_BIT_MAX_INDEX = {
+    'P': 0x01FF,
+    'K': 0x02FF,
+    'V': 0x00FF,
+    'T': 0x01FF,
+    'C': 0x01FF,
+    'L': 0x07FF,
+    'X': 0x07FF,
+    'Y': 0x07FF,
+    'M': 0x07FF,
+}
+
 
 _ADDR_RE = re.compile(r'^(?P<area>[A-Z]{1,2})(?P<num>[0-9A-Fa-f]+)(?P<suffix>[LHW])?$')
 _PREF_RE = re.compile(
@@ -284,6 +296,9 @@ def encode_bit_address(addr: ParsedAddress) -> int:
     base = _BIT_BASE.get(addr.area)
     if base is None:
         raise ValueError(f'Unsupported bit area: {addr.area}')
+    max_index = _BIT_MAX_INDEX.get(addr.area)
+    if max_index is not None and addr.index > max_index:
+        raise ValueError(f'Bit address out of range for {addr.area}: {addr.area}{addr.index:04X}')
     return base + addr.index
 
 
@@ -398,6 +413,8 @@ def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
       `CMD=C2/C3`, not `CMD=94-99`
     """
     area_u = area.upper()
+    if area_u in {'GX', 'GY'}:
+        area_u = 'GXY'
     no: Optional[int] = None
     addr = index
 
@@ -412,8 +429,8 @@ def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
             raise ValueError(f'Unsupported unit for extended No mapping: {unit}')
     elif area_u == 'EB':
         # EB blocks are 0x8000 each
-        if index < 0x00000 or index > 0x7FFFF:
-            raise ValueError('EB index out of range (0x00000-0x7FFFF)')
+        if index < 0x00000 or index > 0x3FFFF:
+            raise ValueError('EB index out of range (0x00000-0x3FFFF)')
         block = index // 0x8000
         no = 0x09 + block
         addr = index % 0x8000

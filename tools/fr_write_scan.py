@@ -3,7 +3,7 @@ import argparse
 import time
 import zlib
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 from toyopuc import ToyopucClient, ToyopucError, encode_fr_word_addr32
 

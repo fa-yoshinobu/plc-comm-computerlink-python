@@ -2,7 +2,7 @@
 import argparse
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, List, Tuple, cast
 
 from toyopuc import (
     ToyopucClient,
@@ -116,7 +116,7 @@ def _base_targets() -> List[Target]:
                         kind="BIT",
                         label=label,
                         value_text="1",
-                        write=lambda plc, addr=addr: plc.write_bit(addr, True),
+                        write=cast(Callable[[ToyopucClient], None], lambda plc, addr=addr: plc.write_bit(addr, True)),
                     )
                 )
     for area, ranges in word_ranges.items():
@@ -130,7 +130,10 @@ def _base_targets() -> List[Target]:
                         kind="WORD",
                         label=label,
                         value_text="FFFF",
-                        write=lambda plc, addr=addr: plc.write_words(addr, [0xFFFF]),
+                        write=cast(
+                            Callable[[ToyopucClient], None],
+                            lambda plc, addr=addr: plc.write_words(addr, [0xFFFF]),
+                        ),
                     )
                 )
     return targets
@@ -167,8 +170,11 @@ def _prefixed_targets() -> List[Target]:
                             kind="PREF BIT",
                             label=label,
                             value_text="1",
-                            write=lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                                [(no, bit_no, addr, 1)], [], []
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
+                                    [(no, bit_no, addr, 1)], [], []
+                                ),
                             ),
                         )
                     )
@@ -182,7 +188,10 @@ def _prefixed_targets() -> List[Target]:
                             kind="PREF WORD",
                             label=label,
                             value_text="FFFF",
-                            write=lambda plc, no=no, addr=addr: plc.write_ext_words(no, addr, [0xFFFF]),
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, no=no, addr=addr: plc.write_ext_words(no, addr, [0xFFFF]),
+                            ),
                         )
                     )
     return targets
@@ -224,8 +233,11 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                         kind="EXT BIT",
                         label=label,
                         value_text="1",
-                        write=lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                            [(no, bit_no, addr, 1)], [], []
+                        write=cast(
+                            Callable[[ToyopucClient], None],
+                            lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
+                                [(no, bit_no, addr, 1)], [], []
+                            ),
                         ),
                     )
                 )
@@ -241,7 +253,10 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                             kind="PC10 WORD",
                             label=label,
                             value_text="FFFF",
-                            write=lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            ),
                         )
                     )
                 elif area == "EB" and idx <= 0x3FFFF:
@@ -251,7 +266,10 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                             kind="PC10 WORD",
                             label=label,
                             value_text="FFFF",
-                            write=lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            ),
                         )
                     )
                 elif area == "FR":
@@ -261,7 +279,10 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                             kind="PC10 WORD",
                             label=label,
                             value_text="FFFF",
-                            write=lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, addr32=addr32: plc.pc10_block_write(addr32, _pack_u16_le(0xFFFF)),
+                            ),
                         )
                     )
                 else:
@@ -271,7 +292,10 @@ def _ext_targets(include_fr: bool) -> List[Target]:
                             kind="EXT WORD",
                             label=label,
                             value_text="FFFF",
-                            write=lambda plc, no=ext.no, addr=ext.addr: plc.write_ext_words(no, addr, [0xFFFF]),
+                            write=cast(
+                                Callable[[ToyopucClient], None],
+                                lambda plc, no=ext.no, addr=ext.addr: plc.write_ext_words(no, addr, [0xFFFF]),
+                            ),
                         )
                     )
     return targets

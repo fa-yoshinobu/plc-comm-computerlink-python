@@ -2,7 +2,7 @@
 import argparse
 import re
 from dataclasses import dataclass
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, Optional, Sequence, Tuple, cast
 
 from toyopuc import (
     ToyopucClient,
@@ -94,7 +94,10 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=f"{area}{index:04X}",
                     kind="bit",
-                    write=lambda plc, value, addr=addr: plc.write_bit(addr, bool(value)),
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, addr=addr: plc.write_bit(addr, bool(value)),
+                    ),
                 ),
                 1,
             )
@@ -105,7 +108,10 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=f"{area}{index:04X}",
                     kind="word",
-                    write=lambda plc, value, addr=addr: plc.write_words(addr, [value & 0xFFFF]),
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, addr=addr: plc.write_words(addr, [value & 0xFFFF]),
+                    ),
                 ),
                 0xFFFF,
             )
@@ -117,8 +123,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=f"{area}{index:04X}",
                     kind="ext-bit",
-                    write=lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                        [(no, bit_no, addr, value & 0x01)], [], []
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
+                            [(no, bit_no, addr, value & 0x01)], [], []
+                        ),
                     ),
                 ),
                 1,
@@ -132,8 +141,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                     Probe(
                         label=label,
                         kind="pc10-word",
-                        write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                            addr32, _pack_u16_le(value & 0xFFFF)
+                        write=cast(
+                            Callable[[ToyopucClient, int], None],
+                            lambda plc, value, addr32=addr32: plc.pc10_block_write(
+                                addr32, _pack_u16_le(value & 0xFFFF)
+                            ),
                         ),
                     ),
                     0xFFFF,
@@ -144,8 +156,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                     Probe(
                         label=label,
                         kind="pc10-word",
-                        write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                            addr32, _pack_u16_le(value & 0xFFFF)
+                        write=cast(
+                            Callable[[ToyopucClient, int], None],
+                            lambda plc, value, addr32=addr32: plc.pc10_block_write(
+                                addr32, _pack_u16_le(value & 0xFFFF)
+                            ),
                         ),
                     ),
                     0xFFFF,
@@ -156,8 +171,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                     Probe(
                         label=label,
                         kind="pc10-word",
-                        write=lambda plc, value, addr32=addr32: plc.pc10_block_write(
-                            addr32, _pack_u16_le(value & 0xFFFF)
+                        write=cast(
+                            Callable[[ToyopucClient, int], None],
+                            lambda plc, value, addr32=addr32: plc.pc10_block_write(
+                                addr32, _pack_u16_le(value & 0xFFFF)
+                            ),
                         ),
                     ),
                     0xFFFF,
@@ -167,8 +185,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=label,
                     kind="ext-word",
-                    write=lambda plc, value, no=ext.no, addr=ext.addr: plc.write_ext_words(
-                        no, addr, [value & 0xFFFF]
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, no=ext.no, addr=ext.addr: plc.write_ext_words(
+                            no, addr, [value & 0xFFFF]
+                        ),
                     ),
                 ),
                 0xFFFF,
@@ -182,8 +203,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=f"{prefix}-{area}{index:04X}",
                     kind="pref-bit",
-                    write=lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                        [(no, bit_no, addr, value & 0x01)], [], []
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
+                            [(no, bit_no, addr, value & 0x01)], [], []
+                        ),
                     ),
                 ),
                 1,
@@ -196,8 +220,11 @@ def build_probe(target_text: str) -> Tuple[Probe, int]:
                 Probe(
                     label=f"{prefix}-{area}{index:04X}",
                     kind="pref-word",
-                    write=lambda plc, value, no=no, addr=addr: plc.write_ext_words(
-                        no, addr, [value & 0xFFFF]
+                    write=cast(
+                        Callable[[ToyopucClient, int], None],
+                        lambda plc, value, no=no, addr=addr: plc.write_ext_words(
+                            no, addr, [value & 0xFFFF]
+                        ),
                     ),
                 ),
                 0xFFFF,

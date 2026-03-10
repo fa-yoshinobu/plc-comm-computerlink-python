@@ -1445,3 +1445,33 @@ Observed:
 - Recovery read loop:
 - `TCP` on `M0000`
 - `UDP` on `D0000`
+
+## PC3JX-D (TCC-6902) PC3 divisions mode note
+
+- `python -m tools.cpu_status_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
+  - `pc3_mode=True`, `pc10_mode=False`, programs 1-3 running、FR関係ビットはすべてクリア。
+- `python -m tools.clock_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
+  - `datetime: 2026-03-10 08:00:57` で取得成功。
+- `tools\run_full_test.bat 192.168.250.101 1025 tcp 4 5 0`
+  - 基本レンジ・prefixed 下位（`P1/P2/P3`）は完走。PC10系 (`U/EB/FR`) と prefixed 上位 (`P1-M1000` など) は `SKIP (unsupported)`。
+  - `GX/GY/GM` はランダムサンプルの一部が未対応アドレスに当たるため表示上 `3/6` や `4/8` になるが、有効アドレスでは書き換え可能。
+- `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc3jx.log`
+  - 上記と同じカバレッジをログ化済み（`TOTAL: 522/532`, `SKIP` のみが PC10 未対応分）。
+- `tools\run_quick_test.bat` は `D` ワード上位にアクセスして `error_code=0x40` を返すため、PC3JX-D ではターゲット範囲の縮小が必要（`run_full_test` / `auto_rw_test` の結果を参照）。
+
+## PC3JX-D (TCC-6902) Plus Expansion Mode note
+
+- `python -m tools.cpu_status_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
+  - `pc3_mode=False`, `pc10_mode=True`, programs 1-3 running。
+- `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc10g_p123.log`
+  - 基本レンジ + `U00000-U1FFFF` まで完走。`EB` は未実装で `SKIP (unsupported)`。
+- `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --max-block-test --pc10-block-words 0x200 --skip-errors --log auto_block.log`
+  - `U` ブロック (`x0200`) は pass、`EB` ブロックは SKIP。`B` エリアは存在しないため byte/word は SKIP。
+- `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --boundary-test --skip-errors --log auto_boundary.log`
+  - `U07FFE-U08001` など PC10 境界が pass、`EB3FFFE-EB40001` は SKIP。
+- `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --ext-multi-test --skip-errors --log auto_ext_multi.log`
+  - PC10 モードでも拡張マルチ（`GX/GY` + `ES/EN` + prefixed）を一巡。
+- `tools\run_full_test.bat 192.168.250.101 1025 tcp 4 5 0`
+  - `TOTAL: 544/544`（EBのみ SKIP）。
+- `tools\run_fr_commit_test.bat` / `tools\run_fr_write_scan.bat`
+  - いずれも `error_code=0x40`。PC3JX-D は PC10 モードでも FR 非搭載。
