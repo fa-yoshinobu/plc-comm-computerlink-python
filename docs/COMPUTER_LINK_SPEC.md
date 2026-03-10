@@ -1,5 +1,12 @@
 # TOYOPUC Computer Link Spec
 
+Related documents:
+
+- [../README.md](../README.md)
+- [TESTING.md](TESTING.md)
+- [MODEL_RANGES.md](MODEL_RANGES.md)
+- [../tools/README.md](../tools/README.md)
+
 This document is a working protocol summary for the 2ET Ethernet module.
 
 It is not a verbatim manufacturer manual. It is a reorganized implementation note based on the current code and verified hardware behavior.
@@ -12,7 +19,7 @@ This file is organized into three parts:
 2. command groups
 3. address and `Ex No.` tables
 
-Testing and operational usage are documented in `TESTING.md`.
+Testing and operational usage are documented in [TESTING.md](TESTING.md).
 
 Status labels for this file:
 
@@ -131,7 +138,7 @@ Rules:
   - `1`: Monday
   - ...
 
-Observed on `TOYOPUC-Plus CPU (TCC-6740)`:
+Observed on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`:
 
 - the command itself is accepted
 - time-of-day fields can be valid
@@ -186,8 +193,9 @@ Notes:
   - treat `Data7.bit5 == 1` as flash-write failure
 - practical transport rule:
   - prefer `CMD=A0 / 01 10` when the target accepts it
-  - if the target rejects `A0` with `0x23/0x24/0x25`, use normal CPU status `CMD=32 / 11 00` instead
+  - if the target rejects `A0` with `0x23/0x24/0x25/0x26`, use normal CPU status `CMD=32 / 11 00` instead
   - on `Nano 10GX (TUC-1157)`, `A0` returned `0x24`, and `CMD=32 / 11 00` `Data7.bit4/bit5` was used successfully for FR commit waiting
+  - on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` relay FR commit over `P1-L2:N2`, relay `A0` returned `0x26`, and the same `CMD=32 / 11 00` fallback path was used successfully
 
 Data bytes:
 
@@ -244,7 +252,7 @@ Status: `summary`
 
 ### Relay command
 
-Status: `summary` (manufacturer spec) — hardware verification pending as of `2026-03-10`
+Status: `verified` for selected relay read flows on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over UDP on `2026-03-10`
 
 - command code: `CMD=60`
 - purpose: tunnel any CPU command (`CMD=01-42`) through a chain of FL-net / HPC Link modules
@@ -271,10 +279,9 @@ Response (error):
 - `LL'/LH'`: inner command byte count (excluding the relay wrapper)
 - `<inner command...>`: literal frame payload for the command destined to the remote CPU (e.g., word read `CMD=1C`)
 - `<inner response...>`: literal response payload produced by the remote CPU
-- `<error payload>`: manufacturer error format (`EC` + details); refer to “Response Data Error Code Table”
-
-If the downstream CPU rejects the command, the relay wrapper still uses `NAK=0x15` and propagates the CPU’s error payload.
-If the downstream PLC is unreachable, no reply may arrive for up to **5 seconds**; retries must wait >5 seconds between attempts.
+- `<error payload>`: manufacturer error format (`EC` + details); refer to the response-data error code table.
+If the downstream CPU rejects the command, the relay wrapper still uses `NAK=0x15` and propagates the CPU-side error payload.
+If the downstream PLC is unreachable, no reply may arrive for up to **5 seconds**; retries must wait more than 5 seconds between attempts.
 Repeated relays toward an unreachable address can raise hardware fault **H9** on the relay PLC; recovery requires CPU reset.
 
 #### Example: read `D0100-D0102` on Link No.2 / Exchange No.3
@@ -293,7 +300,7 @@ Response (values 0100/0302/0504):
 
 CMD=60 wrappers can be nested up to **four stages**. Each hop prepends its own `(LinkNo, ExNo, ENQ, length)` tuple in front of the downstream relay block.
 
-Example: three-hop relay reaching “III CPU” (partial bytes):
+Example: three-hop relay reaching `III CPU` (partial bytes):
 
 ```
 00 00 15 00
@@ -311,7 +318,81 @@ Four-hop relays (`IV CPU`) follow the same pattern with another wrapper (`Transf
 - Always calculate `LL/LH` after the inner payload is assembled.
 - Ensure every wrapper uses the correct `Link No.` / `Exchange No.` pair for its stage.
 - Because latency compounds (each level can wait up to 5 seconds for timeouts), clients should set generous timeouts and back off aggressively when no response is seen.
-- Hardware verification of relay flow (particularly multi-hop) is **pending**; the project currently treats CMD=60 as documentation-only.
+- Verified on real hardware for these single-hop relay flows via `P1-L2:N2` (`Link=0x12`, `Exchange=0x0002`):
+  - `CMD=32 / 11 00` CPU status read
+  - `CMD=32 / 70 00` clock read
+  - `CMD=1C` word read (`D0000`, count=`1`)
+  - `CMD=C2` FR read (`FR000000`, count=`1`)
+  - `CMD=C3` FR write (`FR000000 = 0x55AA`) with immediate readback
+  - `CMD=CA` FR commit on `FR000000` with successful completion wait
+  - post-reset `CMD=C2` FR read confirming that the committed `FR000000 = 0x55AA` value persisted after CPU reset
+- Verified on real hardware for this two-hop read flow:
+  - hops: `P1-L2:N2 -> P1-L2:N4`
+  - inner command: `CMD=32 / 11 00` CPU status read
+- Verified on real hardware for this three-hop read flow:
+  - hops: `P1-L2:N2 -> P1-L2:N4 -> P1-L2:N6`
+  - inner commands:
+    - `CMD=32 / 11 00` CPU status read
+    - `CMD=32 / 70 00` clock read
+    - `CMD=32 / 71 00` clock write with successful readback
+    - `CMD=1C` word read (`D0000`, count=`1`)
+- Verified on real hardware for this three-hop write flow:
+  - hops: `P1-L2:N2 -> P1-L2:N4 -> P1-L2:N6`
+  - inner command:
+    - `CMD=1D` basic word write (`D0000 = 0x1234`)
+  - readback through the same relay path confirmed `D0000 = 0x1234`
+- Verified on real hardware for this three-hop contiguous word block flow:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - inner commands:
+    - `CMD=1D` contiguous word write on `D0000-D0007`
+    - `CMD=1C` contiguous word read on `D0000-D0007`
+  - checked with `count=8`, `loops=3`, patterns `0x1000-0x1007`, `0x1100-0x1107`, `0x1200-0x1207`
+  - observed result: `summary = 3/3 loops passed`
+- Verified on real hardware for this broader three-hop relay matrix:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - contiguous block results:
+    - `D0000`, `R0000`, `U08000`: `count=16` and `count=32` both passed `3/3` loops
+    - `S0000`: `count=16` and `count=32` did not retain the written patterns on this path
+  - `write_many()` across `D0000/R0000/S0000/U08000`: passed
+  - mixed `write_many()` case including `M0000`, `D0000L`, `P1-D0000`, `ES0000`, `U08000`: word/bit items passed, the `D0000L` byte readback did not hold the requested value on this path
+  - repeated relay `clock-write` / readback / restore loop: passed
+- Verified on real hardware for this three-hop relay FR flow:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - inner commands:
+    - `CMD=C2` FR read (`FR000000`, count=`1`)
+    - `CMD=C3` FR write (`FR000000 = 0x0099`) with immediate readback
+    - `CMD=CA` FR commit on `FR000000` with completion wait
+  - follow-up reads through the same relay path confirmed `FR000000 = 0x0099`
+- Verified on real hardware for this three-hop relay high-level API sweep:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - command:
+    - `python -m tools.high_level_api_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --include-pc10-word`
+  - observed result:
+    - `TOTAL: 24/24`
+    - `ERROR CASES: 0`
+  - practical coverage:
+    - basic bit / word / byte
+    - prefixed bit / word
+    - extended bit / word
+    - PC10 word
+    - contiguous basic sequences
+    - mixed `read_many()` / `write_many()`
+  - Observed response layout on that path:
+    - outer response data: `Link, ExLo, ExHi, ACK, inner..., padding?`
+    - inner response may contain one trailing padding byte after the valid relay payload
+- Verified on real hardware for relay low-level sweeps on `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`:
+  - UDP:
+    - passed: `CMD=32 / 11 00`, `CMD=32 / 70 00`, `CMD=32 / 71 00`, `CMD=20/21`, `CMD=1C/1D`, `CMD=24/25`, `CMD=94/95`, `CMD=96/97`, `CMD=98/99`, `CMD=C2/C3`
+    - standalone relay `CMD=A0 / 01 10` returned relay NAK `0x15`
+    - the `D0000L` single-byte and `D0000/D0001` multi-word checks did not hold the requested values on this UDP path
+  - TCP:
+    - passed: `CMD=32 / 11 00`, `CMD=32 / 70 00`, `CMD=20/21`, `CMD=1C/1D`, `CMD=1E/1F`, `CMD=22/23`, `CMD=24/25`, `CMD=94/95`, `CMD=96/97`, `CMD=98/99`, `CMD=C2/C3`
+    - standalone relay `CMD=A0 / 01 10` returned relay NAK `0x15`
+- Verified abnormal relay observations on the same three-hop path:
+  - missing station: timeout / no reply
+  - broken path: timeout / no reply
+  - raw out-of-range basic word read (`D3000`): timeout / no reply
+  - relay write to `S0000`: timeout / no reply
 
 ### Extended area access
 
@@ -335,7 +416,7 @@ Status: `verified` for `CMD=94-99` paths currently used by this project.
 Status:
 
 - `CMD=C2-C5`: `verified` on the ranges used by this project
-- `CMD=CA`: `verified` on `Nano 10GX (TUC-1157)` for FR block commit
+- `CMD=CA`: `verified` on `Nano 10GX (TUC-1157)` for direct FR block commit and on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` for single-hop relay FR commit over `P1-L2:N2`
 
 ## 3. Base address tables
 
@@ -795,10 +876,10 @@ Example response:
 
 These commands exist in the protocol, but are not part of the current normal test and usage path:
 
-- `CMD=60` relay command
+- `CMD=60` relay command outside the verified single-hop paths and selected verified multi-hop paths
 - `CMD=CA` FR register outside FR-specific flows
 
 Status:
 
-- `CMD=60`: `summary`
-- `CMD=CA`: `verified` for `FR` commit on `Nano 10GX (TUC-1157)`
+- `CMD=60`: `verified` for single-hop read / write / FR commit on `P1-L2:N2`; selected two-hop / three-hop read paths; three-hop basic word write; three-hop contiguous 8-word relay write/readback on `D0000-D0007`; broader three-hop relay matrix checks on `D/R/S/U` with counts `16/32`; three-hop relay `FR000000` read / write / commit path (`P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`); a three-hop relay high-level API sweep (`TOTAL: 24/24`); and relay low-level sweeps on both UDP and TCP. Standalone relay `CMD=A0 / 01 10` still returned NAK on the verified Plus relay paths.
+- `CMD=CA`: `verified` for `FR` commit on `Nano 10GX (TUC-1157)` and for single-hop relay `FR` commit on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`

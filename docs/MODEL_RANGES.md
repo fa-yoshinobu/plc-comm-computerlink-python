@@ -1,5 +1,12 @@
 # Model-Specific Writable Ranges
 
+Related documents:
+
+- [../README.md](../README.md)
+- [TESTING.md](TESTING.md)
+- [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+
 This document records writable device ranges confirmed per hardware model.
 
 The intent is practical:
@@ -12,11 +19,11 @@ Evidence types used in this file:
 - `exhaustive scan`
   Confirmed by `tools/exhaustive_writable_scan.py`.
 - `runtime tests`
-  Confirmed by the normal runtime test set in `TESTING.md`.
+  Confirmed by the normal runtime test set in [TESTING.md](TESTING.md).
 
 These ranges are based primarily on `tools/exhaustive_writable_scan.py`.
 
-## TOYOPUC-Plus CPU (TCC-6740)
+## TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)
 
 Source command:
 
@@ -163,7 +170,7 @@ Evidence:
 
 | Device | Range | Notes |
 | --- | --- | --- |
-| `FR` | *(not exposed on this CPU)* | No FR read/write path was observed during Plus CPU testing. |
+| `FR` | *(not exposed on this CPU)* | `CMD=C2/C3/CA` always returns `0x40`. |
 
 Does not exist on this model:
 - `U08000-U1FFFF`
@@ -269,147 +276,22 @@ Evidence:
 | `R` | `R0000-R07FF` |
 | `D` | `D0000-D2FFF` |
 
-Evidence:
-
-| Scope | Source |
-| --- | --- |
-| supported behavior | runtime tests |
-| coarse upper-bound observation | device-range scan |
-
-Note:
-
-- このモデルには `B` エリア (basic / prefixed) が存在しません。
-
-
-### Extension Bit
-
-| Device | Writable range |
-| --- | --- |
-| `EP` | `EP0000-EP0FFF` |
-| `EK` | `EK0000-EK0FFF` |
-| `EV` | `EV0000-EV0FFF` |
-| `ET` | `ET0000-ET07FF` |
-| `EC` | `EC0000-EC07FF` |
-| `EL` | `EL0000-EL1FFF` |
-| `EX` | `EX0000-EX07FF` |
-| `EY` | `EY0000-EY07FF` |
-| `EM` | `EM0000-EM1FFF` |
-| `GX` | `GX0000-GXFFFF` |
-| `GY` | `GY0000-GYFFFF` |
-| `GM` | `GM0000-GMFFFF` |
-
-Evidence:
-
-| Scope | Source |
-| --- | --- |
-| supported behavior | runtime tests |
-| coarse upper-bound observation | device-range scan |
-
-### Extension Word
-
-| Device | Writable range |
-| --- | --- |
-| `ES` | `ES0000-ES07FF` |
-| `EN` | `EN0000-EN07FF` |
-| `H` | `H0000-H07FF` |
-| `U` | `U00000-U1FFFF` |
-| `EB` | `EB00000-EB3FFFF` (runtime-tested, Ex No. `0x10-0x17`); coarse scan reached ~`EB41FF0` but upper range beyond `EB3FFFF` is not guaranteed |
-
-Evidence:
-
-| Scope | Source |
-| --- | --- |
-| supported behavior | runtime tests |
-| coarse upper-bound observation | device-range scan |
-
-### Notes
-
-- TCP `1025` and UDP `1027` were both verified on this model.
-- `tools\run_full_test.bat` completed with `TOTAL: 818/818` on this model over TCP and UDP.
-- `W/H/L` addressing completed with `TOTAL: 35/35` on this model over TCP and UDP.
-- High-level API completed with `TOTAL: 21/21` on this model over TCP and UDP.
-- Clock read was confirmed over TCP and clock read/write were confirmed over UDP on this model.
-- CPU status was confirmed over both TCP and UDP on this model.
-- Coarse device-range scan showed continuous acceptance for the documented runtime-tested families with no holes.
-- `EB` was observed continuously at least through `EB41FF0` before repeated upper-range errors stopped the helper.
-- direct `CMD=94 no=0x40-0x7F` did not work for `FR` on this model
-- `CMD=A0 / 01 10` returned `0x24` (`Invalid subcommand code`) on this model during FR testing
-
-### FR
-
-| Device | Range | Notes |
-| --- | --- | --- |
-| `FR` | `FR000000-FR1FFFFF` | read `CMD=C2`, write `CMD=C3`, commit `CMD=CA` per 64 kB block with completion wait via `CMD=32 / 11 00`; full-range persistence confirmed on `2026-03-10`; `CMD=A0` unsupported |
-
-## PC3JX-D CPU (TCC-6902)
-
-Source commands:
-
-```text
-python -m tools.cpu_status_test --host <HOST> --port 1025 --protocol tcp --timeout 5 --retries 0
-python -m tools.auto_rw_test --host <HOST> --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc3jx.log
-tools\run_full_test.bat <HOST> 1025 tcp 4 5 0
-```
-
-Notes:
-
-- PC3 mode (`pc3_mode=True` / `pc10_mode=False`): prefixed上位 (`P1-M1000` など) と PC10系 (`U/EB/FR`) は未実装。
-- Plus Expansion Mode（PC10 mode=True）に切り替えても `EB` と `FR` は未実装。`U00000-U1FFFF` は有効になる。
-- いずれのモードでも FR コマンド (`CMD=C2/C3/CA`) は常に `error_code=0x40` を返す。
-
-### Basic Bit / Word (共通)
-
-| Device | Writable range |
-| --- | --- |
-| `P` | `P0000-P17FF` |
-| `K` | `K0000-K02FF` |
-| `V` | `V0000-V17FF` |
-| `T` | `T0000-T17FF` |
-| `C` | `C0000-C17FF` |
-| `L` | `L0000-L2FFF` |
-| `X` | `X0000-X07FF` |
-| `Y` | `Y0000-Y07FF` |
-| `M` | `M0000-M17FF` |
-| `S` | `S0000-S13FF` |
-| `N` | `N0000-N17FF` |
-| `R` | `R0000-R07FF` |
-| `D` | `D0000-D2FFF` |
-
-### Prefixed Bit / Word (`P1/P2/P3`)
-
-| Device | Writable range |
-| --- | --- |
-| `P` | `P000-P1FF` |
-| `K` | `K000-K2FF` |
-| `V` | `V000-V0FF` |
-| `T` | `T000-T1FF` |
-| `C` | `C000-C1FF` |
-| `L` | `L000-L7FF` |
-| `X` | `X000-X7FF` |
-| `Y` | `Y000-Y7FF` |
-| `M` | `M000-M7FF` |
-| `S` | `S0000-S03FF` |
-| `N` | `N0000-N01FF` |
-| `R` | `R0000-R07FF` |
-| `D` | `D0000-D2FFF` |
-
-Prefixed上位 (`1000` 番台) は PC3 mode / Plus Expansion Mode ともに未実装。
-
+Upper prefixed ranges (`1000` series) are not implemented in either PC3 mode or Plus Expansion Mode.
 ### Extended Bit / Word
 
 | Device | Writable range |
 | --- | --- |
-| `EP/EK/EV/ET/EC/EL/EX/EY/EM` | 同シリーズ既定の範囲 (PC3 mode/PC10 mode 共通) |
+| `EP/EK/EV/ET/EC/EL/EX/EY/EM` | Standard ranges for this family (shared by PC3 mode and PC10 mode) |
 | `GX/GY/GM` | `GX/GY/GM0000-GX/GY/GMFFFF` |
 | `ES/EN/H` | `ES0000-ES07FF`, `EN0000-EN07FF`, `H0000-H07FF` |
-| `U` | `U00000-U1FFFF` *(PC10 mode のみ)* |
+| `U` | `U00000-U1FFFF` *(PC10 mode only)* |
 | `EB` | *(not present)* |
 
 ### FR
 
 | Device | Range | Notes |
 | --- | --- | --- |
-| `FR` | *(not exposed on this CPU)* | `CMD=C2/C3/CA` は常に `0x40` を返す。 |
+| `FR` | *(not exposed on this CPU)* | `CMD=C2/C3/CA` always returns `0x40`. |
 
 ## PC10G-CPU (TCC-6353)
 

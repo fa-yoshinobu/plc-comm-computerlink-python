@@ -48,6 +48,7 @@ from .protocol import (
     parse_response,
     unpack_u16_le,
 )
+from .relay import normalize_relay_hops, parse_relay_inner_response, unwrap_relay_response_chain
 
 
 ERROR_CODE_DESCRIPTIONS = {
@@ -144,6 +145,35 @@ def _extract_response_error_code(frame: bytes | None) -> Optional[int]:
     return resp.data[-1] if resp.data else resp.cmd
 
 
+def _extract_relay_nak_error_code(frame: bytes | None) -> Optional[int]:
+    if not frame:
+        return None
+    try:
+        resp = parse_response(frame)
+    except Exception:
+        return None
+    if resp.cmd != 0x60:
+        return None
+    current = resp
+    while current.cmd == 0x60:
+        if len(current.data) < 4:
+            return None
+        ack = current.data[3]
+        inner_raw = current.data[4:]
+        if ack != 0x06:
+            if len(inner_raw) < 3:
+                return None
+            inner_length = inner_raw[0] | (inner_raw[1] << 8)
+            if inner_length < 1 or len(inner_raw) < 2 + inner_length:
+                return None
+            return inner_raw[2]
+        try:
+            current, _padding = parse_relay_inner_response(inner_raw)
+        except Exception:
+            return None
+    return None
+
+
 class ToyopucClient:
     """Low-level TOYOPUC computer-link client.
 
@@ -175,6 +205,7 @@ class ToyopucClient:
         self._last_tx: Optional[bytes] = None
         self._last_rx: Optional[bytes] = None
         self._fr_wait_prefers_a0: Optional[bool] = None
+        self._relay_fr_wait_prefers_a0: Optional[bool] = None
 
     def __enter__(self) -> Self:
         self.connect()
@@ -560,6 +591,219 @@ class ToyopucClient:
     def relay_nested(self, hops: Iterable[Tuple[int, int]], inner_payload: bytes) -> ResponseFrame:
         """Wrap a command in multiple relay hops using nested `CMD=60` frames."""
         return self._send_and_recv(build_relay_nested(list(hops), inner_payload))
+
+    def send_via_relay(self, hops: str | Iterable[Tuple[int, int]], inner_payload: bytes) -> ResponseFrame:
+        """Send a command through relay hops and return the final inner response."""
+        outer = self.relay_nested(normalize_relay_hops(hops), inner_payload)
+        layers, final = unwrap_relay_response_chain(outer)
+        if final is None:
+            last = layers[-1]
+            raise ToyopucProtocolError(
+                f"Relay NAK at link=0x{last.link_no:02X}, station=0x{last.station_no:04X}, ack=0x{last.ack:02X}"
+            )
+        return final
+
+    def relay_read_words(self, hops: str | Iterable[Tuple[int, int]], addr: int, count: int) -> List[int]:
+        """Read one or more basic-area words through relay hops."""
+        resp = self.send_via_relay(hops, build_word_read(addr, count))
+        if resp.cmd != 0x1C:
+            raise ToyopucProtocolError('Unexpected CMD in relay word-read response')
+        return unpack_u16_le(resp.data)
+
+    def relay_write_words(self, hops: str | Iterable[Tuple[int, int]], addr: int, values: Iterable[int]) -> None:
+        """Write one or more basic-area words through relay hops."""
+        resp = self.send_via_relay(hops, build_word_write(addr, values))
+        if resp.cmd != 0x1D:
+            raise ToyopucProtocolError('Unexpected CMD in relay word-write response')
+
+    def relay_read_clock(self, hops: str | Iterable[Tuple[int, int]]) -> ClockData:
+        """Read the CPU clock through relay hops."""
+        resp = self.send_via_relay(hops, build_clock_read())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError('Unexpected CMD in relay clock response')
+        try:
+            return parse_clock_data(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse relay clock response data={resp.data.hex()}'
+            ) from e
+
+    def relay_write_clock(self, hops: str | Iterable[Tuple[int, int]], value: datetime) -> None:
+        """Set the CPU clock through relay hops via `CMD=32 / 71 00`."""
+        weekday = (value.weekday() + 1) % 7
+        resp = self.send_via_relay(
+            hops,
+            build_clock_write(
+                value.second,
+                value.minute,
+                value.hour,
+                value.day,
+                value.month,
+                value.year % 100,
+                weekday,
+            ),
+        )
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError('Unexpected CMD in relay clock-write response')
+        if resp.data != bytes([0x71, 0x00]):
+            raise ToyopucProtocolError('Unexpected relay clock-write response body')
+
+    def relay_read_cpu_status(self, hops: str | Iterable[Tuple[int, int]]) -> CpuStatusData:
+        """Read the 8-byte CPU status block through relay hops."""
+        resp = self.send_via_relay(hops, build_cpu_status_read())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError('Unexpected CMD in relay CPU status response')
+        try:
+            return parse_cpu_status_data(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse relay CPU status response data={resp.data.hex()}'
+            ) from e
+
+    def relay_read_cpu_status_a0_raw(self, hops: str | Iterable[Tuple[int, int]]) -> bytes:
+        """Read raw 8-byte CPU status through relay hops via `CMD=A0 / 01 10`."""
+        resp = self.send_via_relay(hops, build_cpu_status_read_a0())
+        if resp.cmd != 0xA0:
+            raise ToyopucProtocolError('Unexpected CMD in relay A0 CPU status response')
+        try:
+            return parse_cpu_status_data_a0_raw(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse relay A0 CPU status response data={resp.data.hex()}'
+            ) from e
+
+    def relay_read_cpu_status_a0(self, hops: str | Iterable[Tuple[int, int]]) -> CpuStatusData:
+        """Read decoded CPU status through relay hops via `CMD=A0 / 01 10`."""
+        resp = self.send_via_relay(hops, build_cpu_status_read_a0())
+        if resp.cmd != 0xA0:
+            raise ToyopucProtocolError('Unexpected CMD in relay A0 CPU status response')
+        try:
+            return parse_cpu_status_data_a0(resp.data)
+        except Exception as e:
+            raise ToyopucProtocolError(
+                f'Failed to parse relay A0 CPU status response data={resp.data.hex()}'
+            ) from e
+
+    def relay_write_fr_words(self, hops: str | Iterable[Tuple[int, int]], index: int, values: Iterable[int], *, commit: bool = False) -> None:
+        """Write FR words through relay hops, optionally committing touched blocks."""
+        self.relay_write_fr_words_ex(hops, index, values, commit=commit, wait=commit)
+
+    def relay_write_fr_words_ex(
+        self,
+        hops: str | Iterable[Tuple[int, int]],
+        index: int,
+        values: Iterable[int],
+        *,
+        commit: bool = False,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> None:
+        """Write FR words through relay hops, with optional commit and completion wait."""
+        vals = [int(v) & 0xFFFF for v in values]
+        if not vals:
+            raise ValueError('values must contain at least one word')
+        offset = 0
+        for block_index, block_words in _iter_fr_segments(index, len(vals)):
+            block_offset = 0
+            while block_offset < block_words:
+                chunk_words = min(block_words - block_offset, _FR_IO_CHUNK_WORDS)
+                chunk_vals = vals[offset : offset + chunk_words]
+                data = b''.join(v.to_bytes(2, 'little') for v in chunk_vals)
+                resp = self.send_via_relay(
+                    hops,
+                    build_pc10_block_write(encode_fr_word_addr32(block_index + block_offset), data),
+                )
+                if resp.cmd != 0xC3:
+                    raise ToyopucProtocolError('Unexpected CMD in relay FR block-write response')
+                offset += chunk_words
+                block_offset += chunk_words
+            if commit:
+                self.relay_commit_fr_block(
+                    hops,
+                    block_index,
+                    wait=wait,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+
+    def relay_fr_register(self, hops: str | Iterable[Tuple[int, int]], ex_no: int) -> None:
+        """Issue the FR-register command `CMD=CA` through relay hops."""
+        resp = self.send_via_relay(hops, build_fr_register(ex_no))
+        if resp.cmd != 0xCA:
+            raise ToyopucProtocolError('Unexpected CMD in relay FR-register response')
+
+    def relay_commit_fr_block(
+        self,
+        hops: str | Iterable[Tuple[int, int]],
+        index: int,
+        *,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> Optional[CpuStatusData]:
+        """Commit the remote FR block containing `index` via relay `CMD=CA`."""
+        self.relay_fr_register(hops, fr_block_ex_no(index))
+        if wait:
+            return self.relay_wait_fr_write_complete(hops, timeout=timeout, poll_interval=poll_interval)
+        return None
+
+    def relay_commit_fr_range(
+        self,
+        hops: str | Iterable[Tuple[int, int]],
+        index: int,
+        count: int = 1,
+        *,
+        wait: bool = False,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> Optional[CpuStatusData]:
+        """Commit every FR block touched by a contiguous relay FR range."""
+        last_status: Optional[CpuStatusData] = None
+        for block_index in _fr_commit_blocks(index, count):
+            last_status = self.relay_commit_fr_block(
+                hops,
+                block_index,
+                wait=wait,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        return last_status
+
+    def relay_wait_fr_write_complete(
+        self,
+        hops: str | Iterable[Tuple[int, int]],
+        *,
+        timeout: float = 30.0,
+        poll_interval: float = 0.2,
+    ) -> CpuStatusData:
+        """Poll remote FR flash-write completion status through relay hops."""
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        interval = max(0.01, float(poll_interval))
+        while True:
+            use_a0 = self._relay_fr_wait_prefers_a0 is not False
+            if use_a0:
+                try:
+                    status = self.relay_read_cpu_status_a0(hops)
+                    self._relay_fr_wait_prefers_a0 = True
+                except (ToyopucError, ToyopucProtocolError):
+                    err = _extract_response_error_code(self.last_rx)
+                    if err is None:
+                        err = _extract_relay_nak_error_code(self.last_rx)
+                    if err in (0x23, 0x24, 0x25, 0x26):
+                        self._relay_fr_wait_prefers_a0 = False
+                        status = self.relay_read_cpu_status(hops)
+                    else:
+                        raise
+            else:
+                status = self.relay_read_cpu_status(hops)
+            if status.abnormal_write_flash_register:
+                raise ToyopucError('FR flash write failed: abnormal_write_flash_register=1')
+            if not status.under_writing_flash_register:
+                return status
+            if time.monotonic() >= deadline:
+                raise ToyopucTimeoutError('Timed out waiting for relay FR flash write completion')
+            time.sleep(interval)
 
     def read_clock(self) -> ClockData:
         """Read the CPU clock via `CMD=32 / 70 00`."""

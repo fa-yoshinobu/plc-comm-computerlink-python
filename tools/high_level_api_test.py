@@ -41,13 +41,39 @@ def _report_case_error(name: str, exc: Exception, log_f) -> tuple[int, int]:
     return 0, 0
 
 
-def _single_bit_case(plc: ToyopucHighLevelClient, addr: str, log_f) -> tuple[int, int]:
+def _read(plc: ToyopucHighLevelClient, hops: str, addr: str, count: int = 1):
+    if hops:
+        return plc.relay_read(hops, addr, count=count)
+    return plc.read(addr, count=count)
+
+
+def _write(plc: ToyopucHighLevelClient, hops: str, addr: str, value) -> None:
+    if hops:
+        plc.relay_write(hops, addr, value)
+        return
+    plc.write(addr, value)
+
+
+def _read_many(plc: ToyopucHighLevelClient, hops: str, devices: Sequence[str]):
+    if hops:
+        return plc.relay_read_many(hops, devices)
+    return plc.read_many(devices)
+
+
+def _write_many(plc: ToyopucHighLevelClient, hops: str, items: dict[str, int]) -> None:
+    if hops:
+        plc.relay_write_many(hops, items)
+        return
+    plc.write_many(items)
+
+
+def _single_bit_case(plc: ToyopucHighLevelClient, hops: str, addr: str, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
     scheme = resolve_device(addr).scheme
     for value in (0, 1):
-        plc.write(addr, value)
-        read_back = 1 if plc.read(addr) else 0
+        _write(plc, hops, addr, value)
+        read_back = 1 if _read(plc, hops, addr) else 0
         line = f"{addr} [{scheme}] write={value} read={read_back}"
         print(line)
         _write_log(log_f, line)
@@ -57,15 +83,15 @@ def _single_bit_case(plc: ToyopucHighLevelClient, addr: str, log_f) -> tuple[int
     return ok, total
 
 
-def _single_word_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
+def _single_word_case(plc: ToyopucHighLevelClient, hops: str, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
     scheme = resolve_device(addr).scheme
     values = [rng.randint(0, 0xFFFF)]
     values.append(values[0] ^ 0xFFFF)
     for value in values:
-        plc.write(addr, value)
-        read_back = int(plc.read(addr))
+        _write(plc, hops, addr, value)
+        read_back = int(_read(plc, hops, addr))
         line = f"{addr} [{scheme}] write={_format_value(value)} read={_format_value(read_back)}"
         print(line)
         _write_log(log_f, line)
@@ -75,14 +101,14 @@ def _single_word_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random
     return ok, total
 
 
-def _single_byte_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
+def _single_byte_case(plc: ToyopucHighLevelClient, hops: str, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
     scheme = resolve_device(addr).scheme
     values = [rng.randint(0, 0xFF), rng.randint(0, 0xFF)]
     for value in values:
-        plc.write(addr, value)
-        read_back = int(plc.read(addr))
+        _write(plc, hops, addr, value)
+        read_back = int(_read(plc, hops, addr))
         line = f"{addr} [{scheme}] write={_format_value(value)} read={_format_value(read_back)}"
         print(line)
         _write_log(log_f, line)
@@ -92,19 +118,19 @@ def _single_byte_case(plc: ToyopucHighLevelClient, addr: str, rng: random.Random
     return ok, total
 
 
-def _sequence_case(plc: ToyopucHighLevelClient, base_addr: str, values: Sequence[int], log_f) -> tuple[int, int]:
+def _sequence_case(plc: ToyopucHighLevelClient, hops: str, base_addr: str, values: Sequence[int], log_f) -> tuple[int, int]:
     scheme = resolve_device(base_addr).scheme
-    plc.write(base_addr, list(values))
-    read_back = list(plc.read(base_addr, count=len(values)))
+    _write(plc, hops, base_addr, list(values))
+    read_back = list(_read(plc, hops, base_addr, count=len(values)))
     line = f"{base_addr} [{scheme}] write={list(map(_format_value, values))} read={list(map(_format_value, read_back))}"
     print(line)
     _write_log(log_f, line)
     return (1, 1) if read_back == list(values) else (0, 1)
 
 
-def _mixed_many_case(plc: ToyopucHighLevelClient, items: dict[str, int], log_f) -> tuple[int, int]:
-    plc.write_many(items)
-    read_back = plc.read_many(list(items.keys()))
+def _mixed_many_case(plc: ToyopucHighLevelClient, hops: str, items: dict[str, int], log_f) -> tuple[int, int]:
+    _write_many(plc, hops, items)
+    read_back = _read_many(plc, hops, list(items.keys()))
     ok = 0
     total = len(items)
     for (addr, expected), value in zip(items.items(), read_back):
@@ -120,7 +146,13 @@ def _mixed_many_case(plc: ToyopucHighLevelClient, items: dict[str, int], log_f) 
     return ok, total
 
 
-def _fr_guard_case(plc: ToyopucHighLevelClient, log_f) -> tuple[int, int]:
+def _fr_guard_case(plc: ToyopucHighLevelClient, hops: str, log_f) -> tuple[int, int]:
+    if hops:
+        line = "FR write guard: SKIP (relay mode uses explicit FR read/write path instead of generic write guard)"
+        print(line)
+        _write_log(log_f, line)
+        return 0, 0
+
     total = 0
     ok = 0
 
@@ -164,6 +196,7 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=1234)
     p.add_argument("--include-pc10-word", action="store_true")
     p.add_argument("--skip-errors", action="store_true")
+    p.add_argument("--hops", default="", help='optional relay hops, for example "P1-L2:N2,P1-L2:N4"')
     p.add_argument("--log", default="")
     args = p.parse_args()
 
@@ -175,16 +208,16 @@ def main() -> int:
     error_cases = 0
 
     single_cases: list[tuple[str, Callable[[ToyopucHighLevelClient], tuple[int, int]]]] = [
-        ("single bit/basic", lambda plc: _single_bit_case(plc, "M0000", log_f)),
-        ("single word/basic", lambda plc: _single_word_case(plc, "D0000", rng, log_f)),
-        ("single byte/basic", lambda plc: _single_byte_case(plc, "D0000L", rng, log_f)),
-        ("single bit/prefixed", lambda plc: _single_bit_case(plc, "P1-M0000", log_f)),
-        ("single word/prefixed", lambda plc: _single_word_case(plc, "P1-D0000", rng, log_f)),
-        ("single bit/extended", lambda plc: _single_bit_case(plc, "EX0000", log_f)),
-        ("single word/extended", lambda plc: _single_word_case(plc, "ES0000", rng, log_f)),
+        ("single bit/basic", lambda plc: _single_bit_case(plc, args.hops, "M0000", log_f)),
+        ("single word/basic", lambda plc: _single_word_case(plc, args.hops, "D0000", rng, log_f)),
+        ("single byte/basic", lambda plc: _single_byte_case(plc, args.hops, "D0000L", rng, log_f)),
+        ("single bit/prefixed", lambda plc: _single_bit_case(plc, args.hops, "P1-M0000", log_f)),
+        ("single word/prefixed", lambda plc: _single_word_case(plc, args.hops, "P1-D0000", rng, log_f)),
+        ("single bit/extended", lambda plc: _single_bit_case(plc, args.hops, "EX0000", log_f)),
+        ("single word/extended", lambda plc: _single_word_case(plc, args.hops, "ES0000", rng, log_f)),
     ]
     if args.include_pc10_word:
-        single_cases.append(("single word/pc10", lambda plc: _single_word_case(plc, "U08000", rng, log_f)))
+        single_cases.append(("single word/pc10", lambda plc: _single_word_case(plc, args.hops, "U08000", rng, log_f)))
 
     sequence_cases: list[tuple[str, str, Sequence[int]]] = [
         ("sequence words/basic", "D0000", [rng.randint(0, 0xFFFF) for _ in range(3)]),
@@ -224,7 +257,7 @@ def main() -> int:
 
         for name, addr, values in sequence_cases:
             try:
-                ok, total = _run_case(name, lambda addr=addr, values=values: _sequence_case(plc, addr, values, log_f), log_f)
+                ok, total = _run_case(name, lambda addr=addr, values=values: _sequence_case(plc, args.hops, addr, values, log_f), log_f)
             except (ToyopucError, ValueError) as exc:
                 error_cases += 1
                 if not args.skip_errors:
@@ -236,7 +269,7 @@ def main() -> int:
             totals_all += total
 
         try:
-            ok, total = _run_case("mixed read_many/write_many", lambda: _mixed_many_case(plc, mixed_items, log_f), log_f)
+            ok, total = _run_case("mixed read_many/write_many", lambda: _mixed_many_case(plc, args.hops, mixed_items, log_f), log_f)
         except (ToyopucError, ValueError) as exc:
             error_cases += 1
             _report_case_error("mixed read_many/write_many", exc, log_f)
@@ -245,7 +278,7 @@ def main() -> int:
             totals_all += total
 
         try:
-            ok, total = _run_case("FR write guard", lambda: _fr_guard_case(plc, log_f), log_f)
+            ok, total = _run_case("FR write guard", lambda: _fr_guard_case(plc, args.hops, log_f), log_f)
         except (ToyopucError, ValueError) as exc:
             error_cases += 1
             _report_case_error("FR write guard", exc, log_f)

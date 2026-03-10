@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from .exceptions import ToyopucProtocolError
 
@@ -543,14 +543,57 @@ def build_fr_register(ex_no: int) -> bytes:
 
 
 # Relay command (CMD=60) helpers
+def _normalize_inner_payload(inner_payload: bytes) -> bytes:
+    """Ensure the payload is in `[LL, LH, CMD, ...]` form for relay wrapping."""
+    if len(inner_payload) < 3:
+        raise ValueError("inner payload must contain at least LL, LH, and CMD bytes")
+    if inner_payload[0] == FT_COMMAND:
+        if len(inner_payload) < 5:
+            raise ValueError("inner command frame too short")
+        if inner_payload[1] != 0x00:
+            raise ValueError("relay inner frame must be a command request (RC=0x00)")
+        trimmed = inner_payload[2:]
+    else:
+        trimmed = inner_payload
+
+    if len(trimmed) < 3:
+        raise ValueError("inner payload must contain LL, LH, and CMD bytes")
+    inner_length = trimmed[0] | (trimmed[1] << 8)
+    if inner_length + 2 != len(trimmed):
+        raise ValueError(
+            f"inner payload length mismatch: len={len(trimmed)} vs expected {inner_length + 2}"
+        )
+    return trimmed
+
+
+def _frame_to_inner_payload(frame: bytes) -> bytes:
+    if len(frame) < 5 or frame[0] != FT_COMMAND or frame[1] != 0x00:
+        raise ValueError("relay frame must be a normal command request")
+    return frame[2:]
+
+
 def build_relay_command(link_no: int, station_no: int, inner_payload: bytes, *, enq: int = 0x05) -> bytes:
-    # Data format: link_no, station_no, ENQ, inner_payload
-    data = bytes([link_no & 0xFF, station_no & 0xFF, enq & 0xFF]) + inner_payload
+    """Build a single-hop relay command (`CMD=60`)."""
+    inner = _normalize_inner_payload(inner_payload)
+    data = bytes(
+        [
+            link_no & 0xFF,
+            station_no & 0xFF,
+            (station_no >> 8) & 0xFF,
+            enq & 0xFF,
+        ]
+    ) + inner + b"\x00"
     return build_command(0x60, data)
 
 
 def build_relay_nested(hops: Sequence[Tuple[int, int]], inner_payload: bytes) -> bytes:
-    payload = inner_payload
+    hops = list(hops)
+    if not hops:
+        raise ValueError("at least one relay hop is required")
+    inner = _normalize_inner_payload(inner_payload)
+    frame: Optional[bytes] = None
     for link_no, station_no in reversed(hops):
-        payload = build_relay_command(link_no, station_no, payload)
-    return payload
+        frame = build_relay_command(link_no, station_no, inner)
+        inner = _frame_to_inner_payload(frame)
+    assert frame is not None
+    return frame

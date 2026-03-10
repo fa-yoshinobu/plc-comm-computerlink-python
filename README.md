@@ -2,6 +2,21 @@
 
 `toyopuc` is a small Python library for TOYOPUC computer-link communication over TCP or UDP.
 
+At a glance:
+
+- preferred API: `ToyopucHighLevelClient`
+- transports: TCP and UDP
+- supported styles: basic, `P1/P2/P3`, extended, PC10, `W/H/L`
+- relay support: `CMD=60` read/write helpers and examples
+- FR support: dedicated `read_fr()` / `write_fr(..., commit=...)`
+
+Verified on real hardware:
+
+- `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
+- `Nano 10GX (TUC-1157)`
+- `PC3JX-D (TCC-6902)` in PC3 mode and Plus Expansion mode
+- `PC10G CPU (TCC-6353)`
+
 Names:
 
 - GitHub repository: `pytoyopuc-computerlink`
@@ -10,32 +25,22 @@ Names:
 - package name: `toyopuc-computerlink`
 - import name: `toyopuc`
 
-This repository is organized as:
+Main documents:
 
-- `README.md`
-  Library usage, API examples, and integration notes.
-- `TESTING.md`
-  Test programs, batch files, hardware verification flow, and results.
-- `MODEL_RANGES.md`
-  Model-specific writable ranges confirmed by exhaustive scan.
-- `COMPUTER_LINK_SPEC.md`
-  Protocol summary, message formats, and address rules used by this project.
-- `RELEASE.md`
-  Release checklist for packaging and publishing.
-- `RELEASE_NOTES.md`
-  Release summary and known limitations for published versions.
-- `tools/README.md`
-  Short index of helper tools under `tools/`.
-- `examples/README.md`
-  Runnable sample programs for low-level, high-level, UDP, W/H/L addressing, and clock/status usage.
-- `PENDING.md`
-  Remaining open items.
+- [`examples/README.md`](examples/README.md)
+  Runnable examples and the quickest place to start.
+- [`docs/TESTING.md`](docs/TESTING.md)
+  Hardware verification flow and recorded results.
+- [`docs/COMPUTER_LINK_SPEC.md`](docs/COMPUTER_LINK_SPEC.md)
+  Protocol summary, message formats, and address rules.
+- [`docs/MODEL_RANGES.md`](docs/MODEL_RANGES.md)
+  Model-specific writable ranges.
+- [`tools/README.md`](tools/README.md)
+  Tool and batch-file index.
 
-If you want runnable examples first, start with `examples/README.md`.
-
-For normal usage, prefer the high-level examples first.
-`examples/low_level_basic.py` is intentionally an advanced example for users who want direct control over numeric addresses and low-level client calls.
-If you want the shortest runnable example, start with `examples/high_level_minimal.py`.
+For normal usage, start with `examples/high_level_minimal.py`.
+For relay usage, start with `examples/relay_basic.py`.
+`examples/low_level_basic.py` is intentionally the advanced entry point.
 
 ## Quick Start
 
@@ -80,17 +85,38 @@ with ToyopucHighLevelClient(
     print(hex(plc.read("D0100")))
 ```
 
+Relay example through one hop:
+
+```python
+from toyopuc import ToyopucHighLevelClient
+
+with ToyopucHighLevelClient(
+    "192.168.250.101",
+    1027,
+    protocol="udp",
+    local_port=12000,
+    timeout=5,
+    retries=2,
+) as plc:
+    status = plc.relay_read_cpu_status("P1-L2:N2")
+    print(status.raw_bytes_hex)
+```
+
+Common starting points:
+
+- basic read/write: `examples/high_level_minimal.py`
+- broader high-level example: `examples/high_level_basic.py`
+- UDP example: `examples/high_level_udp.py`
+- relay example: `examples/relay_basic.py`
+- FR example: `examples/fr_basic.py`
+
 Where to go next:
 
-- runnable examples: `examples/README.md`
-- test tools and verified results: `TESTING.md`
-- protocol summary: `COMPUTER_LINK_SPEC.md`
-- model-specific writable ranges: `MODEL_RANGES.md`
-  - Verified CPUs:
-    - `TOYOPUC-Plus CPU (TCC-6740)`
-    - `Nano 10GX (TUC-1157)`
-    - `PC3JX-D (TCC-6902)` (PC3 mode and Plus Expansion mode)
-    - `PC10G CPU (TCC-6353)`
+- runnable examples: [`examples/README.md`](examples/README.md)
+- test tools and verified results: [`docs/TESTING.md`](docs/TESTING.md)
+- protocol summary: [`docs/COMPUTER_LINK_SPEC.md`](docs/COMPUTER_LINK_SPEC.md)
+- model-specific writable ranges: [`docs/MODEL_RANGES.md`](docs/MODEL_RANGES.md)
+- release checklist: [`docs/RELEASE.md`](docs/RELEASE.md)
 
 ## Install
 
@@ -224,6 +250,28 @@ Main high-level methods:
   Issues `CMD=CA` for every FR block touched by the given range.
 - `read_clock()`
   Reads the PLC CPU clock and returns `ClockData`.
+- `relay_read_cpu_status(hops)`
+  Reads CPU status through relay hops such as `P1-L2:N2`.
+- `relay_read_cpu_status_a0(hops)` / `relay_read_cpu_status_a0_raw(hops)`
+  Reads `CMD=A0 / 01 10` CPU status through relay hops.
+- `relay_read_clock(hops)`
+  Reads the PLC CPU clock through relay hops.
+- `relay_write_clock(hops, datetime)`
+  Sets the PLC CPU clock through relay hops.
+- `relay_read(hops, device, count=1)`
+  Reads resolved high-level devices through relay hops. This covers the same single-point device families as the direct high-level API.
+- `relay_write(hops, device, value)`
+  Writes resolved high-level devices through relay hops. For `FR`, this updates the remote RAM work area only; flash commit still requires the dedicated FR APIs.
+- `relay_read_words(hops, device, count=1)`
+  Convenience wrapper for relay word-device reads.
+- `relay_write_words(hops, device, value)`
+  Convenience wrapper for relay word-device writes.
+- `relay_read_fr(hops, device, count=1)`
+  Reads FR words through relay hops.
+- `relay_write_fr(hops, device, value, commit=False)`
+  Writes FR words through relay hops. `commit=True` also issues relay `CMD=CA`.
+- `relay_commit_fr(hops, device, count=1)`
+  Commits touched FR blocks through relay `CMD=CA`.
 - `read_cpu_status_a0()`
   Reads decoded CPU status through `CMD=A0 / 01 10`.
 - `read_cpu_status_a0_raw()`
@@ -268,11 +316,11 @@ with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
 
 Model note:
 
-- On `TOYOPUC-Plus CPU (TCC-6740)`, `U08000-U1FFFF` does not exist.
+- On `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`, `U08000-U1FFFF` does not exist.
 - For that model, do not use `U08000` as a default example or test address.
 - `Nano 10GX (TUC-1157)` has been confirmed on both `TCP 1025` and `UDP 1027`.
-- See `MODEL_RANGES.md` for model-specific writable ranges, including:
-  - `TOYOPUC-Plus CPU (TCC-6740)`
+- See [`docs/MODEL_RANGES.md`](docs/MODEL_RANGES.md) for model-specific writable ranges, including:
+  - `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
   - `Nano 10GX (TUC-1157)`
 
 If your model supports upper `U` range, a separate PC10 example is shown later in `PC10 Range Examples`.
@@ -330,7 +378,7 @@ W/H/L addressing note:
   - basic: `encode_word_address()` / `encode_byte_address()`
   - prefixed: `encode_program_word_address()` / `encode_program_byte_address()`
   - extended: `encode_ext_no_address()`
-- Verified on `TOYOPUC-Plus CPU (TCC-6740)` over both TCP and UDP, including:
+- Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over both TCP and UDP, including:
   - bit-device word read/write
   - bit-device byte read/write
   - `W -> L/H` consistency
@@ -821,26 +869,10 @@ except ToyopucError as e:
 - `FR` is intentionally kept out of the normal safe path.
 - The high-level resolver enforces documented bit ranges (e.g., `M0000-M07FF`); addresses beyond the published range raise `ValueError` even if the PLC would accept them.
 
-For the full command and mapping rules, use `COMPUTER_LINK_SPEC.md`.
+For the full command and mapping rules, use [`docs/COMPUTER_LINK_SPEC.md`](docs/COMPUTER_LINK_SPEC.md).
 
-## Test Programs
+## Further Reading
 
-Test-program usage is intentionally documented separately:
-
-- `TESTING.md`
-- `tools/README.md`
-
-Start there if you want:
-
-- `auto_rw_test.py`
-- `interactive_cli.py`
-- batch files
-- recovery loops
-- writable-range scans
-
-## Related Documents
-
-- Test usage and verified hardware results: `TESTING.md`
-- Communication protocol and address tables: `COMPUTER_LINK_SPEC.md`
-- Tool index: `tools/README.md`
-- Remaining open items: `PENDING.md`
+- Test usage and verified hardware results: [`docs/TESTING.md`](docs/TESTING.md)
+- Communication protocol and address tables: [`docs/COMPUTER_LINK_SPEC.md`](docs/COMPUTER_LINK_SPEC.md)
+- Tool index and batch runners: [`tools/README.md`](tools/README.md)

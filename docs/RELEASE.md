@@ -1,5 +1,13 @@
 # Release Checklist
 
+Related documents:
+
+- [../README.md](../README.md)
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- [TESTING.md](TESTING.md)
+- [MODEL_RANGES.md](MODEL_RANGES.md)
+- [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
+
 This document is a practical checklist for releasing the library as a package.
 
 Naming used by this project:
@@ -17,10 +25,10 @@ Confirm what is part of the release.
 - keep:
   - `toyopuc/`
   - `README.md`
-  - `TESTING.md`
-  - `COMPUTER_LINK_SPEC.md`
-  - `MODEL_RANGES.md`
-  - `PENDING.md`
+  - `docs/TESTING.md`
+  - `docs/COMPUTER_LINK_SPEC.md`
+  - `docs/MODEL_RANGES.md`
+  - `docs/PENDING.md`
   - `LICENSE`
   - `pyproject.toml`
 - exclude:
@@ -84,15 +92,15 @@ Verify that the docs match the code.
   - high-level usage
   - UDP `local_port` note
   - supported / unsupported behavior notes
-- `TESTING.md`
+- [TESTING.md](TESTING.md)
   - test tools usage
   - verified results
-- `COMPUTER_LINK_SPEC.md`
+- [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
   - protocol summary
   - example messages
-- `MODEL_RANGES.md`
+- [MODEL_RANGES.md](MODEL_RANGES.md)
   - model-specific writable ranges
-- `PENDING.md`
+- [PENDING.md](PENDING.md)
   - open items clearly separated from verified behavior
 
 ## 6. Verified Hardware Notes
@@ -101,7 +109,7 @@ Keep tested hardware explicit in release notes.
 
 Currently verified:
 
-- `TOYOPUC-Plus CPU (TCC-6740)`
+- `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
 - TCP
 - UDP with fixed `local_port`
 - low-level API
@@ -161,7 +169,7 @@ tools\build_api_docs.bat
 Current status:
 
 - `python -m build`: completed
-- `python -m twine check dist/*`: completed for `toyopuc_computerlink-0.1.0`
+- `python -m twine check dist/*`: completed for `toyopuc_computerlink-1.0.0`
 
 Recommended release order:
 
@@ -206,12 +214,15 @@ Prepare a short release note with:
 
 Current release note file:
 
-- `RELEASE_NOTES.md`
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- GitHub Releases body:
+  - [GITHUB_RELEASE_v1.0.0.md](GITHUB_RELEASE_v1.0.0.md)
+  - includes title, tag, target, body, and upload checklist
 
 ## 12. Post-Release
 
 After release:
 
 - record tag / version
-- keep `MODEL_RANGES.md` updated when new hardware is tested
-- move completed items out of `PENDING.md`
+- keep [MODEL_RANGES.md](MODEL_RANGES.md) updated when new hardware is tested
+- move completed items out of [PENDING.md](PENDING.md)

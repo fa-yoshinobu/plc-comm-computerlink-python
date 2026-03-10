@@ -26,6 +26,7 @@ from .address import (
 )
 from .high_level import ResolvedDevice, ToyopucHighLevelClient, resolve_device
 from .protocol import ClockData, CpuStatusData
+from .relay import RelayLayer, format_relay_hop, normalize_relay_hops, parse_relay_hops
 
 __all__ = [
     'ToyopucClient',
@@ -33,6 +34,7 @@ __all__ = [
     'ResolvedDevice',
     'ClockData',
     'CpuStatusData',
+    'RelayLayer',
     'ToyopucError',
     'ToyopucProtocolError',
     'ToyopucTimeoutError',
@@ -50,5 +52,8 @@ __all__ = [
     'encode_ext_no_address',
     'fr_block_ex_no',
     'encode_fr_word_addr32',
+    'parse_relay_hops',
+    'normalize_relay_hops',
+    'format_relay_hop',
     'resolve_device',
 ]

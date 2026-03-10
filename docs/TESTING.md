@@ -1,5 +1,13 @@
 # Testing Guide
 
+Related documents:
+
+- [../README.md](../README.md)
+- [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
+- [MODEL_RANGES.md](MODEL_RANGES.md)
+- [../tools/README.md](../tools/README.md)
+- [PENDING.md](PENDING.md)
+
 ## Scope
 
 This document covers:
@@ -14,10 +22,10 @@ This document covers:
 - `tools/find_last_writable.py`
 - batch files under `tools/`
 
-Protocol details and address tables are kept in `COMPUTER_LINK_SPEC.md`.
-Model-specific writable ranges are kept in `MODEL_RANGES.md`.
+Protocol details and address tables are kept in [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md).
+Model-specific writable ranges are kept in [MODEL_RANGES.md](MODEL_RANGES.md).
 
-Remaining open items are tracked in `PENDING.md`.
+Remaining open items are tracked in [PENDING.md](PENDING.md).
 
 ## Simulator
 
@@ -35,8 +43,8 @@ Currently supported in the simulator:
   - `CMD=98/99`
 - PC10 block/multi access
   - `CMD=C2/C3/C4/C5`
-- relay unwrap
-  - `CMD=60` (simple unwrap only)
+- relay command
+  - `CMD=60` single-hop read verified on real hardware
 - clock
   - `CMD=32 70 00` read
   - `CMD=32 71 00` write
@@ -48,6 +56,99 @@ Not modeled accurately enough to treat as hardware-equivalent:
 - `FR`
 - `CMD=CA`
 - hardware-specific NAK/error behavior
+
+## Relay hardware verification
+
+Verified on `2026-03-10` against `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over UDP:
+
+- single-hop relay path: `P1-L2:N2` (`Link=0x12`, `Exchange=0x0002`)
+- successful inner commands:
+  - `CMD=32 / 11 00` CPU status read
+  - `CMD=32 / 70 00` clock read
+  - `CMD=1C` word read (`D0000`, count `1`)
+  - `CMD=C2` FR read (`FR000000`, count `1`)
+  - `CMD=C3` FR write (`FR000000 = 0x55AA`) with immediate readback
+  - `CMD=CA` FR commit on `FR000000` with completion wait
+  - post-reset `CMD=C2` FR read confirming that the committed `FR000000 = 0x55AA` value persisted after CPU reset
+- verified two-hop relay:
+  - hops: `P1-L2:N2 -> P1-L2:N4`
+  - inner command: `CMD=32 / 11 00` CPU status read
+- verified three-hop relay:
+  - hops: `P1-L2:N2 -> P1-L2:N4 -> P1-L2:N6`
+  - verified inner commands:
+    - `CMD=32 / 11 00` CPU status read
+    - `CMD=32 / 70 00` clock read
+    - `CMD=32 / 71 00` clock write with successful readback
+    - `CMD=1C` word read (`D0000`, count `1`)
+    - `CMD=1D` word write (`D0000 = 0x1234`) with successful readback
+- verified three-hop contiguous relay word block path:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - inner commands:
+    - `CMD=1D` contiguous word write on `D0000-D0007`
+    - `CMD=1C` contiguous word read on `D0000-D0007`
+  - checked with `count=8`, `loops=3`, patterns `0x1000-0x1007`, `0x1100-0x1107`, `0x1200-0x1207`
+  - observed result: `summary = 3/3 loops passed`
+- verified three-hop relay FR path:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - verified inner commands:
+    - `CMD=C2` FR read (`FR000000`, count `1`)
+    - `CMD=C3` FR write (`FR000000 = 0x0099`) with immediate readback
+    - `CMD=CA` FR commit on `FR000000` with completion wait
+    - post-commit `CMD=C2` FR read confirming `FR000000 = 0x0099`
+- verified relay high-level API sweep:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - command:
+    - `python -m tools.high_level_api_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --include-pc10-word --log relay_high_level_api.log`
+  - observed result:
+    - `TOTAL: 24/24`
+    - `ERROR CASES: 0`
+  - verified categories:
+    - basic bit / word / byte
+    - prefixed bit / word
+    - extended bit / word
+    - PC10 word
+    - contiguous basic word / byte / bit sequences
+    - mixed `read_many()` / `write_many()` on `D/M/P1-R/ES/U`
+- verified relay matrix expansion:
+  - hops: `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`
+  - command:
+    - `python -m tools.relay_matrix_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --targets D0000,R0000,S0000,U08000 --counts 16,32 --loops 3 --value 0x1000 --step 1 --loop-step 0x0100 --clock-loops 3 --clock-start 2026-03-10T15:30:00`
+  - observed result:
+    - `D0000`: `count=16`, `count=32` both `3/3` loops passed
+    - `R0000`: `count=16`, `count=32` both `3/3` loops passed
+    - `U08000`: `count=16`, `count=32` both `3/3` loops passed
+    - `S0000`: `count=16`, `count=32` both failed to retain written patterns (`0/3`)
+    - word-only `write_many()` across `D/R/S/U`: passed
+    - mixed `write_many()` case showed a byte mismatch on `D0000L` (`0x79 -> 0x68`)
+    - repeated relay `clock-write` / readback / restore: `3/3` loops passed
+- verified relay low-level sweep:
+  - UDP path:
+    - `python -m tools.relay_low_level_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --clock-value 2026-03-10T15:00:00`
+    - passed: `cpu-status`, `clock-read`, `clock-write`, `CMD=20/21`, `CMD=1C/1D`, `CMD=24/25`, `CMD=94/95`, `CMD=96/97`, `CMD=98/99`, `CMD=C2/C3`
+    - standalone relay `A0` returned relay NAK `0x15`
+    - the `D0000L` single-byte case and `D0000/D0001` multi-word case did not hold the requested values on this path during the UDP sweep
+  - TCP path:
+    - `python -m tools.relay_low_level_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2"`
+    - passed: `cpu-status`, `clock-read`, `CMD=20/21`, `CMD=1C/1D`, `CMD=1E/1F`, `CMD=22/23`, `CMD=24/25`, `CMD=94/95`, `CMD=96/97`, `CMD=98/99`, `CMD=C2/C3`
+    - standalone relay `A0` returned relay NAK `0x15`
+- verified relay abnormal-case sweep:
+  - command:
+    - `python -m tools.relay_error_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12021 --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --forbidden-write-device S0000 --out-of-range-word-index 0x3000`
+  - observed result:
+    - missing station: timeout, no reply
+    - broken path: timeout, no reply
+    - raw out-of-range basic word read (`D3000`): timeout, no reply
+    - relay write to `S0000`: timeout, no reply
+
+Observed notes:
+
+- relay request must include the trailing fixed `00` byte after the inner command payload
+- outer relay response layout is `Link, ExLo, ExHi, ACK, inner..., padding?`
+- inner response may include one trailing padding byte
+- relay `CMD=A0 / 01 10` on the verified Plus path returned relay NAK `0x26`, so FR commit wait fell back to normal CPU status `CMD=32 / 11 00`
+- standalone relay `CMD=A0 / 01 10` also returned relay NAK `0x15` on the verified three-hop Plus path over both UDP and TCP
+- only the above two-hop / three-hop relay paths are verified for multi-hop relay
+- relay FR verification is currently limited to the above single-hop `P1-L2:N2` path and three-hop `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2` path
 - unsupported-area behavior by model
 - timing and cable recovery behavior
 - exact real-hardware semantics of shared areas
@@ -78,18 +179,18 @@ Verified simulator smoke result:
   - this confirms development-time simulator consistency for the current low-level/high-level API paths
   - it does **not** upgrade the simulator to hardware-equivalent status
 
-## TCC-6740 Batch
+## TCC-6740 + TCU-6858 Batch
 
-For `TOYOPUC-Plus CPU (TCC-6740)`, the current broad one-shot batch is:
+For `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`, the current broad validation batch is:
 
 ```bat
-tools\run_tcc6740_all.bat 192.168.250.101 1025 tcp 4 5 2 0x200 0 30 "2026-03-08 20:00:10" 0
+tools\run_validation_all.bat 192.168.250.101 1025 tcp 4 5 2 0x200 0 60
 ```
 
 UDP example:
 
 ```bat
-tools\run_tcc6740_all.bat 192.168.250.101 1027 udp 4 5 2 0x200 12000 30 "2026-03-08 20:00:10" 0
+tools\run_validation_all.bat 192.168.250.101 1027 udp 4 5 2 0x200 12000 60
 ```
 
 This batch covers:
@@ -98,34 +199,21 @@ This batch covers:
 - mixed `CMD=98/99`
 - block test
 - boundary test
-- `W/H/L` addressing on bit-device families
-- high-level API
-- clock read
-- clock write when `CLOCK_SET` is given
-- CPU status
 - recovery write/read
-- optional exhaustive writable scan
+- last-writable probe
 
-Verified batch result:
+Additional focused checks that are still run separately:
 
-- `tools\run_tcc6740_all.bat 192.168.250.101 1025 tcp 4 5 2 0x200 0 30 "2026-03-08 20:00:10" 0`
-- result:
-  - full test: completed with non-fatal mismatch warning
-  - mixed `CMD=98/99`: passed
-  - block test: passed
-  - boundary test: passed
-  - `W/H/L` addressing: passed
-  - high-level API: passed
-  - clock read/write: passed
-  - CPU status: passed
-  - recovery write/read: passed
-- note:
-  - the batch is intentionally configured to continue past the known `full test` mismatches seen on `TCC-6740`
-  - remaining steps are still treated as fatal on error
+- `python -m tools.whl_addressing_test ...`
+- `python -m tools.high_level_api_test ...`
+- `python -m tools.clock_test ...`
+- `python -m tools.cpu_status_test ...`
+
+Use `run_validation_all.bat` plus the focused helpers above. The batch is intentionally configured to continue past the known `full test` mismatches seen on `TCC-6740 + TCU-6858`, while the remaining steps are still treated as fatal on error.
 
 ## Status
 
-- Current verified results in this file are based on hardware checks performed on `2026-03-07`.
+- Current verified results in this file are based on hardware checks performed through `2026-03-10`.
 - `V` bit mismatches are tolerated because the PLC can overwrite that area.
 - `S` word mismatches are also treated as tolerated when they occur.
 
@@ -149,7 +237,7 @@ Supported connection options:
 
 ## Clock Test
 
-Clock access is implemented in the library and has been verified on `TOYOPUC-Plus CPU (TCC-6740)`.
+Clock access is implemented in the library and has been verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`.
 
 Dedicated command-line helper:
 
@@ -399,17 +487,30 @@ UDP:
 python -m tools.high_level_api_test --host 192.168.250.101 --port 1027 --local-port 12000 --protocol udp --timeout 5 --retries 2 --skip-errors --log high_level_api_udp.log
 ```
 
-Verified on `TOYOPUC-Plus CPU (TCC-6740)` over TCP:
+Relay over UDP:
+
+```bash
+python -m tools.high_level_api_test --host 192.168.250.101 --port 1027 --local-port 12000 --protocol udp --timeout 10 --retries 1 --hops "P1-L2:N4,P1-L2:N6,P1-L2:N2" --include-pc10-word --log relay_high_level_api.log
+```
+
+Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over TCP:
 
 ```text
 TOTAL: 21/21
 ERROR CASES: 0
 ```
 
-Verified on `TOYOPUC-Plus CPU (TCC-6740)` over UDP:
+Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over UDP:
 
 ```text
 TOTAL: 21/21
+ERROR CASES: 0
+```
+
+Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over UDP through relay hops `P1-L2:N4 -> P1-L2:N6 -> P1-L2:N2`:
+
+```text
+TOTAL: 24/24
 ERROR CASES: 0
 ```
 
@@ -456,14 +557,14 @@ Interpretation:
 - `...L`: lower byte of that word
 - `...H`: upper byte of that word
 
-Verified on `TOYOPUC-Plus CPU (TCC-6740)` over TCP:
+Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over TCP:
 
 ```text
 TOTAL: 35/35
 ERROR CASES: 0
 ```
 
-Verified on `TOYOPUC-Plus CPU (TCC-6740)` over UDP:
+Verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` over UDP:
 
 ```text
 TOTAL: 35/35
@@ -550,7 +651,7 @@ Observed on `TOYOPUC-Plus`:
 
 - non-`B` device families were manually confirmed as broadly working
 - `B` was treated as unsupported
-- several tail-end points were rejected separately and are tracked in `PENDING.md`
+- several tail-end points were rejected separately during earlier manual checks
 
 ### Find last writable address
 
@@ -749,14 +850,13 @@ Meaning:
 
 - `run_auto_tests.bat`: basic + mixed + full + block
 - `run_quick_test.bat`: basic area only
-- `run_full_test.bat`: PC10G full coverage
+- `run_full_test.bat`: broad `auto_rw_test --pc10g-full --include-p123` coverage
 - `run_block_test.bat`: contiguous block-length checks only
 - `run_validation_all.bat`: full + mixed + block + boundary + recovery write/read + last-writable probe
-- `run_tcc6740_all.bat`: broad `TOYOPUC-Plus CPU (TCC-6740)` sweep
 - `run_device_range_scan.bat`: two-pass coarse/fine range scan for all documented device families except `FR`; unsupported families are skipped automatically
 - `run_fr_range_scan.bat`: two-pass coarse/fine range scan for `FR` only
 
-Example `TCC-6740` range scan:
+Example `TCC-6740 + TCU-6858` range scan:
 
 ```bat
 tools\run_device_range_scan.bat 192.168.250.101 1025 tcp 0 16 32
@@ -812,10 +912,10 @@ Generated outputs:
 | Recovery loop over UDP | `success: 43, error: 10, recoveries: 2` | checked on `2026-03-07`, `D0000`, `local_port=12000`, `200 ms`, `timeout=1`, `retries=0` |
 | Recovery read loop over TCP | `success: 37, error: 4, recoveries: 2` | checked on `2026-03-07`, `M0000`, `expect=1`, unplug/replug recovered |
 | Recovery read loop over UDP | `success: 43, error: 6, recoveries: 2` | checked on `2026-03-07`, `D0000`, `expect=0xFFFF`, `local_port=12000`, `timeout=1`, `retries=0` |
-| Clock read on `TCC-6740` | `raw fields returned` | checked on `2026-03-08`, time fields were readable but calendar fields included `month=00`, `year=00` |
-| Clock write/readback on `TCC-6740` | `successful` | checked on `2026-03-08`, write accepted and readback matched except for elapsed seconds |
-| Clock read/write on `TCC-6740` over UDP | `successful after re-check` | checked on `2026-03-08`, read was stable and write converged correctly; first immediate readback could lag once |
-| CPU status on `TCC-6740` | `decoded in RUN and STOP states` | checked on `2026-03-08`, decoded bits matched observed PLC state |
+| Clock read on `TCC-6740 + TCU-6858` | `raw fields returned` | checked on `2026-03-08`, time fields were readable but calendar fields included `month=00`, `year=00` |
+| Clock write/readback on `TCC-6740 + TCU-6858` | `successful` | checked on `2026-03-08`, write accepted and readback matched except for elapsed seconds |
+| Clock read/write on `TCC-6740 + TCU-6858` over UDP | `successful after re-check` | checked on `2026-03-08`, read was stable and write converged correctly; first immediate readback could lag once |
+| CPU status on `TCC-6740 + TCU-6858` | `decoded in RUN and STOP states` | checked on `2026-03-08`, decoded bits matched observed PLC state |
 | Nano 10GX / `TUC-1157` full test over UDP | `TOTAL: 818/818` | checked on `2026-03-09`, `B`, prefixed upper ranges, `U08000+`, and `EB` were all supported in the runtime test set |
 | Nano 10GX / `TUC-1157` `W/H/L` addressing over UDP | `TOTAL: 35/35` | checked on `2026-03-09`, word/byte relation and byte-to-bit relation both passed |
 | Nano 10GX / `TUC-1157` high-level API over UDP | `TOTAL: 21/21` | checked on `2026-03-09`, high-level read/write and `read_many` / `write_many` passed |
@@ -892,7 +992,7 @@ Command:
 python -m tools.auto_rw_test --host 192.168.250.101 --port 1027 --local-port 12000 --protocol udp --timeout 5 --retries 2 --ext-multi-test --skip-errors --log auto_ext_multi_udp.log
 ```
 
-### Clock read on `TCC-6740`
+### Clock read on `TCC-6740 + TCU-6858`
 
 Command:
 
@@ -910,11 +1010,11 @@ datetime: unavailable (month must be in 1..12, not 0)
 Interpretation:
 
 - the clock read command itself is accepted and returns fields
-- this `TOYOPUC-Plus CPU (TCC-6740)` returned a valid time-of-day
+- this `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)` returned a valid time-of-day
 - the calendar fields were not fully initialized on the target at the time of the test
 - callers should treat `read_clock()` as raw clock-field access first and only use `as_datetime()` when the PLC returns a valid calendar date
 
-### Clock write/readback on `TCC-6740`
+### Clock write/readback on `TCC-6740 + TCU-6858`
 
 Command:
 
@@ -935,9 +1035,9 @@ Interpretation:
 - the write command was accepted
 - readback matched the written calendar and time fields
 - seconds had advanced by the time readback was performed
-- `write_clock()` and `read_clock()` are both verified on `TOYOPUC-Plus CPU (TCC-6740)`
+- `write_clock()` and `read_clock()` are both verified on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
 
-### Clock read/write on `TCC-6740` over UDP
+### Clock read/write on `TCC-6740 + TCU-6858` over UDP
 
 Read command:
 
@@ -968,12 +1068,12 @@ readback datetime: 2026-03-08 20:00:16
 
 Interpretation:
 
-- UDP clock read is working on `TOYOPUC-Plus CPU (TCC-6740)`
+- UDP clock read is working on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
 - UDP clock write also worked after re-check
 - one early write/readback attempt returned an older time-of-day before later attempts converged
 - treat immediate first readback after UDP clock write with caution on this target
 
-### CPU status on `TCC-6740`
+### CPU status on `TCC-6740 + TCU-6858`
 
 Command:
 
@@ -1015,7 +1115,7 @@ Decoded meaning:
 
 Interpretation:
 
-- the CPU status command itself is working on `TOYOPUC-Plus CPU (TCC-6740)`
+- the CPU status command itself is working on `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
 - the decoded flag mapping is consistent with both observed RUN and STOP states
 
 ### Nano 10GX / `TUC-1157` over UDP
@@ -1449,29 +1549,36 @@ Observed:
 ## PC3JX-D (TCC-6902) PC3 divisions mode note
 
 - `python -m tools.cpu_status_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
-  - `pc3_mode=True`, `pc10_mode=False`, programs 1-3 running、FR関係ビットはすべてクリア。
+  - `pc3_mode=True`, `pc10_mode=False`, programs 1-3 were running, and all FR-related bits were clear.
 - `python -m tools.clock_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
-  - `datetime: 2026-03-10 08:00:57` で取得成功。
+  - `datetime: 2026-03-10 08:00:57` was read successfully.
 - `tools\run_full_test.bat 192.168.250.101 1025 tcp 4 5 0`
-  - 基本レンジ・prefixed 下位（`P1/P2/P3`）は完走。PC10系 (`U/EB/FR`) と prefixed 上位 (`P1-M1000` など) は `SKIP (unsupported)`。
-  - `GX/GY/GM` はランダムサンプルの一部が未対応アドレスに当たるため表示上 `3/6` や `4/8` になるが、有効アドレスでは書き換え可能。
+  - Basic ranges and lower prefixed ranges (`P1/P2/P3`) completed.
+  - PC10 families (`U/EB/FR`) and upper prefixed ranges such as `P1-M1000` were `SKIP (unsupported)`.
+  - `GX/GY/GM` may show partial sample counts such as `3/6` or `4/8` when random probes hit unsupported addresses; valid addresses were still writable.
 - `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc3jx.log`
-  - 上記と同じカバレッジをログ化済み（`TOTAL: 522/532`, `SKIP` のみが PC10 未対応分）。
-- `tools\run_quick_test.bat` は `D` ワード上位にアクセスして `error_code=0x40` を返すため、PC3JX-D ではターゲット範囲の縮小が必要（`run_full_test` / `auto_rw_test` の結果を参照）。
+  - The same coverage was recorded in the log (`TOTAL: 522/532`); only unsupported areas were skipped.
+- `tools\run_quick_test.bat`
+  - This helper can still hit upper `D` word addresses and return `error_code=0x40` on PC3JX-D.
+  - Use `run_full_test` / `auto_rw_test` as the authoritative range evidence for this mode.
 
 ## PC3JX-D (TCC-6902) Plus Expansion Mode note
 
 - `python -m tools.cpu_status_test --host 192.168.250.101 --port 1025 --protocol tcp --timeout 5 --retries 0`
-  - `pc3_mode=False`, `pc10_mode=True`, programs 1-3 running。
+  - `pc3_mode=False`, `pc10_mode=True`, programs 1-3 were running.
 - `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc10g_p123.log`
-  - 基本レンジ + `U00000-U1FFFF` まで完走。`EB` は未実装で `SKIP (unsupported)`。
+  - Basic ranges and `U00000-U1FFFF` completed.
+  - `EB` remained `SKIP (unsupported)`.
 - `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --max-block-test --pc10-block-words 0x200 --skip-errors --log auto_block.log`
-  - `U` ブロック (`x0200`) は pass、`EB` ブロックは SKIP。`B` エリアは存在しないため byte/word は SKIP。
+  - `U` block access (`x0200`) passed.
+  - `EB` block access was skipped.
+  - `B` does not exist on this model, so `B` byte/word tests were skipped.
 - `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --boundary-test --skip-errors --log auto_boundary.log`
-  - `U07FFE-U08001` など PC10 境界が pass、`EB3FFFE-EB40001` は SKIP。
+  - PC10 boundary checks such as `U07FFE-U08001` passed.
+  - `EB3FFFE-EB40001` remained skipped.
 - `python -m tools.auto_rw_test --host 192.168.250.101 --port 1025 --protocol tcp --ext-multi-test --skip-errors --log auto_ext_multi.log`
-  - PC10 モードでも拡張マルチ（`GX/GY` + `ES/EN` + prefixed）を一巡。
+  - Mixed extended access across `GX/GY`, `ES/EN`, and prefixed areas completed in PC10 mode.
 - `tools\run_full_test.bat 192.168.250.101 1025 tcp 4 5 0`
-  - `TOTAL: 544/544`（EBのみ SKIP）。
+  - `TOTAL: 544/544` with only `EB` skipped.
 - `tools\run_fr_commit_test.bat` / `tools\run_fr_write_scan.bat`
-  - いずれも `error_code=0x40`。PC3JX-D は PC10 モードでも FR 非搭載。
+  - Both returned `error_code=0x40`; PC3JX-D does not expose `FR` even in PC10 mode.
