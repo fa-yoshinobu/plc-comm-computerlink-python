@@ -8,6 +8,26 @@ Related documents:
 - [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
 - [RELEASE.md](RELEASE.md)
 
+## v1.0.2
+
+Regression-guard release for sparse `pc10-word` `read_many` behavior.
+
+Release date:
+
+- 2026-03-12
+
+### Included
+
+- added unit regression tests for sparse `pc10-word` reads:
+  - `test_high_level_read_many_pc10_word_sparse_uses_block_read_only`
+  - `test_high_level_relay_read_many_pc10_word_sparse_uses_block_read_only`
+- documented the new regression guard in [TESTING.md](TESTING.md)
+
+### Verification
+
+- automated tests:
+  - `python -m pytest tests/_internal/test_relay.py -q` passed (`24 passed`)
+
 ## v1.0.0
 
 Initial public release of `toyopuc-computerlink`.
