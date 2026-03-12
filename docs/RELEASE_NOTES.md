@@ -86,3 +86,79 @@ Verified before release:
 - `python -m build`
 - `python -m twine check dist/*`
 
+## v1.0.1
+
+Addressing and validation hardening release focused on documented `W/H/L` behavior,
+prefix-required high-level inputs, and end-to-end verification tooling.
+
+Release date:
+
+- 2026-03-12
+
+### Included
+
+- strict derived `W/H/L` validation for bit-device families
+- preserved parsed input digit width in resolver flow
+- explicit prefix-required rule for `P/K/V/T/C/L/X/Y/M/S/N/R/D` on high-level resolver input
+- explicit `GX`/`GY` naming (no synthetic `GXY` area in public behavior)
+- GUI immediate device-input validation for allowed and rejected forms
+- final-edge consistency tool:
+  - `tools/final_whl_edge_test.py` with `--write-mode bits|hl`
+  - `tools/run_final_whl_edge_matrix.bat` for `TCP/UDP x P1/P2/P3 x bits/hl`
+- relay high-level tool defaults aligned to prefixed targets (`P1-...`)
+- generated API docs refresh (`docs/api/*`)
+
+### Breaking Changes
+
+- high-level resolver now rejects unprefixed forms for:
+  - `P/K/V/T/C/L/X/Y/M/S/N/R/D`
+- examples:
+  - rejected: `D0000`, `M0000`, `D0000L`
+  - accepted: `P1-D0000`, `P2-M0000`, `P3-R0000`, `P1-D0000L`
+- forbidden derived forms are now rejected:
+  - `M0000W`, `M0000L`, `EP0000W`, `GM1000W`, `P1-M0000W`
+
+### Migration Notes
+
+Update calls and scripts that used unprefixed basic families.
+
+Before:
+
+```python
+plc.read("D0000")
+plc.write("M0000", 1)
+```
+
+After:
+
+```python
+plc.read("P1-D0000")
+plc.write("P1-M0000", 1)
+```
+
+For relay high-level tools, use prefixed targets by default:
+
+```powershell
+python examples/relay_basic.py --mode word-read --device P1-D0000
+```
+
+### Verification
+
+- static/type checks:
+  - `mypy` passed on target files
+- automated tests:
+  - `pytest` passed (`76 passed`)
+- package checks:
+  - `python -m build`
+  - `python -m twine check dist/*`
+- API docs:
+  - `tools\build_api_docs.bat`
+- hardware validation:
+  - final-edge `W/H/L` consistency confirmed over TCP and UDP with both write modes
+
+### Related Documents
+
+- [VER_1.0.1_FIX_NOTES.md](VER_1.0.1_FIX_NOTES.md)
+- [TESTING.md](TESTING.md)
+- [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
+
