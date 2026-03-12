@@ -11,6 +11,9 @@ from toyopuc.protocol import (
     build_bit_read,
     build_clock_write,
     build_ext_byte_write,
+    build_ext_multi_read,
+    build_ext_word_read,
+    build_ext_word_write,
     build_fr_register,
     build_pc10_block_read,
     build_pc10_block_write,
@@ -134,11 +137,13 @@ def test_client_relay_write_clock_accepts_p_style_hops():
 
 
 def test_high_level_relay_read_words_accepts_string_device():
-    outer = parse_response(bytes.fromhex("80000b00601202000603001c341201"))
+    outer = parse_response(bytes.fromhex("80000b006012020006030094341201"))
     client = _DummyRelayHighLevelClient(outer)
-    value = client.relay_read_words("P1-L2:N2", "D0000")
+    value = client.relay_read_words("P1-L2:N2", "P1-D0000")
     assert client.last_hops == [(0x12, 0x0002)]
-    assert value == 0x1234
+    assert value == [0x1234]
+    resolved = resolve_device("P1-D0000")
+    assert client.last_inner == build_ext_word_read(resolved.no, resolved.addr, 1)
 
 
 def test_client_relay_write_words_accepts_p_style_hops():
@@ -150,20 +155,22 @@ def test_client_relay_write_words_accepts_p_style_hops():
 
 
 def test_high_level_relay_write_words_accepts_string_device():
-    outer = parse_response(bytes.fromhex("80000800601202000601001d"))
+    outer = parse_response(bytes.fromhex("800008006012020006010095"))
     client = _DummyRelayHighLevelClient(outer)
-    client.relay_write_words("P1-L2:N2", "D0000", 0x1234)
+    client.relay_write_words("P1-L2:N2", "P1-D0000", 0x1234)
     assert client.last_hops == [(0x12, 0x0002)]
-    assert client.last_inner == build_word_write(_word_addr("D0000"), [0x1234])
+    resolved = resolve_device("P1-D0000")
+    assert client.last_inner == build_ext_word_write(resolved.no, resolved.addr, [0x1234])
 
 
 def test_high_level_relay_read_accepts_basic_bit_device():
-    outer = parse_response(bytes.fromhex("80000900601202000602002001"))
+    outer = parse_response(bytes.fromhex("80000900601202000602009801"))
     client = _DummyRelayHighLevelClient(outer)
-    value = client.relay_read("P1-L2:N2", "M0000")
+    value = client.relay_read("P1-L2:N2", "P1-M0000")
     assert value is True
     assert client.last_hops == [(0x12, 0x0002)]
-    assert client.last_inner == build_bit_read(encode_bit_address(parse_address("M0000", "bit")))
+    resolved = resolve_device("P1-M0000")
+    assert client.last_inner == build_ext_multi_read([(resolved.no, resolved.bit_no, resolved.addr)], [], [])
 
 
 def test_high_level_relay_write_accepts_ext_byte_device():
@@ -212,15 +219,18 @@ def test_high_level_relay_commit_fr_uses_ca():
 
 
 def test_high_level_relay_read_many_preserves_input_order():
-    outer = parse_response(bytes.fromhex("80000b00601202000603001c341201"))
+    outer = parse_response(bytes.fromhex("80000b006012020006030094341201"))
     client = _DummyRelayHighLevelClient(outer)
-    values = client.relay_read_many("P1-L2:N2", ["D0000", "D0001"])
+    values = client.relay_read_many("P1-L2:N2", ["P1-D0000", "P1-D0001"])
     assert values == [0x1234, 0x1234]
+    resolved = resolve_device("P1-D0001")
+    assert client.last_inner == build_ext_word_read(resolved.no, resolved.addr, 1)
 
 
 def test_high_level_relay_write_many_uses_per_item_dispatch():
-    outer = parse_response(bytes.fromhex("80000800601202000601001d"))
+    outer = parse_response(bytes.fromhex("800008006012020006010095"))
     client = _DummyRelayHighLevelClient(outer)
-    client.relay_write_many("P1-L2:N2", {"D0000": 0x1234, "D0001": 0x5678})
+    client.relay_write_many("P1-L2:N2", {"P1-D0000": 0x1234, "P1-D0001": 0x5678})
     assert client.last_hops == [(0x12, 0x0002)]
-    assert client.last_inner == build_word_write(_word_addr("D0001"), [0x5678])
+    resolved = resolve_device("P1-D0001")
+    assert client.last_inner == build_ext_word_write(resolved.no, resolved.addr, [0x5678])

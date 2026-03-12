@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Mapping, Optional, Sequence, TypeVar, Union
+from typing import Iterable, List, Mapping, Optional, Sequence, TypeVar, Union
 
 from .address import (
     ParsedAddress,
@@ -45,6 +45,7 @@ _BASIC_BIT_AREAS = {"P", "K", "V", "T", "C", "L", "X", "Y", "M"}
 _BASIC_WORD_AREAS = {"S", "N", "R", "D", "B"}
 _EXT_BIT_AREAS = {"EP", "EK", "EV", "ET", "EC", "EL", "EX", "EY", "EM", "GX", "GY", "GM"}
 _EXT_WORD_AREAS = {"ES", "EN", "H", "U", "EB", "FR"}
+_PREFIX_REQUIRED_AREAS = {"P", "K", "V", "T", "C", "L", "X", "Y", "M", "S", "N", "R", "D"}
 _PREFIX_PROGRAM_NO = {"P1": 0x01, "P2": 0x02, "P3": 0x03}
 _EXT_BIT_SPECS = {
     "EP": (0x00, 0x0000),
@@ -101,6 +102,7 @@ class ResolvedDevice:
     unit: str
     area: str
     index: int
+    digits: int = 0
     prefix: Optional[str] = None
     high: bool = False
     packed: bool = False
@@ -172,6 +174,7 @@ def _resolve_ext_bit(parsed: ParsedAddress, text: str) -> ResolvedDevice:
         unit="bit",
         area=parsed.area,
         index=parsed.index,
+        digits=parsed.digits,
         no=no,
         bit_no=parsed.index & 0x07,
         addr=byte_base + (parsed.index >> 3),
@@ -182,23 +185,34 @@ def resolve_device(device: str) -> ResolvedDevice:
     """Resolve a string device address into a normalized access descriptor."""
     prefix, area, unit = _infer_unit_and_area(device)
     text = device.strip().upper()
+    if prefix is None and area in _PREFIX_REQUIRED_AREAS:
+        raise ValueError(f"{area} area requires P1-/P2-/P3- prefix: {text}")
 
     if prefix:
         ex_no, parsed = parse_prefixed_address(text, unit)
         if unit == "bit":
             bit_no, addr = encode_program_bit_address(parsed)
+            addr32: Optional[int] = None
+            try:
+                # Keep PC10 addr32 when the basic bit encoder can represent it.
+                # Upper prefixed ranges are still valid for program-bit access
+                # even if they are outside basic direct bit ranges.
+                addr32 = encode_bit_address(parsed) | (ex_no << 19)
+            except ValueError:
+                addr32 = None
             return ResolvedDevice(
                 text=text,
                 scheme="program-bit",
                 unit="bit",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 prefix=prefix,
                 packed=parsed.packed,
                 no=_PREFIX_PROGRAM_NO[prefix],
                 bit_no=bit_no,
                 addr=addr,
-                addr32=encode_bit_address(parsed) | (ex_no << 19),
+                addr32=addr32,
             )
         if unit == "word":
             if parsed.packed and parsed.area not in _BASIC_BIT_AREAS:
@@ -209,6 +223,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="word",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 prefix=prefix,
                 packed=parsed.packed,
                 no=_PREFIX_PROGRAM_NO[prefix],
@@ -220,6 +235,7 @@ def resolve_device(device: str) -> ResolvedDevice:
             unit="byte",
             area=parsed.area,
             index=parsed.index,
+            digits=parsed.digits,
             prefix=prefix,
             high=parsed.high,
             packed=parsed.packed,
@@ -237,6 +253,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="bit",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 addr32=encode_bit_address(parsed),
             )
@@ -247,6 +264,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="bit",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 basic_addr=encode_bit_address(parsed),
             )
@@ -262,6 +280,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="word",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 basic_addr=encode_word_address(parsed),
             )
@@ -272,6 +291,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="word",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 addr32=_pc10_u_addr32(parsed.index),
             )
@@ -282,6 +302,7 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="word",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 addr32=_pc10_eb_addr32(parsed.index),
             )
@@ -292,19 +313,18 @@ def resolve_device(device: str) -> ResolvedDevice:
                 unit="word",
                 area=parsed.area,
                 index=parsed.index,
+                digits=parsed.digits,
                 packed=parsed.packed,
                 addr32=encode_fr_word_addr32(parsed.index),
             )
-        ext_area = parsed.area
-        if ext_area in {"GX", "GY"}:
-            ext_area = "GXY"
-        ext = encode_ext_no_address(ext_area, parsed.index, "word")
+        ext = encode_ext_no_address(parsed.area, parsed.index, "word")
         return ResolvedDevice(
             text=text,
             scheme="ext-word",
             unit="word",
             area=parsed.area,
             index=parsed.index,
+            digits=parsed.digits,
             packed=parsed.packed,
             no=ext.no,
             addr=ext.addr,
@@ -317,6 +337,7 @@ def resolve_device(device: str) -> ResolvedDevice:
             unit="byte",
             area=parsed.area,
             index=parsed.index,
+            digits=parsed.digits,
             high=parsed.high,
             packed=parsed.packed,
             basic_addr=encode_byte_address(parsed),
@@ -328,6 +349,7 @@ def resolve_device(device: str) -> ResolvedDevice:
             unit="byte",
             area=parsed.area,
             index=parsed.index,
+            digits=parsed.digits,
             high=parsed.high,
             packed=parsed.packed,
             addr32=_pc10_u_addr32(parsed.index, byte=True, high=parsed.high),
@@ -339,6 +361,7 @@ def resolve_device(device: str) -> ResolvedDevice:
             unit="byte",
             area=parsed.area,
             index=parsed.index,
+            digits=parsed.digits,
             high=parsed.high,
             packed=parsed.packed,
             addr32=_pc10_eb_addr32(parsed.index, byte=True, high=parsed.high),
@@ -346,16 +369,14 @@ def resolve_device(device: str) -> ResolvedDevice:
     if parsed.area == "FR":
         raise ValueError("FR does not support byte access; use word access via PC10 block commands")
 
-    ext_area = parsed.area
-    if ext_area in {"GX", "GY"}:
-        ext_area = "GXY"
-    ext = encode_ext_no_address(ext_area, parsed.index * 2 + (1 if parsed.high else 0), "byte")
+    ext = encode_ext_no_address(parsed.area, parsed.index * 2 + (1 if parsed.high else 0), "byte")
     return ResolvedDevice(
         text=text,
         scheme="ext-byte",
         unit="byte",
         area=parsed.area,
         index=parsed.index,
+        digits=parsed.digits,
         high=parsed.high,
         packed=parsed.packed,
         no=ext.no,
@@ -491,15 +512,36 @@ class ToyopucHighLevelClient(ToyopucClient):
             return
         self._relay_write_one(hops, resolved, value)
 
-    def relay_read_words(self, hops, device: Union[str, ResolvedDevice], count: int = 1):
+    def relay_read_words(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: Union[int, str, ResolvedDevice],
+        count: int = 1,
+    ) -> List[int]:
         """Read one or more word devices through relay hops."""
+        if isinstance(device, int):
+            return super().relay_read_words(hops, device, count)
         resolved = self.resolve_device(device) if isinstance(device, str) else device
         if resolved.unit != "word":
             raise ValueError("relay_read_words() requires a word device")
-        return self.relay_read(hops, resolved, count)
+        values = self.relay_read(hops, resolved, count)
+        if isinstance(values, list):
+            return [int(item) for item in values]
+        return [int(values)]
 
-    def relay_write_words(self, hops, device: Union[str, ResolvedDevice], value) -> None:
+    def relay_write_words(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: Union[int, str, ResolvedDevice],
+        value: Union[Iterable[int], int],
+    ) -> None:
         """Write one or more word devices through relay hops."""
+        if isinstance(device, int):
+            if isinstance(value, int):
+                super().relay_write_words(hops, device, [value])
+            else:
+                super().relay_write_words(hops, device, value)
+            return
         resolved = self.resolve_device(device) if isinstance(device, str) else device
         if resolved.unit != "word":
             raise ValueError("relay_write_words() requires a word device")
@@ -1034,14 +1076,14 @@ class ToyopucHighLevelClient(ToyopucClient):
     def _offset(self, resolved: ResolvedDevice, delta: int) -> ResolvedDevice:
         if delta == 0:
             return resolved
+        width = resolved.digits if resolved.digits > 0 else max(4, len(f"{resolved.index:X}"))
         if resolved.unit == "byte":
             suffix = "H" if resolved.high else "L"
             index = resolved.index + delta
             if resolved.prefix:
-                return resolve_device(f"{resolved.prefix}-{resolved.area}{index:04X}{suffix}")
-            return resolve_device(f"{resolved.area}{index:04X}{suffix}")
+                return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
+            return resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
         index = resolved.index + delta
-        width = max(4, len(f"{resolved.index:X}"))
         suffix = "W" if resolved.packed and resolved.unit == "word" else ""
         if resolved.prefix:
             return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")

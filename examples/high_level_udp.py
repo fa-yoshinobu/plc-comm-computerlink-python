@@ -28,11 +28,11 @@ def main() -> int:
         timeout=args.timeout,
         retries=args.retries,
     ) as plc:
-        plc.write("D0000", 0x1234)
-        print("D0000 =", hex(plc.read("D0000")))
+        plc.write("P1-D0000", 0x1234)
+        print("P1-D0000 =", hex(plc.read("P1-D0000")))
 
-        plc.write("M0000", 1)
-        print("M0000 =", plc.read("M0000"))
+        plc.write("P1-M0000", 1)
+        print("P1-M0000 =", plc.read("P1-M0000"))
 
         print("CPU status =", plc.read_cpu_status())
 

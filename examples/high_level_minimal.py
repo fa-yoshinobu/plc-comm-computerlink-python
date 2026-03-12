@@ -29,9 +29,9 @@ def main() -> int:
         timeout=args.timeout,
         retries=args.retries,
     ) as plc:
-        print("before:", hex(plc.read("D0000")))
-        plc.write("D0000", 0x1234)
-        print("after :", hex(plc.read("D0000")))
+        print("before:", hex(plc.read("P1-D0000")))
+        plc.write("P1-D0000", 0x1234)
+        print("after :", hex(plc.read("P1-D0000")))
 
     return 0
 

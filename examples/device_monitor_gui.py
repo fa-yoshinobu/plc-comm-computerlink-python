@@ -25,7 +25,11 @@ class MonitorApp:
     WARN = "#fff3bf"
     ERROR = "#f8d7da"
     OK = "#e7f6ec"
-    DEVICE_RANGE_RE = re.compile(r"^(.*?)([0-9A-F]+)([WHL]?)$")
+    DEVICE_HELP_TEXT = "Single, comma list, or range like P1-D0000-D000F"
+    DEVICE_PART_RE = re.compile(r"^(?:(P[123])-)?([A-Z]{1,2})([0-9A-F]+)([WHL]?)$")
+    DEVICE_RANGE_TOKEN_RE = re.compile(
+        r"^(?P<left>(?:P[123]-)?[A-Z]{1,2}[0-9A-F]+[WHL]?)-(?P<right>(?:P[123]-)?[A-Z]{1,2}[0-9A-F]+[WHL]?)$"
+    )
 
     def __init__(self, root: tk.Tk, args):
         self.root = root
@@ -40,7 +44,8 @@ class MonitorApp:
         self.units: Dict[str, str] = {}
         self.interval_ms = int(args.interval * 1000)
 
-        self.device_var = tk.StringVar(value="D0000")
+        self.device_var = tk.StringVar(value="P1-D0000")
+        self.device_hint_var = tk.StringVar(value=self.DEVICE_HELP_TEXT)
         self.value_var = tk.StringVar(value="0x1234")
         self.interval_var = tk.StringVar(value=f"{self.args.interval:.1f}")
         self.host_var = tk.StringVar(value=self.args.host)
@@ -59,9 +64,11 @@ class MonitorApp:
 
         for var in (self.host_var, self.port_var, self.protocol_var, self.local_port_var, self.hops_var):
             var.trace_add("write", self._on_connection_field_change)
+        self.device_var.trace_add("write", self._on_device_input_change)
 
         self._configure_style()
         self._build_ui()
+        self._on_device_input_change()
         self._connect(report_dialog=False)
         if args.watch:
             self._add_devices(" ".join(args.watch), log=False)
@@ -105,6 +112,8 @@ class MonitorApp:
         style.configure("Value.TLabel", background=self.PANEL, foreground=self.INK, font=("Consolas", 10, "bold"))
         style.configure("Status.TLabel", background=self.PANEL_ALT, foreground=self.INK, padding=(10, 6))
         style.configure("TButton", padding=(10, 6))
+        style.configure("DeviceOk.TEntry", fieldbackground="#ffffff")
+        style.configure("DeviceError.TEntry", fieldbackground=self.ERROR)
         style.configure("Accent.TButton", padding=(12, 7), background=self.ACCENT, foreground="#ffffff")
         style.map(
             "Accent.TButton",
@@ -205,11 +214,17 @@ class MonitorApp:
         watch_card.columnconfigure(1, weight=1)
 
         ttk.Label(watch_card, text="Device", style="Meta.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Entry(watch_card, textvariable=self.device_var, width=20).grid(row=0, column=1, sticky="ew")
+        self.device_entry = ttk.Entry(
+            watch_card,
+            textvariable=self.device_var,
+            width=20,
+            style="DeviceOk.TEntry",
+        )
+        self.device_entry.grid(row=0, column=1, sticky="ew")
         ttk.Button(watch_card, text="Add", command=self._on_add, style="Accent.TButton").grid(row=0, column=2, padx=(6, 0))
         ttk.Label(
             watch_card,
-            text="Single, comma list, or range like D0000-D000F",
+            textvariable=self.device_hint_var,
             style="Meta.TLabel",
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
@@ -489,22 +504,34 @@ class MonitorApp:
         if log:
             self._log(f"watch add: {key}")
 
-    def _expand_device_token(self, token: str) -> list[str]:
+    @classmethod
+    def _expand_device_token(cls, token: str) -> list[str]:
         token = token.strip().upper()
         if not token:
             return []
-        if "-" not in token:
+        single_match = cls.DEVICE_PART_RE.fullmatch(token)
+        if single_match:
             return [token]
 
-        start_text, end_text = token.split("-", 1)
-        start_match = self.DEVICE_RANGE_RE.fullmatch(start_text.strip().upper())
-        end_match = self.DEVICE_RANGE_RE.fullmatch(end_text.strip().upper())
+        range_match = cls.DEVICE_RANGE_TOKEN_RE.fullmatch(token)
+        if not range_match:
+            raise ValueError(f"invalid device syntax: {token}")
+
+        start_text = range_match.group("left")
+        end_text = range_match.group("right")
+        start_match = cls.DEVICE_PART_RE.fullmatch(start_text)
+        end_match = cls.DEVICE_PART_RE.fullmatch(end_text)
         if not start_match or not end_match:
             raise ValueError(f"invalid range syntax: {token}")
 
-        start_prefix, start_digits, start_suffix = start_match.groups()
-        end_prefix, end_digits, end_suffix = end_match.groups()
-        if start_prefix != end_prefix or start_suffix != end_suffix:
+        start_program, start_area, start_digits, start_suffix = start_match.groups()
+        end_program, end_area, end_digits, end_suffix = end_match.groups()
+
+        if start_program and end_program and start_program != end_program:
+            raise ValueError(f"range must keep the same program prefix: {token}")
+        program = start_program or end_program
+
+        if start_area != end_area or start_suffix != end_suffix:
             raise ValueError(f"range must keep the same device family and suffix: {token}")
         if len(start_digits) != len(end_digits):
             raise ValueError(f"range must keep the same digit width: {token}")
@@ -515,22 +542,53 @@ class MonitorApp:
             raise ValueError(f"range end must be greater than or equal to start: {token}")
 
         width = len(start_digits)
+        program_prefix = f"{program}-" if program else ""
         return [
-            f"{start_prefix}{value:0{width}X}{start_suffix}"
+            f"{program_prefix}{start_area}{value:0{width}X}{start_suffix}"
             for value in range(start_value, end_value + 1)
         ]
 
-    def _parse_device_input(self, text: str) -> list[str]:
+    @classmethod
+    def _parse_device_input(cls, text: str) -> list[str]:
         raw_tokens = [part for part in re.split(r"[\s,;]+", text.strip()) if part]
         if not raw_tokens:
             raise ValueError("device is required")
         devices: list[str] = []
         for token in raw_tokens:
-            devices.extend(self._expand_device_token(token))
+            devices.extend(cls._expand_device_token(token))
         return devices
 
+    @classmethod
+    def parse_and_validate_device_input(cls, text: str) -> list[str]:
+        devices = cls._parse_device_input(text)
+        for device in devices:
+            resolve_device(device)
+        return devices
+
+    def _set_device_input_state(self, valid: bool, message: str):
+        self.device_hint_var.set(message)
+        if valid:
+            self.device_entry.configure(style="DeviceOk.TEntry")
+            return
+        self.device_entry.configure(style="DeviceError.TEntry")
+
+    def _validate_device_input_for_ui(self, text: str) -> tuple[bool, str]:
+        if not text.strip():
+            return True, self.DEVICE_HELP_TEXT
+        try:
+            devices = self.parse_and_validate_device_input(text)
+        except Exception as exc:
+            return False, f"Invalid: {exc}"
+        if len(devices) == 1:
+            return True, f"Valid: {devices[0]}"
+        return True, f"Valid: {len(devices)} devices"
+
+    def _on_device_input_change(self, *_args):
+        valid, message = self._validate_device_input_for_ui(self.device_var.get())
+        self._set_device_input_state(valid, message)
+
     def _add_devices(self, text: str, log: bool = True):
-        devices = self._parse_device_input(text)
+        devices = self.parse_and_validate_device_input(text)
         added: list[str] = []
         for device in devices:
             resolved = resolve_device(device)
@@ -558,6 +616,7 @@ class MonitorApp:
         try:
             self._add_devices(self.device_var.get())
         except Exception as exc:
+            self._set_device_input_state(False, f"Invalid: {exc}")
             messagebox.showerror("Add device", str(exc))
 
     def _on_remove(self):
@@ -740,7 +799,7 @@ def main() -> int:
     parser.add_argument("--retries", type=int, default=0)
     parser.add_argument("--hops", default="")
     parser.add_argument("--interval", type=float, default=1.0)
-    parser.add_argument("--watch", nargs="*", default=["M0000", "D0000"])
+    parser.add_argument("--watch", nargs="*", default=["P1-M0000", "P1-D0000"])
     args = parser.parse_args()
 
     root = tk.Tk()

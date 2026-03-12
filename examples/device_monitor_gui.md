@@ -37,7 +37,7 @@ python examples/device_monitor_gui.py --protocol udp --local-port 12000
 Start with an initial watch list:
 
 ```powershell
-python examples/device_monitor_gui.py --watch D0000 D0001 M0000
+python examples/device_monitor_gui.py --watch P1-D0000 P1-D0001 P1-M0000
 ```
 
 ## Build EXE
@@ -75,15 +75,22 @@ Use `Disconnect` to close the current session.
 The `Device` input supports three styles:
 
 - single device
-  - `D0000`
+  - `P1-D0000`
 - comma or space separated list
-  - `D0000,D0001,M0000`
-  - `D0000 D0001 M0000`
+  - `P1-D0000,P1-D0001,P1-M0000`
+  - `P1-D0000 P1-D0001 P1-M0000`
 - contiguous range
-  - `D0000-D000F`
-  - `M0000-M0007`
+  - `P1-D0000-D000F`
+  - `P1-M0000-M0007`
 
 Press `Add` to register all parsed devices.
+The `Device` field is validated while typing.
+
+Validation notes:
+
+- `P/K/V/T/C/L/X/Y/M/S/N/R/D` families must include `P1-`, `P2-`, or `P3-`
+- `D0000` is rejected (missing prefix)
+- `M0000W` and similar forbidden forms are rejected
 
 ## Table Meanings
 
@@ -137,9 +144,9 @@ Current relay notes in the GUI:
 Use this list when manually verifying relay behavior from the GUI:
 
 - basic bit
-  - `M0000`
+  - `P1-M0000`
 - basic byte
-  - `D0000L`
+  - `P1-D0000L`
 - prefixed word
   - `P1-D0000`
 - extended bit
@@ -176,10 +183,10 @@ Relay CPU status:
 3. Press `Connect`.
 4. Press `Read Status`.
 
-Relay write/readback on `D0000`:
+Relay write/readback on `P1-D0000`:
 
 1. Set `Relay hops`.
-2. Enter `D0000` in `Device`.
+2. Enter `P1-D0000` in `Device`.
 3. Enter `0x1234` in `Value`.
 4. Press `Write`.
 5. Press `Read Selected` or `Poll Now`.

@@ -30,6 +30,10 @@ It is for users who want to work directly with:
 - explicit numeric addresses
 - parser/encoder aware low-level usage
 
+High-level address note:
+
+- `P/K/V/T/C/L/X/Y/M/S/N/R/D` families require `P1-`, `P2-`, or `P3-` prefix (for example `P1-D0000`)
+
 Quick copy/paste commands:
 
 ```powershell
@@ -128,19 +132,19 @@ python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp
 Word read through relay:
 
 ```powershell
-python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode word-read --device D0000 --count 1
+python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode word-read --device P1-D0000 --count 1
 ```
 
 Word write through relay:
 
 ```powershell
-python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode word-write --device D0000 --value 0x1234
+python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode word-write --device P1-D0000 --value 0x1234
 ```
 
 Repeated contiguous relay word write/readback test:
 
 ```powershell
-python -m tools.relay_block_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4,P1-L2:N6" --device D0000 --count 8 --loops 3 --value 0x1000 --step 1 --loop-step 0x0100
+python -m tools.relay_block_test --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4,P1-L2:N6" --device P1-D0000 --count 8 --loops 3 --value 0x1000 --step 1 --loop-step 0x0100
 ```
 
 FR write through relay (RAM update only):

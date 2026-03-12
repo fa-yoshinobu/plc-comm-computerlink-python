@@ -29,14 +29,14 @@ def main() -> int:
         timeout=args.timeout,
         retries=args.retries,
     ) as plc:
-        plc.write("D0000", 0x1234)
-        print("D0000 =", hex(plc.read("D0000")))
+        plc.write("P1-D0000", 0x1234)
+        print("P1-D0000 =", hex(plc.read("P1-D0000")))
 
-        plc.write("D0000L", 0x56)
-        print("D0000L =", hex(plc.read("D0000L")))
+        plc.write("P1-D0000L", 0x56)
+        print("P1-D0000L =", hex(plc.read("P1-D0000L")))
 
-        plc.write("M0000", 1)
-        print("M0000 =", plc.read("M0000"))
+        plc.write("P1-M0000", 1)
+        print("P1-M0000 =", plc.read("P1-M0000"))
 
         plc.write("P1-D0000", 0x2222)
         print("P1-D0000 =", hex(plc.read("P1-D0000")))
@@ -44,13 +44,13 @@ def main() -> int:
         plc.write("ES0000", 0x3333)
         print("ES0000 =", hex(plc.read("ES0000")))
 
-        values = plc.read_many(["D0000", "M0000", "P1-D0000", "ES0000"])
+        values = plc.read_many(["P1-D0000", "P1-M0000", "P1-D0000L", "ES0000"])
         print("read_many =", values)
 
-        plc.write("M0010W", 0x1234)
-        print("M0010W =", hex(plc.read("M0010W")))
-        print("M0010L =", hex(plc.read("M0010L")))
-        print("M0010H =", hex(plc.read("M0010H")))
+        plc.write("P1-M0010W", 0x1234)
+        print("P1-M0010W =", hex(plc.read("P1-M0010W")))
+        print("P1-M0010L =", hex(plc.read("P1-M0010L")))
+        print("P1-M0010H =", hex(plc.read("P1-M0010H")))
 
         plc.write("EX0010L", 0xAB)
         print("EX0010L =", hex(plc.read("EX0010L")))

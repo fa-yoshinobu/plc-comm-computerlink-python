@@ -46,7 +46,7 @@ def main() -> int:
         ],
         default="cpu-status",
     )
-    p.add_argument("--device", default="D0000")
+    p.add_argument("--device", default="P1-D0000")
     p.add_argument("--count", type=int, default=1)
     p.add_argument("--value", type=parse_int_auto, default=0x1234)
     p.add_argument("--clock-value", type=parse_datetime_iso, default=None, help="ISO datetime for --mode clock-write")
@@ -108,9 +108,10 @@ def main() -> int:
                 raise SystemExit("--mode word-write currently requires --count 1")
             plc.relay_write_words(args.hops, args.device, args.value)
             readback = plc.relay_read_words(args.hops, args.device, count=1)
+            readback_word = readback[0] if isinstance(readback, list) else int(readback)
             print("word write device =", args.device)
             print("word write value =", f"0x{args.value & 0xFFFF:04X}")
-            print("word readback =", f"0x{readback:04X}")
+            print("word readback =", f"0x{readback_word:04X}")
             return 0
 
         if args.mode == "fr-read":
@@ -139,11 +140,14 @@ def main() -> int:
             print("fr commit wait =", args.wait)
             return 0
 
-        value = plc.relay_read_words(args.hops, args.device, count=args.count)
-        if isinstance(value, list):
-            print("word values =", ", ".join(f"0x{item:04X}" for item in value))
+        values = plc.relay_read_words(args.hops, args.device, count=args.count)
+        if isinstance(values, list):
+            if args.count == 1:
+                print("word value =", f"0x{values[0]:04X}")
+            else:
+                print("word values =", ", ".join(f"0x{item:04X}" for item in values))
         else:
-            print("word value =", f"0x{value:04X}")
+            print("word value =", f"0x{int(values):04X}")
         return 0
 
 

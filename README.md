@@ -56,8 +56,8 @@ Read and write one device with the high-level client:
 from toyopuc import ToyopucHighLevelClient
 
 with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
-    print(hex(plc.read("D0100")))
-    plc.write("D0100", 0x1234)
+    print(hex(plc.read("P1-D0100")))
+    plc.write("P1-D0100", 0x1234)
 ```
 
 TCP minimal example:
@@ -66,7 +66,7 @@ TCP minimal example:
 from toyopuc import ToyopucHighLevelClient
 
 with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
-    print(hex(plc.read("D0100")))
+    print(hex(plc.read("P1-D0100")))
 ```
 
 UDP minimal example with a fixed local source port:
@@ -82,7 +82,7 @@ with ToyopucHighLevelClient(
     timeout=5,
     retries=2,
 ) as plc:
-    print(hex(plc.read("D0100")))
+    print(hex(plc.read("P1-D0100")))
 ```
 
 Relay example through one hop:
@@ -178,7 +178,7 @@ Meaning:
 - `ToyopucClient`
   PLC communication client. It manages TCP/UDP transport, timeout, retry, and command send/receive.
 - `ToyopucHighLevelClient`
-  High-level client that accepts string addresses such as `D0100`, `M0001`, `P1-D0100`, `ES0000`, or `GX0000` and hides the low-level branching.
+  High-level client that accepts string addresses such as `P1-D0100`, `P1-M0001`, `ES0000`, or `GX0000` and hides the low-level branching.
 - `resolve_device()`
   High-level address resolver. It inspects the address string, decides the access scheme automatically, and returns a normalized `ResolvedDevice`.
 - `parse_address()`
@@ -220,14 +220,16 @@ use `ToyopucHighLevelClient`.
 
 This layer resolves the address automatically and dispatches to the correct low-level command family.
 
+For high-level resolver input, `P/K/V/T/C/L/X/Y/M/S/N/R/D` families must include a `P1-`, `P2-`, or `P3-` prefix.
+
 ```python
 from toyopuc import ToyopucHighLevelClient
 
 with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
-    print(hex(plc.read("D0100")))
-    plc.write("D0100", 0x1234)
-    print(plc.read("M0001"))
-    plc.write("M0001", 1)
+    print(hex(plc.read("P1-D0100")))
+    plc.write("P1-D0100", 0x1234)
+    print(plc.read("P1-M0001"))
+    plc.write("P1-M0001", 1)
 ```
 
 Main high-level methods:
@@ -285,31 +287,31 @@ Examples:
 from toyopuc import ToyopucHighLevelClient
 
 with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
-    value = plc.read("D0100")
-    bit = plc.read("M0001")
-    low_byte = plc.read("D0100L")
+    value = plc.read("P1-D0100")
+    bit = plc.read("P1-M0001")
+    low_byte = plc.read("P1-D0100L")
     p1_word = plc.read("P1-D0000")
     ext_word = plc.read("ES0000")
 
-    plc.write("M0001", 1)
-    plc.write("D0100", 0x1234)
-    plc.write("D0100L", 0x12)
-    plc.write("M0010W", 0x1234)
-    plc.write("X0010H", 0x12)
+    plc.write("P1-M0001", 1)
+    plc.write("P1-D0100", 0x1234)
+    plc.write("P1-D0100L", 0x12)
+    plc.write("P1-M0010W", 0x1234)
+    plc.write("P1-X0010H", 0x12)
     plc.write("P1-M0000", 1)
 
-    words = plc.read("D0100", count=4)
-    bytes_ = plc.read("D0100L", count=4)
-    bits = plc.read("M0001", count=4)
-    bit_word = plc.read("M0010W")
-    bit_byte = plc.read("X0010H")
+    words = plc.read("P1-D0100", count=4)
+    bytes_ = plc.read("P1-D0100L", count=4)
+    bits = plc.read("P1-M0001", count=4)
+    bit_word = plc.read("P1-M0010W")
+    bit_byte = plc.read("P1-X0010H")
 
-    plc.write("D0100", [0x1111, 0x2222, 0x3333])
-    plc.write("D0100L", bytes([0x12, 0x34, 0x56]))
-    plc.write("M0001", [1, 0, 1, 1])
+    plc.write("P1-D0100", [0x1111, 0x2222, 0x3333])
+    plc.write("P1-D0100L", bytes([0x12, 0x34, 0x56]))
+    plc.write("P1-M0001", [1, 0, 1, 1])
 
-    mixed = plc.read_many(["D0100", "M0001", "P1-D0000", "ES0000"])
-    plc.write_many({"D0100": 0xAAAA, "M0001": 1, "P1-M0000": 1})
+    mixed = plc.read_many(["P1-D0100", "P1-M0001", "P1-D0000", "ES0000"])
+    plc.write_many({"P1-D0100": 0xAAAA, "P1-M0001": 1, "P1-M0000": 1})
     plc_time = plc.read_clock()
     plc.write_clock(plc_time)
 ```

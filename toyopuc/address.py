@@ -22,6 +22,7 @@ class ParsedAddress:
     unit: str  # 'word', 'byte', 'bit'
     high: bool = False
     packed: bool = False
+    digits: int = 0
 
 
 @dataclass(frozen=True)
@@ -101,16 +102,31 @@ _BIT_BASE = {
     'M': 0x1800,
 }
 
-_BIT_MAX_INDEX = {
-    'P': 0x01FF,
-    'K': 0x02FF,
-    'V': 0x00FF,
-    'T': 0x01FF,
-    'C': 0x01FF,
-    'L': 0x07FF,
-    'X': 0x07FF,
-    'Y': 0x07FF,
-    'M': 0x07FF,
+_BASIC_BIT_SEGMENTS = {
+    'P': [(0x000, 0x1FF)],
+    'K': [(0x000, 0x2FF)],
+    'V': [(0x000, 0x0FF)],
+    'T': [(0x000, 0x1FF)],
+    'C': [(0x000, 0x1FF)],
+    'L': [(0x000, 0x7FF), (0x1000, 0x2FFF)],
+    'X': [(0x000, 0x7FF)],
+    'Y': [(0x000, 0x7FF)],
+    'M': [(0x000, 0x7FF), (0x1000, 0x17FF)],
+}
+
+_EXT_BIT_SEGMENTS = {
+    'EP': [(0x0000, 0x0FFF)],
+    'EK': [(0x0000, 0x0FFF)],
+    'EV': [(0x0000, 0x0FFF)],
+    'ET': [(0x0000, 0x07FF)],
+    'EC': [(0x0000, 0x07FF)],
+    'EL': [(0x0000, 0x1FFF)],
+    'EX': [(0x0000, 0x07FF)],
+    'EY': [(0x0000, 0x07FF)],
+    'EM': [(0x0000, 0x1FFF)],
+    'GX': [(0x0000, 0xFFFF)],
+    'GY': [(0x0000, 0xFFFF)],
+    'GM': [(0x0000, 0xFFFF)],
 }
 
 
@@ -142,8 +158,9 @@ _EXT_AREA_MAP = {
     'EN': {'no': 0x00, 'word_base': 0x1000, 'byte_base': 0x2000},
     'H': {'no': 0x00, 'word_base': 0x1800, 'byte_base': 0x3000},
     'U': {'no': 0x08, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'GXY': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'GM': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x2000},
+    'GX': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x0000},
+    'GY': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x0000},
+    'GM': {'no': 0x07, 'word_base': 0x1000, 'byte_base': 0x2000},
 }
 
 _PROGRAM_BIT_SEGMENTS = {
@@ -173,6 +190,19 @@ _PROGRAM_BYTE_SEGMENTS = {
 }
 
 
+def _derive_packed_segments(bit_segments: dict[str, list[tuple[int, int]]]) -> dict[str, list[tuple[int, int]]]:
+    packed_segments: dict[str, list[tuple[int, int]]] = {}
+    for area, segments in bit_segments.items():
+        packed_segments[area] = []
+        for start, end in segments:
+            packed_segments[area].append((start >> 4, end >> 4))
+    return packed_segments
+
+
+_BASIC_PACKED_SEGMENTS = _derive_packed_segments(_BASIC_BIT_SEGMENTS)
+_EXT_PACKED_SEGMENTS = _derive_packed_segments(_EXT_BIT_SEGMENTS)
+
+
 def _derive_program_segments_from_bit_segments() -> tuple[dict[str, list[tuple[int, int, int]]], dict[str, list[tuple[int, int, int]]]]:
     word_segments: dict[str, list[tuple[int, int, int]]] = {}
     byte_segments: dict[str, list[tuple[int, int, int]]] = {}
@@ -180,12 +210,58 @@ def _derive_program_segments_from_bit_segments() -> tuple[dict[str, list[tuple[i
         word_segments[area] = []
         byte_segments[area] = []
         for start, end, byte_base in segments:
-            word_segments[area].append((start, end, byte_base >> 1))
-            byte_segments[area].append((start, end, byte_base))
+            packed_start = start >> 4
+            packed_end = end >> 4
+            word_segments[area].append((packed_start, packed_end, byte_base >> 1))
+            byte_segments[area].append((packed_start, packed_end, byte_base))
     return word_segments, byte_segments
 
 
 _PROGRAM_BIT_WORD_SEGMENTS, _PROGRAM_BIT_BYTE_SEGMENTS = _derive_program_segments_from_bit_segments()
+
+_PROGRAM_PACKED_SEGMENTS = {
+    area: [(start, end) for start, end, _ in segments]
+    for area, segments in _PROGRAM_BIT_WORD_SEGMENTS.items()
+}
+
+_PACKED_MAX_DIGITS = {
+    'M': 3,
+    'EP': 3,
+    'GM': 3,
+}
+
+
+def _in_segments(index: int, segments: list[tuple[int, int]]) -> bool:
+    return any(start <= index <= end for start, end in segments)
+
+
+def _validate_bit_index(area: str, index: int) -> None:
+    if area in _BASIC_BIT_SEGMENTS:
+        if not _in_segments(index, _BASIC_BIT_SEGMENTS[area]):
+            raise ValueError(f'Bit address out of range for {area}: {area}{index:04X}')
+        return
+    if area in _EXT_BIT_SEGMENTS:
+        if not _in_segments(index, _EXT_BIT_SEGMENTS[area]):
+            raise ValueError(f'Bit address out of range for {area}: {area}{index:04X}')
+
+
+def _validate_packed_digits(area: str, text: str, digits: int) -> None:
+    max_digits = _PACKED_MAX_DIGITS.get(area)
+    if max_digits is not None and digits > max_digits:
+        raise ValueError(f'Packed W/H/L notation must use <= {max_digits} hex digits for {area}: {text!r}')
+
+
+def _validate_packed_index(area: str, index: int, *, prefixed: bool, text: str) -> None:
+    if prefixed:
+        segments = _PROGRAM_PACKED_SEGMENTS.get(area)
+    elif area in _BASIC_PACKED_SEGMENTS:
+        segments = _BASIC_PACKED_SEGMENTS[area]
+    else:
+        segments = _EXT_PACKED_SEGMENTS.get(area)
+    if segments is None:
+        raise ValueError(f'W/H/L suffix is only valid for bit-device families: {text!r}')
+    if not _in_segments(index, segments):
+        raise ValueError(f'Packed W/H/L address out of range: {text!r}')
 
 
 def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
@@ -200,7 +276,8 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
         raise ValueError(f'Invalid address format: {text!r}')
 
     area = m.group('area')
-    num = int(m.group('num'), radix)
+    num_text = m.group('num')
+    num = int(num_text, radix)
     suffix = m.group('suffix')
 
     if unit == 'byte' and suffix is None:
@@ -216,7 +293,20 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
         if suffix is not None:
             raise ValueError(f'Suffix only valid for byte/packed-word notation: {text!r}')
 
-    return ParsedAddress(area=area, index=num, unit=unit, high=(suffix == 'H'), packed=(suffix == 'W'))
+    if unit == 'bit':
+        _validate_bit_index(area, num)
+    elif suffix == 'W' or (unit == 'byte' and (area in _BASIC_BIT_SEGMENTS or area in _EXT_BIT_SEGMENTS)):
+        _validate_packed_digits(area, text, len(num_text))
+        _validate_packed_index(area, num, prefixed=False, text=text)
+
+    return ParsedAddress(
+        area=area,
+        index=num,
+        unit=unit,
+        high=(suffix == 'H'),
+        packed=(suffix == 'W'),
+        digits=len(num_text),
+    )
 
 
 def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[int, ParsedAddress]:
@@ -236,7 +326,8 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[in
 
     prefix = m.group('prefix')
     area = m.group('area')
-    num = int(m.group('num'), radix)
+    num_text = m.group('num')
+    num = int(num_text, radix)
     suffix = m.group('suffix')
 
     if unit == 'byte' and suffix is None:
@@ -251,8 +342,24 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[in
         if suffix is not None:
             raise ValueError(f'Suffix only valid for byte/packed-word notation: {text!r}')
 
+    if unit == 'bit':
+        if area not in _PROGRAM_BIT_SEGMENTS:
+            raise ValueError(f'Unsupported program bit area: {area}')
+        if not _in_segments(num, [(start, end) for start, end, _ in _PROGRAM_BIT_SEGMENTS[area]]):
+            raise ValueError(f'Program bit address out of range: {area}{num:04X}')
+    elif suffix == 'W' or (unit == 'byte' and area in _PROGRAM_BIT_SEGMENTS):
+        _validate_packed_digits(area, text, len(num_text))
+        _validate_packed_index(area, num, prefixed=True, text=text)
+
     ex_no = _P_EXNO[prefix]
-    return ex_no, ParsedAddress(area=area, index=num, unit=unit, high=(suffix == 'H'), packed=(suffix == 'W'))
+    return ex_no, ParsedAddress(
+        area=area,
+        index=num,
+        unit=unit,
+        high=(suffix == 'H'),
+        packed=(suffix == 'W'),
+        digits=len(num_text),
+    )
 
 
 def encode_word_address(addr: ParsedAddress) -> int:
@@ -266,6 +373,8 @@ def encode_word_address(addr: ParsedAddress) -> int:
         raise ValueError('Expected word address')
     if addr.packed and addr.area not in _BIT_BASE:
         raise ValueError(f'W suffix is only valid for bit-device families: {addr.area}{addr.index:X}W')
+    if addr.packed and not _in_segments(addr.index, _BASIC_PACKED_SEGMENTS[addr.area]):
+        raise ValueError(f'Packed W address out of range: {addr.area}{addr.index:03X}W')
     base = _WORD_BASE.get(addr.area)
     if base is None:
         raise ValueError(f'Unsupported word area: {addr.area}')
@@ -280,6 +389,9 @@ def encode_byte_address(addr: ParsedAddress) -> int:
     """
     if addr.unit != 'byte':
         raise ValueError('Expected byte address')
+    if addr.area in _BASIC_PACKED_SEGMENTS and not _in_segments(addr.index, _BASIC_PACKED_SEGMENTS[addr.area]):
+        suffix = 'H' if addr.high else 'L'
+        raise ValueError(f'Packed byte address out of range: {addr.area}{addr.index:03X}{suffix}')
     base = _BYTE_BASE.get(addr.area)
     if base is None:
         raise ValueError(f'Unsupported byte area: {addr.area}')
@@ -296,8 +408,7 @@ def encode_bit_address(addr: ParsedAddress) -> int:
     base = _BIT_BASE.get(addr.area)
     if base is None:
         raise ValueError(f'Unsupported bit area: {addr.area}')
-    max_index = _BIT_MAX_INDEX.get(addr.area)
-    if max_index is not None and addr.index > max_index:
+    if not _in_segments(addr.index, _BASIC_BIT_SEGMENTS[addr.area]):
         raise ValueError(f'Bit address out of range for {addr.area}: {addr.area}{addr.index:04X}')
     return base + addr.index
 
@@ -413,8 +524,6 @@ def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
       `CMD=C2/C3`, not `CMD=94-99`
     """
     area_u = area.upper()
-    if area_u in {'GX', 'GY'}:
-        area_u = 'GXY'
     no: Optional[int] = None
     addr = index
 
