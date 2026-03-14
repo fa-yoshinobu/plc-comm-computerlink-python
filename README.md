@@ -1,4 +1,4 @@
-# TOYOPUC Communication (Python)
+# TOYOPUC Computer Link for Python
 
 `toyopuc` is a small Python library for TOYOPUC computer-link communication over TCP or UDP.
 
