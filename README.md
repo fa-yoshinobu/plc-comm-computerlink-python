@@ -1,5 +1,10 @@
 # TOYOPUC Computer Link for Python
 
+[![release](https://img.shields.io/github/v/release/fa-yoshinobu/toyopuc-computer-link-python?display_name=tag&sort=semver&label=release&color=orange&style=flat-square)](https://github.com/fa-yoshinobu/toyopuc-computer-link-python/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/fa-yoshinobu/toyopuc-computer-link-python/ci.yml?label=CI&style=flat-square)](https://github.com/fa-yoshinobu/toyopuc-computer-link-python/actions/workflows/ci.yml)
+[![license](https://img.shields.io/github/license/fa-yoshinobu/toyopuc-computer-link-python?label=license&color=yellowgreen&style=flat-square)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square)](pyproject.toml)
+
 `toyopuc` is a small Python library for TOYOPUC computer-link communication over TCP or UDP.
 
 At a glance:
