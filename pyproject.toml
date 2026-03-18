@@ -33,9 +33,14 @@ classifiers = [
 docs = ["pdoc"]
 
 [project.urls]
-Homepage = "https://github.com/fa-yoshinobu/toyopuc-computer-link-python"
-Repository = "https://github.com/fa-yoshinobu/toyopuc-computer-link-python"
-Documentation = "https://fa-yoshinobu.github.io/toyopuc-computer-link-python/"
+Homepage = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
+Repository = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
+Documentation = "https://fa-yoshinobu.github.io/plc-comm-computerlink-python/"
 
 [tool.setuptools.packages.find]
 include = ["toyopuc"]
+exclude = ["tests*", "scripts*", "docs/maintainer*", "docs/validation*"]
+
+[tool.setuptools]
+include-package-data = true
+exclude-package-data = { "*" = ["TODO.md"] }

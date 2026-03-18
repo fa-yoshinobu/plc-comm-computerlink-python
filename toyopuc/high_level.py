@@ -43,9 +43,36 @@ from .protocol import (
 
 _BASIC_BIT_AREAS = {"P", "K", "V", "T", "C", "L", "X", "Y", "M"}
 _BASIC_WORD_AREAS = {"S", "N", "R", "D", "B"}
-_EXT_BIT_AREAS = {"EP", "EK", "EV", "ET", "EC", "EL", "EX", "EY", "EM", "GX", "GY", "GM"}
+_EXT_BIT_AREAS = {
+    "EP",
+    "EK",
+    "EV",
+    "ET",
+    "EC",
+    "EL",
+    "EX",
+    "EY",
+    "EM",
+    "GX",
+    "GY",
+    "GM",
+}
 _EXT_WORD_AREAS = {"ES", "EN", "H", "U", "EB", "FR"}
-_PREFIX_REQUIRED_AREAS = {"P", "K", "V", "T", "C", "L", "X", "Y", "M", "S", "N", "R", "D"}
+_PREFIX_REQUIRED_AREAS = {
+    "P",
+    "K",
+    "V",
+    "T",
+    "C",
+    "L",
+    "X",
+    "Y",
+    "M",
+    "S",
+    "N",
+    "R",
+    "D",
+}
 _PREFIX_PROGRAM_NO = {"P1": 0x01, "P2": 0x02, "P3": 0x03}
 _EXT_BIT_SPECS = {
     "EP": (0x00, 0x0000),
@@ -131,12 +158,20 @@ def _infer_unit_and_area(device: str) -> tuple[Optional[str], str, str]:
     parsed_byte = None
     if body.endswith(("L", "H")):
         parsed_byte = body[:-1]
-        for area in sorted(_BASIC_BIT_AREAS | _BASIC_WORD_AREAS | _EXT_BIT_AREAS | _EXT_WORD_AREAS, key=len, reverse=True):
+        for area in sorted(
+            _BASIC_BIT_AREAS | _BASIC_WORD_AREAS | _EXT_BIT_AREAS | _EXT_WORD_AREAS,
+            key=len,
+            reverse=True,
+        ):
             if parsed_byte.startswith(area):
                 return prefix, area, "byte"
         raise ValueError(f"Unknown address area: {device}")
 
-    for area in sorted(_EXT_BIT_AREAS | _EXT_WORD_AREAS | _BASIC_BIT_AREAS | _BASIC_WORD_AREAS, key=len, reverse=True):
+    for area in sorted(
+        _EXT_BIT_AREAS | _EXT_WORD_AREAS | _BASIC_BIT_AREAS | _BASIC_WORD_AREAS,
+        key=len,
+        reverse=True,
+    ):
         if body.startswith(area):
             if area in _EXT_BIT_AREAS or area in _BASIC_BIT_AREAS:
                 return prefix, area, "bit"
@@ -216,7 +251,9 @@ def resolve_device(device: str) -> ResolvedDevice:
             )
         if unit == "word":
             if parsed.packed and parsed.area not in _BASIC_BIT_AREAS:
-                raise ValueError(f"W suffix is only valid for bit-device families: {text}")
+                raise ValueError(
+                    f"W suffix is only valid for bit-device families: {text}"
+                )
             return ResolvedDevice(
                 text=text,
                 scheme="program-word",
@@ -367,9 +404,13 @@ def resolve_device(device: str) -> ResolvedDevice:
             addr32=_pc10_eb_addr32(parsed.index, byte=True, high=parsed.high),
         )
     if parsed.area == "FR":
-        raise ValueError("FR does not support byte access; use word access via PC10 block commands")
+        raise ValueError(
+            "FR does not support byte access; use word access via PC10 block commands"
+        )
 
-    ext = encode_ext_no_address(parsed.area, parsed.index * 2 + (1 if parsed.high else 0), "byte")
+    ext = encode_ext_no_address(
+        parsed.area, parsed.index * 2 + (1 if parsed.high else 0), "byte"
+    )
     return ResolvedDevice(
         text=text,
         scheme="ext-byte",
@@ -399,7 +440,9 @@ def _read_pc10_multi_words(client: ToyopucClient, addrs32: Sequence[int]) -> Lis
         payload.extend(addr32.to_bytes(4, "little"))
     data = client.pc10_multi_read(bytes(payload))
     data = data[4:]
-    return [int.from_bytes(data[i * 2 : i * 2 + 2], "little") for i in range(len(addrs32))]
+    return [
+        int.from_bytes(data[i * 2 : i * 2 + 2], "little") for i in range(len(addrs32))
+    ]
 
 
 def _read_pc10_block_word(client: ToyopucClient, addr32: int) -> int:
@@ -489,7 +532,9 @@ class ToyopucHighLevelClient(ToyopucClient):
             raise ValueError("count must be >= 1")
         if count == 1:
             return self._relay_read_one(hops, resolved)
-        return [self._relay_read_one(hops, self._offset(resolved, i)) for i in range(count)]
+        return [
+            self._relay_read_one(hops, self._offset(resolved, i)) for i in range(count)
+        ]
 
     def relay_write(self, hops, device: Union[str, ResolvedDevice], value) -> None:
         """Write one item or a contiguous sequence through relay hops."""
@@ -547,11 +592,15 @@ class ToyopucHighLevelClient(ToyopucClient):
             raise ValueError("relay_write_words() requires a word device")
         self.relay_write(hops, resolved, value)
 
-    def relay_read_many(self, hops, devices: Sequence[Union[str, ResolvedDevice]]) -> List[object]:
+    def relay_read_many(
+        self, hops, devices: Sequence[Union[str, ResolvedDevice]]
+    ) -> List[object]:
         """Read multiple devices through relay hops and preserve input order."""
         return [self.relay_read(hops, device) for device in devices]
 
-    def relay_write_many(self, hops, items: Mapping[Union[str, ResolvedDevice], object]) -> None:
+    def relay_write_many(
+        self, hops, items: Mapping[Union[str, ResolvedDevice], object]
+    ) -> None:
         """Write multiple devices through relay hops in input order."""
         for device, value in items.items():
             self.relay_write(hops, device, value)
@@ -568,7 +617,9 @@ class ToyopucHighLevelClient(ToyopucClient):
         """Read one or more FR words through relay hops."""
         resolved = self.resolve_device(device) if isinstance(device, str) else device
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("relay_read_fr() requires an FR word device such as FR000000")
+            raise ValueError(
+                "relay_read_fr() requires an FR word device such as FR000000"
+            )
         return self.relay_read(hops, resolved, count)
 
     def write_fr(
@@ -613,7 +664,9 @@ class ToyopucHighLevelClient(ToyopucClient):
         """Write one or more FR words through relay hops, optionally committing."""
         resolved = self.resolve_device(device) if isinstance(device, str) else device
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("relay_write_fr() requires an FR word device such as FR000000")
+            raise ValueError(
+                "relay_write_fr() requires an FR word device such as FR000000"
+            )
         if isinstance(value, (list, tuple)):
             values = [int(item) for item in value]
         else:
@@ -663,7 +716,9 @@ class ToyopucHighLevelClient(ToyopucClient):
         """Commit every FR block touched by the given FR word range through relay hops."""
         resolved = self.resolve_device(device) if isinstance(device, str) else device
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("relay_commit_fr() requires an FR word device such as FR000000")
+            raise ValueError(
+                "relay_commit_fr() requires an FR word device such as FR000000"
+            )
         self.relay_commit_fr_range(
             hops,
             resolved.index,
@@ -733,7 +788,9 @@ class ToyopucHighLevelClient(ToyopucClient):
             This method currently favors simple, predictable dispatch over
             grouped transport optimization.
         """
-        resolved = [self.resolve_device(d) if isinstance(d, str) else d for d in devices]
+        resolved = [
+            self.resolve_device(d) if isinstance(d, str) else d for d in devices
+        ]
         return [self._read_one(item) for item in resolved]
 
     def write_many(self, items: Mapping[Union[str, ResolvedDevice], object]) -> None:
@@ -747,7 +804,9 @@ class ToyopucHighLevelClient(ToyopucClient):
         """
         resolved_items = []
         for device, value in items.items():
-            resolved = self.resolve_device(device) if isinstance(device, str) else device
+            resolved = (
+                self.resolve_device(device) if isinstance(device, str) else device
+            )
             if resolved.area == "FR":
                 _raise_generic_fr_write_error()
             resolved_items.append((resolved, value))
@@ -803,19 +862,25 @@ class ToyopucHighLevelClient(ToyopucClient):
 
     def _relay_read_one(self, hops, resolved: ResolvedDevice):
         if resolved.scheme == "basic-bit":
-            resp = self.send_via_relay(hops, build_bit_read(_require(resolved.basic_addr, "basic_addr")))
+            resp = self.send_via_relay(
+                hops, build_bit_read(_require(resolved.basic_addr, "basic_addr"))
+            )
             if resp.cmd != 0x20:
                 raise ToyopucProtocolError("Unexpected CMD in relay bit-read response")
             if len(resp.data) != 1:
                 raise ToyopucProtocolError("Relay bit-read response must be 1 byte")
             return bool(resp.data[0] & 0x01)
         if resolved.scheme == "basic-word":
-            resp = self.send_via_relay(hops, build_word_read(_require(resolved.basic_addr, "basic_addr"), 1))
+            resp = self.send_via_relay(
+                hops, build_word_read(_require(resolved.basic_addr, "basic_addr"), 1)
+            )
             if resp.cmd != 0x1C:
                 raise ToyopucProtocolError("Unexpected CMD in relay word-read response")
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "basic-byte":
-            resp = self.send_via_relay(hops, build_byte_read(_require(resolved.basic_addr, "basic_addr"), 1))
+            resp = self.send_via_relay(
+                hops, build_byte_read(_require(resolved.basic_addr, "basic_addr"), 1)
+            )
             if resp.cmd != 0x1E:
                 raise ToyopucProtocolError("Unexpected CMD in relay byte-read response")
             if len(resp.data) != 1:
@@ -825,65 +890,113 @@ class ToyopucHighLevelClient(ToyopucClient):
             resp = self.send_via_relay(
                 hops,
                 build_ext_multi_read(
-                    [(_require(resolved.no, "program number"), _require(resolved.bit_no, "program bit"), _require(resolved.addr, "program addr"))],
+                    [
+                        (
+                            _require(resolved.no, "program number"),
+                            _require(resolved.bit_no, "program bit"),
+                            _require(resolved.addr, "program addr"),
+                        )
+                    ],
                     [],
                     [],
                 ),
             )
             if resp.cmd != 0x98:
-                raise ToyopucProtocolError("Unexpected CMD in relay multi-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay multi-read response"
+                )
             if not resp.data:
-                raise ToyopucProtocolError("Relay multi-read response missing bit payload")
+                raise ToyopucProtocolError(
+                    "Relay multi-read response missing bit payload"
+                )
             return bool(resp.data[0] & 0x01)
         if resolved.scheme == "program-word":
             resp = self.send_via_relay(
                 hops,
-                build_ext_word_read(_require(resolved.no, "program number"), _require(resolved.addr, "program addr"), 1),
+                build_ext_word_read(
+                    _require(resolved.no, "program number"),
+                    _require(resolved.addr, "program addr"),
+                    1,
+                ),
             )
             if resp.cmd != 0x94:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext word-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext word-read response"
+                )
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "program-byte":
             resp = self.send_via_relay(
                 hops,
-                build_ext_byte_read(_require(resolved.no, "program number"), _require(resolved.addr, "program addr"), 1),
+                build_ext_byte_read(
+                    _require(resolved.no, "program number"),
+                    _require(resolved.addr, "program addr"),
+                    1,
+                ),
             )
             if resp.cmd != 0x96:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext byte-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext byte-read response"
+                )
             if len(resp.data) != 1:
-                raise ToyopucProtocolError("Relay ext byte-read response must be 1 byte")
+                raise ToyopucProtocolError(
+                    "Relay ext byte-read response must be 1 byte"
+                )
             return resp.data[0]
         if resolved.scheme == "ext-bit":
             resp = self.send_via_relay(
                 hops,
                 build_ext_multi_read(
-                    [(_require(resolved.no, "extended number"), _require(resolved.bit_no, "extended bit"), _require(resolved.addr, "extended addr"))],
+                    [
+                        (
+                            _require(resolved.no, "extended number"),
+                            _require(resolved.bit_no, "extended bit"),
+                            _require(resolved.addr, "extended addr"),
+                        )
+                    ],
                     [],
                     [],
                 ),
             )
             if resp.cmd != 0x98:
-                raise ToyopucProtocolError("Unexpected CMD in relay multi-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay multi-read response"
+                )
             if not resp.data:
-                raise ToyopucProtocolError("Relay multi-read response missing bit payload")
+                raise ToyopucProtocolError(
+                    "Relay multi-read response missing bit payload"
+                )
             return bool(resp.data[0] & 0x01)
         if resolved.scheme == "ext-word":
             resp = self.send_via_relay(
                 hops,
-                build_ext_word_read(_require(resolved.no, "extended number"), _require(resolved.addr, "extended addr"), 1),
+                build_ext_word_read(
+                    _require(resolved.no, "extended number"),
+                    _require(resolved.addr, "extended addr"),
+                    1,
+                ),
             )
             if resp.cmd != 0x94:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext word-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext word-read response"
+                )
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "ext-byte":
             resp = self.send_via_relay(
                 hops,
-                build_ext_byte_read(_require(resolved.no, "extended number"), _require(resolved.addr, "extended addr"), 1),
+                build_ext_byte_read(
+                    _require(resolved.no, "extended number"),
+                    _require(resolved.addr, "extended addr"),
+                    1,
+                ),
             )
             if resp.cmd != 0x96:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext byte-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext byte-read response"
+                )
             if len(resp.data) != 1:
-                raise ToyopucProtocolError("Relay ext byte-read response must be 1 byte")
+                raise ToyopucProtocolError(
+                    "Relay ext byte-read response must be 1 byte"
+                )
             return resp.data[0]
         if resolved.scheme == "pc10-bit":
             addr32 = _require(resolved.addr32, "pc10 addr32")
@@ -891,21 +1004,31 @@ class ToyopucHighLevelClient(ToyopucClient):
             payload.extend(addr32.to_bytes(4, "little"))
             resp = self.send_via_relay(hops, build_pc10_multi_read(bytes(payload)))
             if resp.cmd != 0xC4:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 multi-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 multi-read response"
+                )
             if len(resp.data) < 5:
                 raise ToyopucProtocolError("Relay PC10 bit-read response too short")
             return bool(resp.data[4] & 0x01)
         if resolved.scheme == "pc10-word":
-            resp = self.send_via_relay(hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 2))
+            resp = self.send_via_relay(
+                hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 2)
+            )
             if resp.cmd != 0xC2:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 block-read response"
+                )
             if len(resp.data) < 2:
                 raise ToyopucProtocolError("Relay PC10 word-read response too short")
             return int.from_bytes(resp.data[:2], "little")
         if resolved.scheme == "pc10-byte":
-            resp = self.send_via_relay(hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 1))
+            resp = self.send_via_relay(
+                hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 1)
+            )
             if resp.cmd != 0xC2:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 block-read response"
+                )
             if len(resp.data) < 1:
                 raise ToyopucProtocolError("Relay PC10 byte-read response too short")
             return resp.data[0]
@@ -960,7 +1083,9 @@ class ToyopucHighLevelClient(ToyopucClient):
             return
         if resolved.scheme == "pc10-bit":
             addr32 = _require(resolved.addr32, "pc10 addr32")
-            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, int(value) & 0x01)]))
+            self.pc10_multi_write(
+                _pack_pc10_multi_bit_payload([(addr32, int(value) & 0x01)])
+            )
             return
         if resolved.scheme == "pc10-word":
             addr32 = _require(resolved.addr32, "pc10 addr32")
@@ -974,83 +1099,150 @@ class ToyopucHighLevelClient(ToyopucClient):
 
     def _relay_write_one(self, hops, resolved: ResolvedDevice, value) -> None:
         if resolved.scheme == "basic-bit":
-            resp = self.send_via_relay(hops, build_bit_write(_require(resolved.basic_addr, "basic_addr"), int(value) & 0x01))
+            resp = self.send_via_relay(
+                hops,
+                build_bit_write(
+                    _require(resolved.basic_addr, "basic_addr"), int(value) & 0x01
+                ),
+            )
             if resp.cmd != 0x21:
                 raise ToyopucProtocolError("Unexpected CMD in relay bit-write response")
             return
         if resolved.scheme == "basic-word":
-            resp = self.send_via_relay(hops, build_word_write(_require(resolved.basic_addr, "basic_addr"), [int(value)]))
+            resp = self.send_via_relay(
+                hops,
+                build_word_write(
+                    _require(resolved.basic_addr, "basic_addr"), [int(value)]
+                ),
+            )
             if resp.cmd != 0x1D:
-                raise ToyopucProtocolError("Unexpected CMD in relay word-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay word-write response"
+                )
             return
         if resolved.scheme == "basic-byte":
-            resp = self.send_via_relay(hops, build_byte_write(_require(resolved.basic_addr, "basic_addr"), [int(value)]))
+            resp = self.send_via_relay(
+                hops,
+                build_byte_write(
+                    _require(resolved.basic_addr, "basic_addr"), [int(value)]
+                ),
+            )
             if resp.cmd != 0x1F:
-                raise ToyopucProtocolError("Unexpected CMD in relay byte-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay byte-write response"
+                )
             return
         if resolved.scheme == "program-bit":
             resp = self.send_via_relay(
                 hops,
                 build_ext_multi_write(
-                    [(_require(resolved.no, "program number"), _require(resolved.bit_no, "program bit"), _require(resolved.addr, "program addr"), int(value) & 0x01)],
+                    [
+                        (
+                            _require(resolved.no, "program number"),
+                            _require(resolved.bit_no, "program bit"),
+                            _require(resolved.addr, "program addr"),
+                            int(value) & 0x01,
+                        )
+                    ],
                     [],
                     [],
                 ),
             )
             if resp.cmd != 0x99:
-                raise ToyopucProtocolError("Unexpected CMD in relay multi-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay multi-write response"
+                )
             return
         if resolved.scheme == "program-word":
             resp = self.send_via_relay(
                 hops,
-                build_ext_word_write(_require(resolved.no, "program number"), _require(resolved.addr, "program addr"), [int(value)]),
+                build_ext_word_write(
+                    _require(resolved.no, "program number"),
+                    _require(resolved.addr, "program addr"),
+                    [int(value)],
+                ),
             )
             if resp.cmd != 0x95:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext word-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext word-write response"
+                )
             return
         if resolved.scheme == "program-byte":
             resp = self.send_via_relay(
                 hops,
-                build_ext_byte_write(_require(resolved.no, "program number"), _require(resolved.addr, "program addr"), [int(value)]),
+                build_ext_byte_write(
+                    _require(resolved.no, "program number"),
+                    _require(resolved.addr, "program addr"),
+                    [int(value)],
+                ),
             )
             if resp.cmd != 0x97:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext byte-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext byte-write response"
+                )
             return
         if resolved.scheme == "ext-bit":
             resp = self.send_via_relay(
                 hops,
                 build_ext_multi_write(
-                    [(_require(resolved.no, "extended number"), _require(resolved.bit_no, "extended bit"), _require(resolved.addr, "extended addr"), int(value) & 0x01)],
+                    [
+                        (
+                            _require(resolved.no, "extended number"),
+                            _require(resolved.bit_no, "extended bit"),
+                            _require(resolved.addr, "extended addr"),
+                            int(value) & 0x01,
+                        )
+                    ],
                     [],
                     [],
                 ),
             )
             if resp.cmd != 0x99:
-                raise ToyopucProtocolError("Unexpected CMD in relay multi-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay multi-write response"
+                )
             return
         if resolved.scheme == "ext-word":
             resp = self.send_via_relay(
                 hops,
-                build_ext_word_write(_require(resolved.no, "extended number"), _require(resolved.addr, "extended addr"), [int(value)]),
+                build_ext_word_write(
+                    _require(resolved.no, "extended number"),
+                    _require(resolved.addr, "extended addr"),
+                    [int(value)],
+                ),
             )
             if resp.cmd != 0x95:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext word-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext word-write response"
+                )
             return
         if resolved.scheme == "ext-byte":
             resp = self.send_via_relay(
                 hops,
-                build_ext_byte_write(_require(resolved.no, "extended number"), _require(resolved.addr, "extended addr"), [int(value)]),
+                build_ext_byte_write(
+                    _require(resolved.no, "extended number"),
+                    _require(resolved.addr, "extended addr"),
+                    [int(value)],
+                ),
             )
             if resp.cmd != 0x97:
-                raise ToyopucProtocolError("Unexpected CMD in relay ext byte-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay ext byte-write response"
+                )
             return
         if resolved.scheme == "pc10-bit":
             resp = self.send_via_relay(
                 hops,
-                build_pc10_multi_write(_pack_pc10_multi_bit_payload([(_require(resolved.addr32, "pc10 addr32"), int(value) & 0x01)])),
+                build_pc10_multi_write(
+                    _pack_pc10_multi_bit_payload(
+                        [(_require(resolved.addr32, "pc10 addr32"), int(value) & 0x01)]
+                    )
+                ),
             )
             if resp.cmd != 0xC5:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 multi-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 multi-write response"
+                )
             return
         if resolved.scheme == "pc10-word":
             resp = self.send_via_relay(
@@ -1061,30 +1253,44 @@ class ToyopucHighLevelClient(ToyopucClient):
                 ),
             )
             if resp.cmd != 0xC3:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 block-write response"
+                )
             return
         if resolved.scheme == "pc10-byte":
             resp = self.send_via_relay(
                 hops,
-                build_pc10_block_write(_require(resolved.addr32, "pc10 addr32"), bytes([int(value) & 0xFF])),
+                build_pc10_block_write(
+                    _require(resolved.addr32, "pc10 addr32"), bytes([int(value) & 0xFF])
+                ),
             )
             if resp.cmd != 0xC3:
-                raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-write response")
+                raise ToyopucProtocolError(
+                    "Unexpected CMD in relay PC10 block-write response"
+                )
             return
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
     def _offset(self, resolved: ResolvedDevice, delta: int) -> ResolvedDevice:
         if delta == 0:
             return resolved
-        width = resolved.digits if resolved.digits > 0 else max(4, len(f"{resolved.index:X}"))
+        width = (
+            resolved.digits
+            if resolved.digits > 0
+            else max(4, len(f"{resolved.index:X}"))
+        )
         if resolved.unit == "byte":
             suffix = "H" if resolved.high else "L"
             index = resolved.index + delta
             if resolved.prefix:
-                return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
+                return resolve_device(
+                    f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}"
+                )
             return resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
         index = resolved.index + delta
         suffix = "W" if resolved.packed and resolved.unit == "word" else ""
         if resolved.prefix:
-            return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
+            return resolve_device(
+                f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}"
+            )
         return resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")

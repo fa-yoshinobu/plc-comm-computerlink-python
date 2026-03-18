@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -262,13 +261,13 @@ def build_command(cmd: int, data: bytes) -> bytes:
 def parse_response(frame: bytes) -> ResponseFrame:
     """Parse a raw response frame into a `ResponseFrame`."""
     if len(frame) < 5:
-        raise ToyopucProtocolError('Response too short')
+        raise ToyopucProtocolError("Response too short")
     ft, rc, ll, lh, cmd = frame[:5]
     length = ll | (lh << 8)
     expected = 4 + length
     if len(frame) != expected:
         raise ToyopucProtocolError(
-            f'Invalid length: expected {expected} bytes, got {len(frame)} bytes'
+            f"Invalid length: expected {expected} bytes, got {len(frame)} bytes"
         )
     data = frame[5:]
     return ResponseFrame(ft=ft, rc=rc, cmd=cmd, data=data)
@@ -280,21 +279,21 @@ def pack_u16_le(value: int) -> bytes:
 
 def unpack_u16_le(data: bytes) -> List[int]:
     if len(data) % 2 != 0:
-        raise ToyopucProtocolError('Word data length must be even')
+        raise ToyopucProtocolError("Word data length must be even")
     return [data[i] | (data[i + 1] << 8) for i in range(0, len(data), 2)]
 
 
 def pack_ext_bit_spec(no: int, bit: int) -> int:
     if not 0 <= no <= 0x0F:
-        raise ToyopucProtocolError('Extended bit No must fit in 4 bits')
+        raise ToyopucProtocolError("Extended bit No must fit in 4 bits")
     if not 0 <= bit <= 0x0F:
-        raise ToyopucProtocolError('Extended bit position must fit in 4 bits')
+        raise ToyopucProtocolError("Extended bit position must fit in 4 bits")
     return ((bit & 0x0F) << 4) | (no & 0x0F)
 
 
 def pack_bcd(value: int) -> int:
     if value < 0 or value > 99:
-        raise ToyopucProtocolError('BCD value out of range')
+        raise ToyopucProtocolError("BCD value out of range")
     return ((value // 10) << 4) | (value % 10)
 
 
@@ -302,7 +301,7 @@ def unpack_bcd(value: int) -> int:
     hi = (value >> 4) & 0x0F
     lo = value & 0x0F
     if hi > 9 or lo > 9:
-        raise ToyopucProtocolError(f'Invalid BCD byte: 0x{value:02X}')
+        raise ToyopucProtocolError(f"Invalid BCD byte: 0x{value:02X}")
     return hi * 10 + lo
 
 
@@ -337,7 +336,7 @@ def build_clock_write(
 ) -> bytes:
     """Build `CMD=32 / 71 00` clock-write command from raw clock fields."""
     if not 0 <= weekday <= 6:
-        raise ToyopucProtocolError('Weekday must be in range 0-6')
+        raise ToyopucProtocolError("Weekday must be in range 0-6")
     data = bytes(
         [
             0x71,
@@ -357,7 +356,9 @@ def build_clock_write(
 def parse_clock_data(data: bytes) -> ClockData:
     """Parse a clock-read payload into `ClockData`."""
     if len(data) != 9 or data[0] != 0x70 or data[1] != 0x00:
-        raise ToyopucProtocolError('Clock read response must be 9 bytes starting with 70 00')
+        raise ToyopucProtocolError(
+            "Clock read response must be 9 bytes starting with 70 00"
+        )
     return ClockData(
         second=unpack_bcd(data[2]),
         minute=unpack_bcd(data[3]),
@@ -372,7 +373,9 @@ def parse_clock_data(data: bytes) -> ClockData:
 def parse_cpu_status_data(data: bytes) -> CpuStatusData:
     """Parse a CPU-status payload into `CpuStatusData`."""
     if len(data) != 10 or data[0] != 0x11 or data[1] != 0x00:
-        raise ToyopucProtocolError('CPU status response must be 10 bytes starting with 11 00')
+        raise ToyopucProtocolError(
+            "CPU status response must be 10 bytes starting with 11 00"
+        )
     return CpuStatusData(
         data1=data[2],
         data2=data[3],
@@ -388,7 +391,9 @@ def parse_cpu_status_data(data: bytes) -> CpuStatusData:
 def parse_cpu_status_data_a0(data: bytes) -> CpuStatusData:
     """Parse a `CMD=A0 / 01 10` CPU-status payload into `CpuStatusData`."""
     if len(data) != 10 or data[0] != 0x01 or data[1] != 0x10:
-        raise ToyopucProtocolError('A0 CPU status response must be 10 bytes starting with 01 10')
+        raise ToyopucProtocolError(
+            "A0 CPU status response must be 10 bytes starting with 01 10"
+        )
     return CpuStatusData(
         data1=data[2],
         data2=data[3],
@@ -412,7 +417,7 @@ def build_word_read(addr: int, count: int) -> bytes:
 
 def build_word_write(addr: int, values: Iterable[int]) -> bytes:
     vals = list(values)
-    data = pack_u16_le(addr) + b''.join(pack_u16_le(v) for v in vals)
+    data = pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
     return build_command(0x1D, data)
 
 
@@ -434,37 +439,43 @@ def build_bit_write(addr: int, value: int) -> bytes:
 
 
 def build_multi_word_read(addrs: Iterable[int]) -> bytes:
-    data = b''.join(pack_u16_le(a) for a in addrs)
+    data = b"".join(pack_u16_le(a) for a in addrs)
     return build_command(0x22, data)
 
 
 def build_multi_word_write(pairs: Iterable[tuple[int, int]]) -> bytes:
-    data = b''.join(pack_u16_le(a) + pack_u16_le(v) for a, v in pairs)
+    data = b"".join(pack_u16_le(a) + pack_u16_le(v) for a, v in pairs)
     return build_command(0x23, data)
 
 
 def build_multi_byte_read(addrs: Iterable[int]) -> bytes:
-    data = b''.join(pack_u16_le(a) for a in addrs)
+    data = b"".join(pack_u16_le(a) for a in addrs)
     return build_command(0x24, data)
 
 
 def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
-    data = b''.join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in pairs)
+    data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in pairs)
     return build_command(0x25, data)
 
 
 def build_ext_word_read(no: int, addr: int, count: int) -> bytes:
-    return build_command(0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count))
+    return build_command(
+        0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count)
+    )
 
 
 def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
     vals = list(values)
-    data = bytes([no & 0xFF]) + pack_u16_le(addr) + b''.join(pack_u16_le(v) for v in vals)
+    data = (
+        bytes([no & 0xFF]) + pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
+    )
     return build_command(0x95, data)
 
 
 def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
-    return build_command(0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count))
+    return build_command(
+        0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count)
+    )
 
 
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
@@ -479,7 +490,9 @@ def build_ext_multi_read(
     word_points: Sequence[Tuple[int, int]],
 ) -> bytes:
     data = bytearray()
-    data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
+    data.extend(
+        [len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF]
+    )
     for no, bit, addr in bit_points:
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
@@ -498,7 +511,9 @@ def build_ext_multi_write(
     word_points: Sequence[Tuple[int, int, int]],
 ) -> bytes:
     data = bytearray()
-    data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
+    data.extend(
+        [len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF]
+    )
     for no, bit, addr, value in bit_points:
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
@@ -518,13 +533,19 @@ def build_ext_multi_write(
 def build_pc10_block_read(addr32: int, count: int) -> bytes:
     # Address is 32-bit (low word, high word)
     return build_command(
-        0xC2, pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + pack_u16_le(count)
+        0xC2,
+        pack_u16_le(addr32 & 0xFFFF)
+        + pack_u16_le((addr32 >> 16) & 0xFFFF)
+        + pack_u16_le(count),
     )
 
 
 def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
     return build_command(
-        0xC3, pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + data_bytes
+        0xC3,
+        pack_u16_le(addr32 & 0xFFFF)
+        + pack_u16_le((addr32 >> 16) & 0xFFFF)
+        + data_bytes,
     )
 
 
@@ -572,17 +593,23 @@ def _frame_to_inner_payload(frame: bytes) -> bytes:
     return frame[2:]
 
 
-def build_relay_command(link_no: int, station_no: int, inner_payload: bytes, *, enq: int = 0x05) -> bytes:
+def build_relay_command(
+    link_no: int, station_no: int, inner_payload: bytes, *, enq: int = 0x05
+) -> bytes:
     """Build a single-hop relay command (`CMD=60`)."""
     inner = _normalize_inner_payload(inner_payload)
-    data = bytes(
-        [
-            link_no & 0xFF,
-            station_no & 0xFF,
-            (station_no >> 8) & 0xFF,
-            enq & 0xFF,
-        ]
-    ) + inner + b"\x00"
+    data = (
+        bytes(
+            [
+                link_no & 0xFF,
+                station_no & 0xFF,
+                (station_no >> 8) & 0xFF,
+                enq & 0xFF,
+            ]
+        )
+        + inner
+        + b"\x00"
+    )
     return build_command(0x60, data)
 
 

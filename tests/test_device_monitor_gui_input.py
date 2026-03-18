@@ -1,6 +1,6 @@
 import pytest
 
-from examples.device_monitor_gui import MonitorApp
+from samples.device_monitor_gui import MonitorApp
 
 
 def test_gui_accepts_prefixed_range_token() -> None:

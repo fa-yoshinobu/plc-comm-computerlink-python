@@ -26,7 +26,11 @@ def parse_relay_hops(text: str) -> List[Tuple[int, int]]:
         item = part.strip()
         if not item:
             continue
-        m = re.fullmatch(r"P([0-9A-Fa-f])[-:]L([0-9A-Fa-f])\s*:\s*N([0-9A-Fa-fx]+)", item, re.IGNORECASE)
+        m = re.fullmatch(
+            r"P([0-9A-Fa-f])[-:]L([0-9A-Fa-f])\s*:\s*N([0-9A-Fa-fx]+)",
+            item,
+            re.IGNORECASE,
+        )
         if m:
             link = (int(m.group(1), 16) << 4) | int(m.group(2), 16)
             station = int(m.group(3), 0)
@@ -49,7 +53,9 @@ def parse_relay_hops(text: str) -> List[Tuple[int, int]]:
     return hops
 
 
-def normalize_relay_hops(hops: str | Iterable[Tuple[int, int]]) -> List[Tuple[int, int]]:
+def normalize_relay_hops(
+    hops: str | Iterable[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
     """Normalize relay hops from text or `(link, station)` pairs."""
     if isinstance(hops, str):
         return parse_relay_hops(hops)
@@ -79,7 +85,9 @@ def parse_relay_inner_response(inner_raw: bytes) -> tuple[ResponseFrame, bytes]:
     return parse_response(inner_frame), padding
 
 
-def unwrap_relay_response_chain(resp: ResponseFrame) -> tuple[List[RelayLayer], ResponseFrame | None]:
+def unwrap_relay_response_chain(
+    resp: ResponseFrame,
+) -> tuple[List[RelayLayer], ResponseFrame | None]:
     """Unwrap nested relay responses until a non-relay inner response is reached.
 
     Returns `(layers, final_response)`. When a relay layer returns NAK

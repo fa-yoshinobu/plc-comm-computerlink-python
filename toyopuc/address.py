@@ -1,4 +1,3 @@
-
 import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -17,6 +16,7 @@ class ParsedAddress:
         packed: ``True`` when a bit-device family is addressed through
             ``W/H/L`` notation instead of plain bit notation.
     """
+
     area: str
     index: int
     unit: str  # 'word', 'byte', 'bit'
@@ -36,6 +36,7 @@ class ExNoAddress32:
         unit: Access family used for the encoded value: ``"byte"`` or
             ``"bit"``.
     """
+
     ex_no: int
     addr: int
     unit: str  # 'byte' or 'bit'
@@ -50,6 +51,7 @@ class ExtNoAddress:
         addr: 16-bit address field used with that number.
         unit: Requested access unit: ``"word"``, ``"byte"``, or ``"bit"``.
     """
+
     no: int
     addr: int
     unit: str  # 'word', 'byte', 'bit'
@@ -57,140 +59,142 @@ class ExtNoAddress:
 
 # Base addresses from manual section 3.4.2
 _WORD_BASE = {
-    'P': 0x0000,
-    'K': 0x0020,
-    'V': 0x0050,
-    'T': 0x0060,
-    'C': 0x0060,
-    'L': 0x0080,
-    'X': 0x0100,
-    'Y': 0x0100,
-    'M': 0x0180,
-    'S': 0x0200,
-    'N': 0x0600,
-    'R': 0x0800,
-    'D': 0x1000,
-    'B': 0x6000,
+    "P": 0x0000,
+    "K": 0x0020,
+    "V": 0x0050,
+    "T": 0x0060,
+    "C": 0x0060,
+    "L": 0x0080,
+    "X": 0x0100,
+    "Y": 0x0100,
+    "M": 0x0180,
+    "S": 0x0200,
+    "N": 0x0600,
+    "R": 0x0800,
+    "D": 0x1000,
+    "B": 0x6000,
 }
 
 _BYTE_BASE = {
-    'P': 0x0000,
-    'K': 0x0040,
-    'V': 0x00A0,
-    'T': 0x00C0,
-    'C': 0x00C0,
-    'L': 0x0100,
-    'X': 0x0200,
-    'Y': 0x0200,
-    'M': 0x0300,
-    'S': 0x0400,
-    'N': 0x0C00,
-    'R': 0x1000,
-    'D': 0x2000,
-    'B': 0xC000,
+    "P": 0x0000,
+    "K": 0x0040,
+    "V": 0x00A0,
+    "T": 0x00C0,
+    "C": 0x00C0,
+    "L": 0x0100,
+    "X": 0x0200,
+    "Y": 0x0200,
+    "M": 0x0300,
+    "S": 0x0400,
+    "N": 0x0C00,
+    "R": 0x1000,
+    "D": 0x2000,
+    "B": 0xC000,
 }
 
 _BIT_BASE = {
-    'P': 0x0000,
-    'K': 0x0200,
-    'V': 0x0500,
-    'T': 0x0600,
-    'C': 0x0600,
-    'L': 0x0800,
-    'X': 0x1000,
-    'Y': 0x1000,
-    'M': 0x1800,
+    "P": 0x0000,
+    "K": 0x0200,
+    "V": 0x0500,
+    "T": 0x0600,
+    "C": 0x0600,
+    "L": 0x0800,
+    "X": 0x1000,
+    "Y": 0x1000,
+    "M": 0x1800,
 }
 
 _BASIC_BIT_SEGMENTS = {
-    'P': [(0x000, 0x1FF)],
-    'K': [(0x000, 0x2FF)],
-    'V': [(0x000, 0x0FF)],
-    'T': [(0x000, 0x1FF)],
-    'C': [(0x000, 0x1FF)],
-    'L': [(0x000, 0x7FF), (0x1000, 0x2FFF)],
-    'X': [(0x000, 0x7FF)],
-    'Y': [(0x000, 0x7FF)],
-    'M': [(0x000, 0x7FF), (0x1000, 0x17FF)],
+    "P": [(0x000, 0x1FF)],
+    "K": [(0x000, 0x2FF)],
+    "V": [(0x000, 0x0FF)],
+    "T": [(0x000, 0x1FF)],
+    "C": [(0x000, 0x1FF)],
+    "L": [(0x000, 0x7FF), (0x1000, 0x2FFF)],
+    "X": [(0x000, 0x7FF)],
+    "Y": [(0x000, 0x7FF)],
+    "M": [(0x000, 0x7FF), (0x1000, 0x17FF)],
 }
 
 _EXT_BIT_SEGMENTS = {
-    'EP': [(0x0000, 0x0FFF)],
-    'EK': [(0x0000, 0x0FFF)],
-    'EV': [(0x0000, 0x0FFF)],
-    'ET': [(0x0000, 0x07FF)],
-    'EC': [(0x0000, 0x07FF)],
-    'EL': [(0x0000, 0x1FFF)],
-    'EX': [(0x0000, 0x07FF)],
-    'EY': [(0x0000, 0x07FF)],
-    'EM': [(0x0000, 0x1FFF)],
-    'GX': [(0x0000, 0xFFFF)],
-    'GY': [(0x0000, 0xFFFF)],
-    'GM': [(0x0000, 0xFFFF)],
+    "EP": [(0x0000, 0x0FFF)],
+    "EK": [(0x0000, 0x0FFF)],
+    "EV": [(0x0000, 0x0FFF)],
+    "ET": [(0x0000, 0x07FF)],
+    "EC": [(0x0000, 0x07FF)],
+    "EL": [(0x0000, 0x1FFF)],
+    "EX": [(0x0000, 0x07FF)],
+    "EY": [(0x0000, 0x07FF)],
+    "EM": [(0x0000, 0x1FFF)],
+    "GX": [(0x0000, 0xFFFF)],
+    "GY": [(0x0000, 0xFFFF)],
+    "GM": [(0x0000, 0xFFFF)],
 }
 
 
-_ADDR_RE = re.compile(r'^(?P<area>[A-Z]{1,2})(?P<num>[0-9A-Fa-f]+)(?P<suffix>[LHW])?$')
+_ADDR_RE = re.compile(r"^(?P<area>[A-Z]{1,2})(?P<num>[0-9A-Fa-f]+)(?P<suffix>[LHW])?$")
 _PREF_RE = re.compile(
-    r'^(?P<prefix>P[123])-(?P<area>[A-Z]{1,2})(?P<num>[0-9A-Fa-f]+)(?P<suffix>[LHW])?$'
+    r"^(?P<prefix>P[123])-(?P<area>[A-Z]{1,2})(?P<num>[0-9A-Fa-f]+)(?P<suffix>[LHW])?$"
 )
 
 _P_EXNO = {
-    'P1': 0x0D,
-    'P2': 0x0E,
-    'P3': 0x0F,
+    "P1": 0x0D,
+    "P2": 0x0E,
+    "P3": 0x0F,
 }
 
 # Extended area mapping for CMD=94-99.
 # The address field is not a simple linear index for all areas; it depends on
 # the access unit and the manual's extended-area base table.
 _EXT_AREA_MAP = {
-    'EP': {'no': 0x00, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'EK': {'no': 0x00, 'word_base': 0x0100, 'byte_base': 0x0200},
-    'EV': {'no': 0x00, 'word_base': 0x0200, 'byte_base': 0x0400},
-    'ET': {'no': 0x00, 'word_base': 0x0300, 'byte_base': 0x0600},
-    'EC': {'no': 0x00, 'word_base': 0x0300, 'byte_base': 0x0600},
-    'EL': {'no': 0x00, 'word_base': 0x0380, 'byte_base': 0x0700},
-    'EX': {'no': 0x00, 'word_base': 0x0580, 'byte_base': 0x0B00},
-    'EY': {'no': 0x00, 'word_base': 0x0580, 'byte_base': 0x0B00},
-    'EM': {'no': 0x00, 'word_base': 0x0600, 'byte_base': 0x0C00},
-    'ES': {'no': 0x00, 'word_base': 0x0800, 'byte_base': 0x1000},
-    'EN': {'no': 0x00, 'word_base': 0x1000, 'byte_base': 0x2000},
-    'H': {'no': 0x00, 'word_base': 0x1800, 'byte_base': 0x3000},
-    'U': {'no': 0x08, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'GX': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'GY': {'no': 0x07, 'word_base': 0x0000, 'byte_base': 0x0000},
-    'GM': {'no': 0x07, 'word_base': 0x1000, 'byte_base': 0x2000},
+    "EP": {"no": 0x00, "word_base": 0x0000, "byte_base": 0x0000},
+    "EK": {"no": 0x00, "word_base": 0x0100, "byte_base": 0x0200},
+    "EV": {"no": 0x00, "word_base": 0x0200, "byte_base": 0x0400},
+    "ET": {"no": 0x00, "word_base": 0x0300, "byte_base": 0x0600},
+    "EC": {"no": 0x00, "word_base": 0x0300, "byte_base": 0x0600},
+    "EL": {"no": 0x00, "word_base": 0x0380, "byte_base": 0x0700},
+    "EX": {"no": 0x00, "word_base": 0x0580, "byte_base": 0x0B00},
+    "EY": {"no": 0x00, "word_base": 0x0580, "byte_base": 0x0B00},
+    "EM": {"no": 0x00, "word_base": 0x0600, "byte_base": 0x0C00},
+    "ES": {"no": 0x00, "word_base": 0x0800, "byte_base": 0x1000},
+    "EN": {"no": 0x00, "word_base": 0x1000, "byte_base": 0x2000},
+    "H": {"no": 0x00, "word_base": 0x1800, "byte_base": 0x3000},
+    "U": {"no": 0x08, "word_base": 0x0000, "byte_base": 0x0000},
+    "GX": {"no": 0x07, "word_base": 0x0000, "byte_base": 0x0000},
+    "GY": {"no": 0x07, "word_base": 0x0000, "byte_base": 0x0000},
+    "GM": {"no": 0x07, "word_base": 0x1000, "byte_base": 0x2000},
 }
 
 _PROGRAM_BIT_SEGMENTS = {
-    'P': [(0x000, 0x1FF, 0x0000), (0x1000, 0x17FF, 0xC000)],
-    'K': [(0x000, 0x2FF, 0x0040)],
-    'V': [(0x000, 0x0FF, 0x00A0), (0x1000, 0x17FF, 0xC100)],
-    'T': [(0x000, 0x1FF, 0x00C0), (0x1000, 0x17FF, 0xC200)],
-    'C': [(0x000, 0x1FF, 0x00C0), (0x1000, 0x17FF, 0xC200)],
-    'L': [(0x000, 0x7FF, 0x0100), (0x1000, 0x2FFF, 0xC400)],
-    'X': [(0x000, 0x7FF, 0x0200)],
-    'Y': [(0x000, 0x7FF, 0x0200)],
-    'M': [(0x000, 0x7FF, 0x0300), (0x1000, 0x17FF, 0xC300)],
+    "P": [(0x000, 0x1FF, 0x0000), (0x1000, 0x17FF, 0xC000)],
+    "K": [(0x000, 0x2FF, 0x0040)],
+    "V": [(0x000, 0x0FF, 0x00A0), (0x1000, 0x17FF, 0xC100)],
+    "T": [(0x000, 0x1FF, 0x00C0), (0x1000, 0x17FF, 0xC200)],
+    "C": [(0x000, 0x1FF, 0x00C0), (0x1000, 0x17FF, 0xC200)],
+    "L": [(0x000, 0x7FF, 0x0100), (0x1000, 0x2FFF, 0xC400)],
+    "X": [(0x000, 0x7FF, 0x0200)],
+    "Y": [(0x000, 0x7FF, 0x0200)],
+    "M": [(0x000, 0x7FF, 0x0300), (0x1000, 0x17FF, 0xC300)],
 }
 
 _PROGRAM_WORD_SEGMENTS = {
-    'S': [(0x0000, 0x03FF, 0x0200), (0x1000, 0x13FF, 0x6400)],
-    'N': [(0x0000, 0x01FF, 0x0600), (0x1000, 0x17FF, 0x6800)],
-    'R': [(0x0000, 0x07FF, 0x0800)],
-    'D': [(0x0000, 0x0FFF, 0x1000), (0x1000, 0x2FFF, 0x2000)],
+    "S": [(0x0000, 0x03FF, 0x0200), (0x1000, 0x13FF, 0x6400)],
+    "N": [(0x0000, 0x01FF, 0x0600), (0x1000, 0x17FF, 0x6800)],
+    "R": [(0x0000, 0x07FF, 0x0800)],
+    "D": [(0x0000, 0x0FFF, 0x1000), (0x1000, 0x2FFF, 0x2000)],
 }
 
 _PROGRAM_BYTE_SEGMENTS = {
-    'S': [(0x0000, 0x03FF, 0x0400), (0x1000, 0x13FF, 0xC800)],
-    'N': [(0x0000, 0x01FF, 0x0C00), (0x1000, 0x17FF, 0xD000)],
-    'R': [(0x0000, 0x07FF, 0x1000)],
-    'D': [(0x0000, 0x0FFF, 0x2000), (0x1000, 0x2FFF, 0x4000)],
+    "S": [(0x0000, 0x03FF, 0x0400), (0x1000, 0x13FF, 0xC800)],
+    "N": [(0x0000, 0x01FF, 0x0C00), (0x1000, 0x17FF, 0xD000)],
+    "R": [(0x0000, 0x07FF, 0x1000)],
+    "D": [(0x0000, 0x0FFF, 0x2000), (0x1000, 0x2FFF, 0x4000)],
 }
 
 
-def _derive_packed_segments(bit_segments: dict[str, list[tuple[int, int]]]) -> dict[str, list[tuple[int, int]]]:
+def _derive_packed_segments(
+    bit_segments: dict[str, list[tuple[int, int]]],
+) -> dict[str, list[tuple[int, int]]]:
     packed_segments: dict[str, list[tuple[int, int]]] = {}
     for area, segments in bit_segments.items():
         packed_segments[area] = []
@@ -203,7 +207,9 @@ _BASIC_PACKED_SEGMENTS = _derive_packed_segments(_BASIC_BIT_SEGMENTS)
 _EXT_PACKED_SEGMENTS = _derive_packed_segments(_EXT_BIT_SEGMENTS)
 
 
-def _derive_program_segments_from_bit_segments() -> tuple[dict[str, list[tuple[int, int, int]]], dict[str, list[tuple[int, int, int]]]]:
+def _derive_program_segments_from_bit_segments() -> tuple[
+    dict[str, list[tuple[int, int, int]]], dict[str, list[tuple[int, int, int]]]
+]:
     word_segments: dict[str, list[tuple[int, int, int]]] = {}
     byte_segments: dict[str, list[tuple[int, int, int]]] = {}
     for area, segments in _PROGRAM_BIT_SEGMENTS.items():
@@ -217,7 +223,9 @@ def _derive_program_segments_from_bit_segments() -> tuple[dict[str, list[tuple[i
     return word_segments, byte_segments
 
 
-_PROGRAM_BIT_WORD_SEGMENTS, _PROGRAM_BIT_BYTE_SEGMENTS = _derive_program_segments_from_bit_segments()
+_PROGRAM_BIT_WORD_SEGMENTS, _PROGRAM_BIT_BYTE_SEGMENTS = (
+    _derive_program_segments_from_bit_segments()
+)
 
 _PROGRAM_PACKED_SEGMENTS = {
     area: [(start, end) for start, end, _ in segments]
@@ -225,9 +233,9 @@ _PROGRAM_PACKED_SEGMENTS = {
 }
 
 _PACKED_MAX_DIGITS = {
-    'M': 3,
-    'EP': 3,
-    'GM': 3,
+    "M": 3,
+    "EP": 3,
+    "GM": 3,
 }
 
 
@@ -238,17 +246,19 @@ def _in_segments(index: int, segments: list[tuple[int, int]]) -> bool:
 def _validate_bit_index(area: str, index: int) -> None:
     if area in _BASIC_BIT_SEGMENTS:
         if not _in_segments(index, _BASIC_BIT_SEGMENTS[area]):
-            raise ValueError(f'Bit address out of range for {area}: {area}{index:04X}')
+            raise ValueError(f"Bit address out of range for {area}: {area}{index:04X}")
         return
     if area in _EXT_BIT_SEGMENTS:
         if not _in_segments(index, _EXT_BIT_SEGMENTS[area]):
-            raise ValueError(f'Bit address out of range for {area}: {area}{index:04X}')
+            raise ValueError(f"Bit address out of range for {area}: {area}{index:04X}")
 
 
 def _validate_packed_digits(area: str, text: str, digits: int) -> None:
     max_digits = _PACKED_MAX_DIGITS.get(area)
     if max_digits is not None and digits > max_digits:
-        raise ValueError(f'Packed W/H/L notation must use <= {max_digits} hex digits for {area}: {text!r}')
+        raise ValueError(
+            f"Packed W/H/L notation must use <= {max_digits} hex digits for {area}: {text!r}"
+        )
 
 
 def _validate_packed_index(area: str, index: int, *, prefixed: bool, text: str) -> None:
@@ -259,9 +269,11 @@ def _validate_packed_index(area: str, index: int, *, prefixed: bool, text: str) 
     else:
         segments = _EXT_PACKED_SEGMENTS.get(area)
     if segments is None:
-        raise ValueError(f'W/H/L suffix is only valid for bit-device families: {text!r}')
+        raise ValueError(
+            f"W/H/L suffix is only valid for bit-device families: {text!r}"
+        )
     if not _in_segments(index, segments):
-        raise ValueError(f'Packed W/H/L address out of range: {text!r}')
+        raise ValueError(f"Packed W/H/L address out of range: {text!r}")
 
 
 def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
@@ -273,29 +285,33 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
     """
     m = _ADDR_RE.match(text.strip().upper())
     if not m:
-        raise ValueError(f'Invalid address format: {text!r}')
+        raise ValueError(f"Invalid address format: {text!r}")
 
-    area = m.group('area')
-    num_text = m.group('num')
+    area = m.group("area")
+    num_text = m.group("num")
     num = int(num_text, radix)
-    suffix = m.group('suffix')
+    suffix = m.group("suffix")
 
-    if unit == 'byte' and suffix is None:
+    if unit == "byte" and suffix is None:
         # Default to low byte when omitted for byte access.
-        suffix = 'L'
-    if unit == 'byte':
-        if suffix not in ('L', 'H'):
-            raise ValueError(f'L/H suffix required for byte unit: {text!r}')
-    elif unit == 'word':
-        if suffix not in (None, 'W'):
-            raise ValueError(f'W suffix only valid for packed word notation: {text!r}')
+        suffix = "L"
+    if unit == "byte":
+        if suffix not in ("L", "H"):
+            raise ValueError(f"L/H suffix required for byte unit: {text!r}")
+    elif unit == "word":
+        if suffix not in (None, "W"):
+            raise ValueError(f"W suffix only valid for packed word notation: {text!r}")
     else:
         if suffix is not None:
-            raise ValueError(f'Suffix only valid for byte/packed-word notation: {text!r}')
+            raise ValueError(
+                f"Suffix only valid for byte/packed-word notation: {text!r}"
+            )
 
-    if unit == 'bit':
+    if unit == "bit":
         _validate_bit_index(area, num)
-    elif suffix == 'W' or (unit == 'byte' and (area in _BASIC_BIT_SEGMENTS or area in _EXT_BIT_SEGMENTS)):
+    elif suffix == "W" or (
+        unit == "byte" and (area in _BASIC_BIT_SEGMENTS or area in _EXT_BIT_SEGMENTS)
+    ):
         _validate_packed_digits(area, text, len(num_text))
         _validate_packed_index(area, num, prefixed=False, text=text)
 
@@ -303,13 +319,15 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
         area=area,
         index=num,
         unit=unit,
-        high=(suffix == 'H'),
-        packed=(suffix == 'W'),
+        high=(suffix == "H"),
+        packed=(suffix == "W"),
         digits=len(num_text),
     )
 
 
-def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[int, ParsedAddress]:
+def parse_prefixed_address(
+    text: str, unit: str, *, radix: int = 16
+) -> Tuple[int, ParsedAddress]:
     """Parse a prefixed address and return `(program_ex_no, parsed_address)`.
 
     Examples:
@@ -322,32 +340,36 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[in
     """
     m = _PREF_RE.match(text.strip().upper())
     if not m:
-        raise ValueError(f'Invalid prefixed address format: {text!r}')
+        raise ValueError(f"Invalid prefixed address format: {text!r}")
 
-    prefix = m.group('prefix')
-    area = m.group('area')
-    num_text = m.group('num')
+    prefix = m.group("prefix")
+    area = m.group("area")
+    num_text = m.group("num")
     num = int(num_text, radix)
-    suffix = m.group('suffix')
+    suffix = m.group("suffix")
 
-    if unit == 'byte' and suffix is None:
-        suffix = 'L'
-    if unit == 'byte':
-        if suffix not in ('L', 'H'):
-            raise ValueError(f'L/H suffix required for byte unit: {text!r}')
-    elif unit == 'word':
-        if suffix not in (None, 'W'):
-            raise ValueError(f'W suffix only valid for packed word notation: {text!r}')
+    if unit == "byte" and suffix is None:
+        suffix = "L"
+    if unit == "byte":
+        if suffix not in ("L", "H"):
+            raise ValueError(f"L/H suffix required for byte unit: {text!r}")
+    elif unit == "word":
+        if suffix not in (None, "W"):
+            raise ValueError(f"W suffix only valid for packed word notation: {text!r}")
     else:
         if suffix is not None:
-            raise ValueError(f'Suffix only valid for byte/packed-word notation: {text!r}')
+            raise ValueError(
+                f"Suffix only valid for byte/packed-word notation: {text!r}"
+            )
 
-    if unit == 'bit':
+    if unit == "bit":
         if area not in _PROGRAM_BIT_SEGMENTS:
-            raise ValueError(f'Unsupported program bit area: {area}')
-        if not _in_segments(num, [(start, end) for start, end, _ in _PROGRAM_BIT_SEGMENTS[area]]):
-            raise ValueError(f'Program bit address out of range: {area}{num:04X}')
-    elif suffix == 'W' or (unit == 'byte' and area in _PROGRAM_BIT_SEGMENTS):
+            raise ValueError(f"Unsupported program bit area: {area}")
+        if not _in_segments(
+            num, [(start, end) for start, end, _ in _PROGRAM_BIT_SEGMENTS[area]]
+        ):
+            raise ValueError(f"Program bit address out of range: {area}{num:04X}")
+    elif suffix == "W" or (unit == "byte" and area in _PROGRAM_BIT_SEGMENTS):
         _validate_packed_digits(area, text, len(num_text))
         _validate_packed_index(area, num, prefixed=True, text=text)
 
@@ -356,8 +378,8 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> Tuple[in
         area=area,
         index=num,
         unit=unit,
-        high=(suffix == 'H'),
-        packed=(suffix == 'W'),
+        high=(suffix == "H"),
+        packed=(suffix == "W"),
         digits=len(num_text),
     )
 
@@ -369,15 +391,17 @@ def encode_word_address(addr: ParsedAddress) -> int:
     For bit-device families, `...W` notation is accepted and mapped to the
     corresponding word address.
     """
-    if addr.unit != 'word':
-        raise ValueError('Expected word address')
+    if addr.unit != "word":
+        raise ValueError("Expected word address")
     if addr.packed and addr.area not in _BIT_BASE:
-        raise ValueError(f'W suffix is only valid for bit-device families: {addr.area}{addr.index:X}W')
+        raise ValueError(
+            f"W suffix is only valid for bit-device families: {addr.area}{addr.index:X}W"
+        )
     if addr.packed and not _in_segments(addr.index, _BASIC_PACKED_SEGMENTS[addr.area]):
-        raise ValueError(f'Packed W address out of range: {addr.area}{addr.index:03X}W')
+        raise ValueError(f"Packed W address out of range: {addr.area}{addr.index:03X}W")
     base = _WORD_BASE.get(addr.area)
     if base is None:
-        raise ValueError(f'Unsupported word area: {addr.area}')
+        raise ValueError(f"Unsupported word area: {addr.area}")
     return base + addr.index
 
 
@@ -387,14 +411,18 @@ def encode_byte_address(addr: ParsedAddress) -> int:
     This is used for normal byte commands such as `CMD=1E/1F`.
     For bit-device families, `...L` and `...H` are treated as W/H/L addressing.
     """
-    if addr.unit != 'byte':
-        raise ValueError('Expected byte address')
-    if addr.area in _BASIC_PACKED_SEGMENTS and not _in_segments(addr.index, _BASIC_PACKED_SEGMENTS[addr.area]):
-        suffix = 'H' if addr.high else 'L'
-        raise ValueError(f'Packed byte address out of range: {addr.area}{addr.index:03X}{suffix}')
+    if addr.unit != "byte":
+        raise ValueError("Expected byte address")
+    if addr.area in _BASIC_PACKED_SEGMENTS and not _in_segments(
+        addr.index, _BASIC_PACKED_SEGMENTS[addr.area]
+    ):
+        suffix = "H" if addr.high else "L"
+        raise ValueError(
+            f"Packed byte address out of range: {addr.area}{addr.index:03X}{suffix}"
+        )
     base = _BYTE_BASE.get(addr.area)
     if base is None:
-        raise ValueError(f'Unsupported byte area: {addr.area}')
+        raise ValueError(f"Unsupported byte area: {addr.area}")
     return base + addr.index * 2 + (1 if addr.high else 0)
 
 
@@ -403,13 +431,15 @@ def encode_bit_address(addr: ParsedAddress) -> int:
 
     This is used for normal bit commands such as `CMD=20/21`.
     """
-    if addr.unit != 'bit':
-        raise ValueError('Expected bit address')
+    if addr.unit != "bit":
+        raise ValueError("Expected bit address")
     base = _BIT_BASE.get(addr.area)
     if base is None:
-        raise ValueError(f'Unsupported bit area: {addr.area}')
+        raise ValueError(f"Unsupported bit area: {addr.area}")
     if not _in_segments(addr.index, _BASIC_BIT_SEGMENTS[addr.area]):
-        raise ValueError(f'Bit address out of range for {addr.area}: {addr.area}{addr.index:04X}')
+        raise ValueError(
+            f"Bit address out of range for {addr.area}: {addr.area}{addr.index:04X}"
+        )
     return base + addr.index
 
 
@@ -418,19 +448,21 @@ def encode_program_word_address(addr: ParsedAddress) -> int:
 
     This also supports `...W` addressing on prefixed bit-device families.
     """
-    if addr.unit != 'word':
-        raise ValueError('Expected word address')
+    if addr.unit != "word":
+        raise ValueError("Expected word address")
     if addr.packed and addr.area not in _PROGRAM_BIT_SEGMENTS:
-        raise ValueError(f'W suffix is only valid for prefixed bit-device families: {addr.area}{addr.index:X}W')
+        raise ValueError(
+            f"W suffix is only valid for prefixed bit-device families: {addr.area}{addr.index:X}W"
+        )
     segments = _PROGRAM_WORD_SEGMENTS.get(addr.area)
     if segments is None:
         segments = _PROGRAM_BIT_WORD_SEGMENTS.get(addr.area)
     if segments is None:
-        raise ValueError(f'Unsupported program word area: {addr.area}')
+        raise ValueError(f"Unsupported program word area: {addr.area}")
     for start, end, base in segments:
         if start <= addr.index <= end:
             return base + (addr.index - start)
-    raise ValueError(f'Program word address out of range: {addr.area}{addr.index:04X}')
+    raise ValueError(f"Program word address out of range: {addr.area}{addr.index:04X}")
 
 
 def encode_program_byte_address(addr: ParsedAddress) -> int:
@@ -439,18 +471,20 @@ def encode_program_byte_address(addr: ParsedAddress) -> int:
     This also supports `...L` / `...H` addressing on prefixed bit-device
     families.
     """
-    if addr.unit != 'byte':
-        raise ValueError('Expected byte address')
+    if addr.unit != "byte":
+        raise ValueError("Expected byte address")
     segments = _PROGRAM_BYTE_SEGMENTS.get(addr.area)
     if segments is None:
         segments = _PROGRAM_BIT_BYTE_SEGMENTS.get(addr.area)
     if segments is None:
-        raise ValueError(f'Unsupported program byte area: {addr.area}')
+        raise ValueError(f"Unsupported program byte area: {addr.area}")
     for start, end, base in segments:
         if start <= addr.index <= end:
             return base + (addr.index - start) * 2 + (1 if addr.high else 0)
-    suffix = 'H' if addr.high else 'L'
-    raise ValueError(f'Program byte address out of range: {addr.area}{addr.index:04X}{suffix}')
+    suffix = "H" if addr.high else "L"
+    raise ValueError(
+        f"Program byte address out of range: {addr.area}{addr.index:04X}{suffix}"
+    )
 
 
 def encode_program_bit_address(addr: ParsedAddress) -> Tuple[int, int]:
@@ -459,16 +493,16 @@ def encode_program_bit_address(addr: ParsedAddress) -> Tuple[int, int]:
     Returns `(bit_no, addr)` where `bit_no` is the bit position inside the
     addressed byte/word group and `addr` is the 16-bit monitor address field.
     """
-    if addr.unit != 'bit':
-        raise ValueError('Expected bit address')
+    if addr.unit != "bit":
+        raise ValueError("Expected bit address")
     segments = _PROGRAM_BIT_SEGMENTS.get(addr.area)
     if segments is None:
-        raise ValueError(f'Unsupported program bit area: {addr.area}')
+        raise ValueError(f"Unsupported program bit area: {addr.area}")
     for start, end, byte_base in segments:
         if start <= addr.index <= end:
             rel = addr.index - start
             return rel & 0x07, byte_base + (rel >> 3)
-    raise ValueError(f'Program bit address out of range: {addr.area}{addr.index:04X}')
+    raise ValueError(f"Program bit address out of range: {addr.area}{addr.index:04X}")
 
 
 def encode_exno_bit_u32(ex_no: int, bit_addr: int) -> int:
@@ -495,7 +529,7 @@ def fr_block_ex_no(index: int) -> int:
     command (`CMD=CA`) uses the block `Ex No.` in the range ``0x40-0x7F``.
     """
     if index < 0x000000 or index > 0x1FFFFF:
-        raise ValueError('FR index out of range (0x000000-0x1FFFFF)')
+        raise ValueError("FR index out of range (0x000000-0x1FFFFF)")
     return 0x40 + (index // 0x8000)
 
 
@@ -529,31 +563,31 @@ def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
 
     if area_u in _EXT_AREA_MAP:
         area_map = _EXT_AREA_MAP[area_u]
-        no = area_map['no']
-        if unit == 'word':
-            addr = area_map['word_base'] + index
-        elif unit == 'byte':
-            addr = area_map['byte_base'] + index
+        no = area_map["no"]
+        if unit == "word":
+            addr = area_map["word_base"] + index
+        elif unit == "byte":
+            addr = area_map["byte_base"] + index
         else:
-            raise ValueError(f'Unsupported unit for extended No mapping: {unit}')
-    elif area_u == 'EB':
+            raise ValueError(f"Unsupported unit for extended No mapping: {unit}")
+    elif area_u == "EB":
         # EB blocks are 0x8000 each
         if index < 0x00000 or index > 0x3FFFF:
-            raise ValueError('EB index out of range (0x00000-0x3FFFF)')
+            raise ValueError("EB index out of range (0x00000-0x3FFFF)")
         block = index // 0x8000
         no = 0x09 + block
         addr = index % 0x8000
-    elif area_u == 'FR':
+    elif area_u == "FR":
         # FR blocks are 0x8000 each, Ex No 0x40-0x7F
         if index < 0x000000 or index > 0x1FFFFF:
-            raise ValueError('FR index out of range (0x000000-0x1FFFFF)')
+            raise ValueError("FR index out of range (0x000000-0x1FFFFF)")
         block = index // 0x8000
         no = 0x40 + block
         addr = index % 0x8000
     else:
-        raise ValueError(f'Unsupported extended area for No mapping: {area}')
+        raise ValueError(f"Unsupported extended area for No mapping: {area}")
 
     if addr < 0 or addr > 0xFFFF:
-        raise ValueError('Address out of 16-bit range')
+        raise ValueError("Address out of 16-bit range")
 
     return ExtNoAddress(no=no, addr=addr, unit=unit)

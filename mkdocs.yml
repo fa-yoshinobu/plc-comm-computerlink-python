@@ -1,0 +1,18 @@
+site_name: Toyopuc Computer Link Python API
+site_url: https://github.com/fa-yoshinobu/plc-comm-computerlink-python
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+nav:
+  - Overview: index.md
+  - User Guide: user/USER_GUIDE.md
+  - API Reference:
+      - Client: api/client.md
+  - QA Reports: validation/reports/
+  - Change Log: ../CHANGELOG.md

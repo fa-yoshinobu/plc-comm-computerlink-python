@@ -1,4 +1,3 @@
-
 class ToyopucError(Exception):
     """Base error for TOYOPUC communication."""
 
