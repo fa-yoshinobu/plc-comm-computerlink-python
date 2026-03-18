@@ -54,7 +54,7 @@ Confirm which names are treated as public and stable enough to document.
   - `encode_exno_bit_u32()`
   - `encode_exno_byte_u32()`
 - high-level:
-  - `ToyopucHighLevelClient`
+  - `ToyopucDeviceClient`
   - `resolve_device()`
 
 Decide whether any current helpers should remain internal-only.
@@ -140,7 +140,7 @@ Optional import smoke test:
 
 ```bash
 python - <<'PY'
-from toyopuc import ToyopucClient, ToyopucHighLevelClient, resolve_device
+from toyopuc import ToyopucClient, ToyopucDeviceClient, resolve_device
 print("import ok")
 PY
 ```

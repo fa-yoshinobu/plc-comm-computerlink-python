@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from toyopuc import (
     ToyopucError,
-    ToyopucHighLevelClient,
+    ToyopucDeviceClient,
     encode_bit_address,
     encode_exno_byte_u32,
     parse_address,
@@ -42,7 +42,7 @@ def _next_word_values(original: int) -> tuple[int, int]:
     return phase1, phase2
 
 
-def _pc10_multi_read_word(plc: ToyopucHighLevelClient, addr32: int) -> int:
+def _pc10_multi_read_word(plc: ToyopucDeviceClient, addr32: int) -> int:
     payload = bytearray([0x00, 0x00, 0x01, 0x00])
     payload.extend(addr32.to_bytes(4, "little"))
     data = plc.pc10_multi_read(bytes(payload))
@@ -55,7 +55,7 @@ def _pc10_multi_read_word(plc: ToyopucHighLevelClient, addr32: int) -> int:
 
 
 def _pc10_multi_write_word(
-    plc: ToyopucHighLevelClient, addr32: int, value: int
+    plc: ToyopucDeviceClient, addr32: int, value: int
 ) -> None:
     payload = bytearray([0x00, 0x00, 0x01, 0x00])
     payload.extend(addr32.to_bytes(4, "little"))
@@ -116,7 +116,7 @@ def _parse_case_keys(text: str) -> list[str]:
     return keys
 
 
-def _run_bit_case(plc: ToyopucHighLevelClient, case: BitCase, log_f) -> bool:
+def _run_bit_case(plc: ToyopucDeviceClient, case: BitCase, log_f) -> bool:
     resolved = plc.resolve_device(case.device)
     basic_addr = encode_bit_address(parse_address(case.device, "bit"))
     _print_line(f"=== {case.key} ({case.device}) ===", log_f)
@@ -185,7 +185,7 @@ def _run_bit_case(plc: ToyopucHighLevelClient, case: BitCase, log_f) -> bool:
     return True
 
 
-def _run_word_case(plc: ToyopucHighLevelClient, case: WordCase, log_f) -> bool:
+def _run_word_case(plc: ToyopucDeviceClient, case: WordCase, log_f) -> bool:
     resolved = plc.resolve_device(case.device)
     addr32 = case.addr32_builder(resolved.index)
     _print_line(f"=== {case.key} ({case.device}) ===", log_f)
@@ -288,7 +288,7 @@ def main() -> int:
     total = 0
 
     try:
-        with ToyopucHighLevelClient(
+        with ToyopucDeviceClient(
             args.host,
             args.port,
             protocol=args.protocol,

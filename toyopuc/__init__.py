@@ -2,11 +2,12 @@
 
 Use:
 - `ToyopucClient` for low-level protocol-oriented access
-- `ToyopucHighLevelClient` for string-address based access
+- `ToyopucDeviceClient` for string-address based access
 - `resolve_device()` when you want address-family resolution without I/O
 """
 
 from .client import ToyopucClient
+from .async_client import AsyncToyopucClient, AsyncToyopucDeviceClient
 from .exceptions import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
 from .address import (
     parse_address,
@@ -24,13 +25,15 @@ from .address import (
     fr_block_ex_no,
     encode_fr_word_addr32,
 )
-from .high_level import ResolvedDevice, ToyopucHighLevelClient, resolve_device
+from .high_level import ResolvedDevice, ToyopucDeviceClient, resolve_device
 from .protocol import ClockData, CpuStatusData
 from .relay import RelayLayer, format_relay_hop, normalize_relay_hops, parse_relay_hops
 
 __all__ = [
     "ToyopucClient",
-    "ToyopucHighLevelClient",
+    "AsyncToyopucClient",
+    "AsyncToyopucDeviceClient",
+    "ToyopucDeviceClient",
     "ResolvedDevice",
     "ClockData",
     "CpuStatusData",

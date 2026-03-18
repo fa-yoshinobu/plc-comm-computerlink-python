@@ -9,7 +9,7 @@ from typing import List, Optional
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucError, ToyopucHighLevelClient
+from toyopuc import ToyopucError, ToyopucDeviceClient
 
 
 @dataclass(frozen=True)
@@ -70,14 +70,14 @@ def _word_to_bits(value: int) -> List[int]:
     return [1 if (value >> i) & 0x01 else 0 for i in range(16)]
 
 
-def _read_device(plc: ToyopucHighLevelClient, hops: Optional[str], device: str):
+def _read_device(plc: ToyopucDeviceClient, hops: Optional[str], device: str):
     if hops:
         return plc.relay_read(hops, device)
     return plc.read(device)
 
 
 def _write_device(
-    plc: ToyopucHighLevelClient, hops: Optional[str], device: str, value: int
+    plc: ToyopucDeviceClient, hops: Optional[str], device: str, value: int
 ) -> None:
     if hops:
         plc.relay_write(hops, device, value)
@@ -86,7 +86,7 @@ def _write_device(
 
 
 def _write_by_bits(
-    plc: ToyopucHighLevelClient,
+    plc: ToyopucDeviceClient,
     hops: Optional[str],
     bit_devices: List[str],
     expected_bits: List[int],
@@ -96,7 +96,7 @@ def _write_by_bits(
 
 
 def _write_by_hl(
-    plc: ToyopucHighLevelClient,
+    plc: ToyopucDeviceClient,
     hops: Optional[str],
     low_device: str,
     high_device: str,
@@ -183,7 +183,7 @@ def main() -> int:
     total_all = 0
     error_cases = 0
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

@@ -8,7 +8,7 @@ from typing import Iterable, TextIO
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient  # noqa: E402
+from toyopuc import ToyopucDeviceClient  # noqa: E402
 from toyopuc.client import (  # noqa: E402
     ERROR_CODE_DESCRIPTIONS,
     _extract_relay_nak_error_code,
@@ -59,7 +59,7 @@ def _auto_broken_hops(hops: str) -> str:
     return _format_hops(parsed)
 
 
-def _describe_last_result(plc: ToyopucHighLevelClient) -> str:
+def _describe_last_result(plc: ToyopucDeviceClient) -> str:
     if not plc.last_rx:
         return "last_rx=<none>"
 
@@ -139,7 +139,7 @@ def main() -> int:
                 log_f,
             )
 
-        with ToyopucHighLevelClient(
+        with ToyopucDeviceClient(
             args.host,
             args.port,
             protocol=args.protocol,

@@ -2,7 +2,7 @@ import argparse
 import random
 from typing import Callable
 
-from toyopuc import ToyopucError, ToyopucHighLevelClient, resolve_device
+from toyopuc import ToyopucError, ToyopucDeviceClient, resolve_device
 
 
 def _write_log(log_f, line: str) -> None:
@@ -34,7 +34,7 @@ def _report_case_error(name: str, exc: Exception, log_f) -> tuple[int, int]:
 
 
 def _single_word_case(
-    plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f
+    plc: ToyopucDeviceClient, addr: str, rng: random.Random, log_f
 ) -> tuple[int, int]:
     ok = 0
     total = 0
@@ -54,7 +54,7 @@ def _single_word_case(
 
 
 def _single_byte_case(
-    plc: ToyopucHighLevelClient, addr: str, rng: random.Random, log_f
+    plc: ToyopucDeviceClient, addr: str, rng: random.Random, log_f
 ) -> tuple[int, int]:
     ok = 0
     total = 0
@@ -73,7 +73,7 @@ def _single_byte_case(
 
 
 def _paired_word_byte_case(
-    plc: ToyopucHighLevelClient,
+    plc: ToyopucDeviceClient,
     word_addr: str,
     low_addr: str,
     high_addr: str,
@@ -121,7 +121,7 @@ def _bit_area_for_packed_byte(byte_addr: str) -> tuple[str, int]:
 
 
 def _byte_to_bits_case(
-    plc: ToyopucHighLevelClient, byte_addr: str, rng: random.Random, log_f
+    plc: ToyopucDeviceClient, byte_addr: str, rng: random.Random, log_f
 ) -> tuple[int, int]:
     value = rng.randint(0, 0xFF)
     plc.write(byte_addr, value)
@@ -162,7 +162,7 @@ def main() -> int:
     totals_all = 0
     error_cases = 0
 
-    cases: list[tuple[str, Callable[[ToyopucHighLevelClient], tuple[int, int]]]] = [
+    cases: list[tuple[str, Callable[[ToyopucDeviceClient], tuple[int, int]]]] = [
         ("W/H/L word/basic", lambda plc: _single_word_case(plc, "M0010W", rng, log_f)),
         (
             "W/H/L byte/basic low",
@@ -257,7 +257,7 @@ def main() -> int:
         ),
     ]
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

@@ -280,9 +280,9 @@ Read test from Python with the high-level client:
 
 ```bash
 python - <<'PY'
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
-with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
+with ToyopucDeviceClient("192.168.250.101", 1025, protocol="tcp") as plc:
     print(plc.read_clock())
 PY
 ```
@@ -448,16 +448,16 @@ High-level write example:
 ```bash
 python - <<'PY'
 from datetime import datetime
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
-with ToyopucHighLevelClient("192.168.250.101", 1025, protocol="tcp") as plc:
+with ToyopucDeviceClient("192.168.250.101", 1025, protocol="tcp") as plc:
     plc.write_clock(datetime(2026, 3, 8, 12, 34, 56))
 PY
 ```
 
 ## High-level API test
 
-Use this when you want to verify `ToyopucHighLevelClient` and `resolve_device()` directly.
+Use this when you want to verify `ToyopucDeviceClient` and `resolve_device()` directly.
 
 It covers:
 

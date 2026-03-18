@@ -7,7 +7,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
 STATUS_FIELDS = [
     ("RUN", "run"),
@@ -70,7 +70,7 @@ def main() -> int:
     p.add_argument("--retries", type=int, default=0)
     args = p.parse_args()
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

@@ -28,3 +28,22 @@ This repository is part of the PLC Communication Workspace and follows the globa
 - **Issue Tracking**: Log remaining tasks in `TODO.md`.
 - **Change Tracking**: Update `CHANGELOG.md` for every fix or feature.
 - **QA Requirement**: Every hardware-related fix must include an evidence report in `docs/validation/reports/`.
+
+## 5. API Naming Policy
+
+Detailed naming policy lives in `docs/maintainer/API_UNIFICATION_POLICY.md`.
+
+Public API rules:
+
+- Canonical client class names are `ToyopucClient`, `ToyopucDeviceClient`, `AsyncToyopucClient`, and `AsyncToyopucDeviceClient`.
+- High-level string-device access uses `read`, `write`, `read_many`, `write_many`, `read_fr`, `write_fr`, and `commit_fr`.
+- Low-level protocol access uses explicit names such as `read_words`, `write_words`, `read_bit`, `read_clock`, and `read_cpu_status`.
+- 32-bit helpers should use `read_dword`, `write_dword`, `read_dwords`, `write_dwords`, `read_float32`, and `write_float32` style names.
+- Async support must use dedicated async classes and keep the same method names as the sync classes.
+
+Private or helper naming rules:
+
+- Avoid vague helper names such as `_read_one`, `_write_one`, or `_offset`.
+- Prefer names that describe the subject, such as `_read_resolved_device`, `_write_resolved_device`, and `_offset_resolved_device`.
+- Keep protocol-family names explicit in helpers such as `_pack_pc10_multi_word_payload` or `_resolve_ext_bit`.
+- 32-bit codec helpers should include both type and word order, for example `_pack_uint32_low_word_first` or `_unpack_float32_low_word_first`.

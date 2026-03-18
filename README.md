@@ -23,17 +23,15 @@ pip install toyopuc-computerlink
 
 ### Basic Usage
 ```python
-from toyopuc.client import Toyopuc
+from toyopuc import ToyopucDeviceClient
 
-# Connect to a TOYOPUC PLC
-client = Toyopuc("192.168.1.5")
+with ToyopucDeviceClient("192.168.1.5", 1025) as client:
+    # Read D1000 (Word)
+    val = client.read("D1000")
+    print(f"Value: {val}")
 
-# Read D1000 (Word)
-val = client.read("D1000")
-print(f"Value: {val}")
-
-# Write to M0 (Bit)
-client.write("M0", True)
+    # Write to M0 (Bit)
+    client.write("M0", True)
 ```
 
 ## Documentation

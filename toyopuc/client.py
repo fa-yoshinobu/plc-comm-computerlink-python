@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import struct
 import time
 from datetime import datetime
 from typing import Iterable, List, Optional, Tuple, Self
@@ -129,6 +130,41 @@ def _fr_commit_blocks(start_index: int, word_count: int) -> List[int]:
     ]
 
 
+def _unpack_uint32_low_word_first_words(words: Iterable[int]) -> List[int]:
+    items = [int(word) & 0xFFFF for word in words]
+    if len(items) % 2 != 0:
+        raise ValueError("word count must be even")
+    values: List[int] = []
+    for i in range(0, len(items), 2):
+        values.append(items[i] | (items[i + 1] << 16))
+    return values
+
+
+def _pack_uint32_low_word_first_words(values: Iterable[int]) -> List[int]:
+    words: List[int] = []
+    for value in values:
+        bits = int(value) & 0xFFFFFFFF
+        words.append(bits & 0xFFFF)
+        words.append((bits >> 16) & 0xFFFF)
+    return words
+
+
+def _unpack_float32_low_word_first_words(words: Iterable[int]) -> List[float]:
+    values: List[float] = []
+    for bits in _unpack_uint32_low_word_first_words(words):
+        values.append(struct.unpack("<f", struct.pack("<I", bits))[0])
+    return values
+
+
+def _pack_float32_low_word_first_words(values: Iterable[float]) -> List[int]:
+    words: List[int] = []
+    for value in values:
+        bits = struct.unpack("<I", struct.pack("<f", float(value)))[0]
+        words.append(bits & 0xFFFF)
+        words.append((bits >> 16) & 0xFFFF)
+    return words
+
+
 def format_response_error(resp: ResponseFrame) -> str:
     msg = f"Response error rc=0x{resp.rc:02X}"
     if resp.rc == 0x10:
@@ -186,7 +222,7 @@ class ToyopucClient:
 
     Use this class when you want explicit control over command families,
     numeric addresses, and transport settings. For string-address driven use,
-    prefer `ToyopucHighLevelClient`.
+    prefer `ToyopucDeviceClient`.
     """
 
     def __init__(
@@ -375,6 +411,44 @@ class ToyopucClient:
         resp = self._send_and_recv(build_bit_write(addr, 1 if value else 0))
         if resp.cmd != 0x21:
             raise ToyopucProtocolError("Unexpected CMD in response")
+
+    def read_dword(self, addr: int) -> int:
+        """Read one 32-bit value from two consecutive words."""
+        return self.read_dwords(addr, 1)[0]
+
+    def write_dword(self, addr: int, value: int) -> None:
+        """Write one 32-bit value to two consecutive words."""
+        self.write_dwords(addr, [value])
+
+    def read_dwords(self, addr: int, count: int) -> List[int]:
+        """Read one or more 32-bit values from consecutive words."""
+        points = int(count)
+        if points < 1:
+            raise ValueError("count must be >= 1")
+        return _unpack_uint32_low_word_first_words(self.read_words(addr, points * 2))
+
+    def write_dwords(self, addr: int, values: Iterable[int]) -> None:
+        """Write one or more 32-bit values to consecutive words."""
+        self.write_words(addr, _pack_uint32_low_word_first_words(values))
+
+    def read_float32(self, addr: int) -> float:
+        """Read one IEEE-754 float32 from two consecutive words."""
+        return self.read_float32s(addr, 1)[0]
+
+    def write_float32(self, addr: int, value: float) -> None:
+        """Write one IEEE-754 float32 to two consecutive words."""
+        self.write_float32s(addr, [value])
+
+    def read_float32s(self, addr: int, count: int) -> List[float]:
+        """Read one or more IEEE-754 float32 values from consecutive words."""
+        points = int(count)
+        if points < 1:
+            raise ValueError("count must be >= 1")
+        return _unpack_float32_low_word_first_words(self.read_words(addr, points * 2))
+
+    def write_float32s(self, addr: int, values: Iterable[float]) -> None:
+        """Write one or more IEEE-754 float32 values to consecutive words."""
+        self.write_words(addr, _pack_float32_low_word_first_words(values))
 
     def read_words_multi(self, addrs: Iterable[int]) -> List[int]:
         """Read multiple non-contiguous basic-area words with `CMD=22`."""

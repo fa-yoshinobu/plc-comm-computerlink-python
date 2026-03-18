@@ -7,7 +7,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
 
 def parse_int_auto(text: str) -> int:
@@ -34,7 +34,7 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

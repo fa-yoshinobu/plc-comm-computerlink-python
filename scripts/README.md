@@ -51,7 +51,7 @@ Related documents:
 - `tools/auto_rw_test.py`
   Automated read/write test against a real PLC.
 - `tools/high_level_api_test.py`
-  Verification tool for `ToyopucHighLevelClient` and `resolve_device()`.
+  Verification tool for `ToyopucDeviceClient` and `resolve_device()`.
 - `tools/whl_addressing_test.py`
   Verification tool for `W/H/L` addressing on bit-device families.
 - `tools/final_whl_edge_test.py`

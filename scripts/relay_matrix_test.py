@@ -9,7 +9,7 @@ from typing import Iterable, Mapping, Optional, TextIO, TypeVar, cast
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient, resolve_device  # noqa: E402
+from toyopuc import ToyopucDeviceClient, resolve_device  # noqa: E402
 from toyopuc.high_level import ResolvedDevice  # noqa: E402
 from toyopuc.protocol import (  # noqa: E402
     build_ext_word_read,
@@ -77,7 +77,7 @@ def _format_words(values: Iterable[int]) -> str:
 
 
 def _relay_block_read(
-    plc: ToyopucHighLevelClient, hops: str, device: str, count: int
+    plc: ToyopucDeviceClient, hops: str, device: str, count: int
 ) -> list[int]:
     resolved = resolve_device(device)
     if resolved.unit != "word":
@@ -116,7 +116,7 @@ def _relay_block_read(
 
 
 def _relay_block_write(
-    plc: ToyopucHighLevelClient, hops: str, device: str, values: list[int]
+    plc: ToyopucDeviceClient, hops: str, device: str, values: list[int]
 ) -> None:
     resolved = resolve_device(device)
     if resolved.unit != "word":
@@ -213,7 +213,7 @@ def main() -> int:
         _emit(f"loop_step = 0x{args.loop_step & 0xFFFF:04X}", log_f)
         _emit(f"clock_loops = {args.clock_loops}", log_f)
 
-        with ToyopucHighLevelClient(
+        with ToyopucDeviceClient(
             args.host,
             args.port,
             protocol=args.protocol,

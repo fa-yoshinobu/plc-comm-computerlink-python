@@ -1,6 +1,6 @@
 import argparse
 
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
 
 def parse_int_auto(value: str) -> int:
@@ -45,7 +45,7 @@ def print_a0(prefix: str, status) -> None:
 def main() -> int:
     args = build_parser().parse_args()
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

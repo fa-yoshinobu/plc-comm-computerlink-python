@@ -2,7 +2,7 @@ import argparse
 import random
 from typing import Callable, Sequence
 
-from toyopuc import ToyopucError, ToyopucHighLevelClient, resolve_device
+from toyopuc import ToyopucError, ToyopucDeviceClient, resolve_device
 
 
 def _write_log(log_f, line: str) -> None:
@@ -41,26 +41,26 @@ def _report_case_error(name: str, exc: Exception, log_f) -> tuple[int, int]:
     return 0, 0
 
 
-def _read(plc: ToyopucHighLevelClient, hops: str, addr: str, count: int = 1):
+def _read(plc: ToyopucDeviceClient, hops: str, addr: str, count: int = 1):
     if hops:
         return plc.relay_read(hops, addr, count=count)
     return plc.read(addr, count=count)
 
 
-def _write(plc: ToyopucHighLevelClient, hops: str, addr: str, value) -> None:
+def _write(plc: ToyopucDeviceClient, hops: str, addr: str, value) -> None:
     if hops:
         plc.relay_write(hops, addr, value)
         return
     plc.write(addr, value)
 
 
-def _read_many(plc: ToyopucHighLevelClient, hops: str, devices: Sequence[str]):
+def _read_many(plc: ToyopucDeviceClient, hops: str, devices: Sequence[str]):
     if hops:
         return plc.relay_read_many(hops, devices)
     return plc.read_many(devices)
 
 
-def _write_many(plc: ToyopucHighLevelClient, hops: str, items: dict[str, int]) -> None:
+def _write_many(plc: ToyopucDeviceClient, hops: str, items: dict[str, int]) -> None:
     if hops:
         plc.relay_write_many(hops, items)
         return
@@ -68,7 +68,7 @@ def _write_many(plc: ToyopucHighLevelClient, hops: str, items: dict[str, int]) -
 
 
 def _single_bit_case(
-    plc: ToyopucHighLevelClient, hops: str, addr: str, log_f
+    plc: ToyopucDeviceClient, hops: str, addr: str, log_f
 ) -> tuple[int, int]:
     ok = 0
     total = 0
@@ -86,7 +86,7 @@ def _single_bit_case(
 
 
 def _single_word_case(
-    plc: ToyopucHighLevelClient, hops: str, addr: str, rng: random.Random, log_f
+    plc: ToyopucDeviceClient, hops: str, addr: str, rng: random.Random, log_f
 ) -> tuple[int, int]:
     ok = 0
     total = 0
@@ -106,7 +106,7 @@ def _single_word_case(
 
 
 def _single_byte_case(
-    plc: ToyopucHighLevelClient, hops: str, addr: str, rng: random.Random, log_f
+    plc: ToyopucDeviceClient, hops: str, addr: str, rng: random.Random, log_f
 ) -> tuple[int, int]:
     ok = 0
     total = 0
@@ -125,7 +125,7 @@ def _single_byte_case(
 
 
 def _sequence_case(
-    plc: ToyopucHighLevelClient, hops: str, base_addr: str, values: Sequence[int], log_f
+    plc: ToyopucDeviceClient, hops: str, base_addr: str, values: Sequence[int], log_f
 ) -> tuple[int, int]:
     scheme = resolve_device(base_addr).scheme
     _write(plc, hops, base_addr, list(values))
@@ -137,7 +137,7 @@ def _sequence_case(
 
 
 def _mixed_many_case(
-    plc: ToyopucHighLevelClient, hops: str, items: dict[str, int], log_f
+    plc: ToyopucDeviceClient, hops: str, items: dict[str, int], log_f
 ) -> tuple[int, int]:
     _write_many(plc, hops, items)
     read_back = _read_many(plc, hops, list(items.keys()))
@@ -156,7 +156,7 @@ def _mixed_many_case(
     return ok, total
 
 
-def _fr_guard_case(plc: ToyopucHighLevelClient, hops: str, log_f) -> tuple[int, int]:
+def _fr_guard_case(plc: ToyopucDeviceClient, hops: str, log_f) -> tuple[int, int]:
     if hops:
         line = "FR write guard: SKIP (relay mode uses explicit FR read/write path instead of generic write guard)"
         print(line)
@@ -197,7 +197,7 @@ def _fr_guard_case(plc: ToyopucHighLevelClient, hops: str, log_f) -> tuple[int, 
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="High-level API verification tool for ToyopucHighLevelClient"
+        description="High-level API verification tool for ToyopucDeviceClient"
     )
     p.add_argument("--host", required=True)
     p.add_argument("--port", type=int, required=True)
@@ -224,7 +224,7 @@ def main() -> int:
     error_cases = 0
 
     single_cases: list[
-        tuple[str, Callable[[ToyopucHighLevelClient], tuple[int, int]]]
+        tuple[str, Callable[[ToyopucDeviceClient], tuple[int, int]]]
     ] = [
         (
             "single bit/basic",
@@ -278,7 +278,7 @@ def main() -> int:
     if args.include_pc10_word:
         mixed_items["U08000"] = 0xDEF0
 
-    with ToyopucHighLevelClient(
+    with ToyopucDeviceClient(
         args.host,
         args.port,
         protocol=args.protocol,

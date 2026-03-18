@@ -1,6 +1,6 @@
 from toyopuc import (
     ToyopucClient,
-    ToyopucHighLevelClient,
+    ToyopucDeviceClient,
     encode_word_address,
     parse_address,
     resolve_device,
@@ -46,7 +46,7 @@ class _DummyRelayClient(ToyopucClient):
         return self.response
 
 
-class _DummyRelayHighLevelClient(ToyopucHighLevelClient):
+class _DummyRelayHighLevelClient(ToyopucDeviceClient):
     def __init__(self, response):
         super().__init__("127.0.0.1", 1025)
         self.response = response
@@ -61,7 +61,7 @@ class _DummyRelayHighLevelClient(ToyopucHighLevelClient):
         return self.response
 
 
-class _DummyDirectHighLevelClient(ToyopucHighLevelClient):
+class _DummyDirectHighLevelClient(ToyopucDeviceClient):
     def __init__(self):
         super().__init__("127.0.0.1", 1025)
         self.pc10_block_reads = []

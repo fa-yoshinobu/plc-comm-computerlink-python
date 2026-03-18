@@ -17,7 +17,7 @@ Initial public release of `toyopuc-computerlink`.
 ## Highlights
 
 - low-level client: `ToyopucClient`
-- high-level client: `ToyopucHighLevelClient`
+- high-level client: `ToyopucDeviceClient`
 - TCP and UDP support
 - clock read / write
 - CPU status read

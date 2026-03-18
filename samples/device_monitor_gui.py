@@ -11,7 +11,7 @@ from typing import Dict, Optional
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient, resolve_device
+from toyopuc import ToyopucDeviceClient, resolve_device
 
 
 class MonitorApp:
@@ -38,7 +38,7 @@ class MonitorApp:
         self.root.geometry("1320x860")
         self.root.minsize(1100, 720)
 
-        self.client: Optional[ToyopucHighLevelClient] = None
+        self.client: Optional[ToyopucDeviceClient] = None
         self.poll_job: Optional[str] = None
         self.last_values: Dict[str, object] = {}
         self.units: Dict[str, str] = {}
@@ -496,7 +496,7 @@ class MonitorApp:
     def _relay_active(self) -> bool:
         return self._relay_hops() is not None
 
-    def _require_client(self) -> ToyopucHighLevelClient:
+    def _require_client(self) -> ToyopucDeviceClient:
         if self.client is None:
             raise RuntimeError("not connected")
         return self.client
@@ -547,7 +547,7 @@ class MonitorApp:
             return
         try:
             settings = self._read_connection_settings()
-            client = ToyopucHighLevelClient(
+            client = ToyopucDeviceClient(
                 settings["host"],
                 settings["port"],
                 protocol=settings["protocol"],

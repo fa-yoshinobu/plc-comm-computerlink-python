@@ -61,7 +61,7 @@ Initial public release of `toyopuc-computerlink`.
 ### Included
 
 - low-level client: `ToyopucClient`
-- high-level client: `ToyopucHighLevelClient`
+- high-level client: `ToyopucDeviceClient`
 - address parsing and encoding helpers
 - TCP support
 - UDP support with optional fixed local source port

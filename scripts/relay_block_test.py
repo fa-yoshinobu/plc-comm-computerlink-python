@@ -8,7 +8,7 @@ from typing import TextIO
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucHighLevelClient
+from toyopuc import ToyopucDeviceClient
 
 
 def parse_int_auto(text: str) -> int:
@@ -83,7 +83,7 @@ def main() -> int:
         _emit(f"step = 0x{args.step & 0xFFFF:04X}", log_f)
         _emit(f"loop_step = 0x{args.loop_step & 0xFFFF:04X}", log_f)
 
-        with ToyopucHighLevelClient(
+        with ToyopucDeviceClient(
             args.host,
             args.port,
             protocol=args.protocol,
