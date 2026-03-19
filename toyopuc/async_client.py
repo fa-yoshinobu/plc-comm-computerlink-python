@@ -168,4 +168,3 @@ for _method_name in _CLIENT_ASYNC_METHODS:
 
 for _method_name in _HIGH_LEVEL_ASYNC_METHODS:
     _install_async_wrapper(AsyncToyopucDeviceClient, _method_name)
-

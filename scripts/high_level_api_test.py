@@ -223,9 +223,7 @@ def main() -> int:
     totals_all = 0
     error_cases = 0
 
-    single_cases: list[
-        tuple[str, Callable[[ToyopucDeviceClient], tuple[int, int]]]
-    ] = [
+    single_cases: list[tuple[str, Callable[[ToyopucDeviceClient], tuple[int, int]]]] = [
         (
             "single bit/basic",
             lambda plc: _single_bit_case(plc, args.hops, "M0000", log_f),

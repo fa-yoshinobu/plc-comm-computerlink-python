@@ -54,9 +54,7 @@ def _pc10_multi_read_word(plc: ToyopucDeviceClient, addr32: int) -> int:
     return int.from_bytes(body[:2], "little")
 
 
-def _pc10_multi_write_word(
-    plc: ToyopucDeviceClient, addr32: int, value: int
-) -> None:
+def _pc10_multi_write_word(plc: ToyopucDeviceClient, addr32: int, value: int) -> None:
     payload = bytearray([0x00, 0x00, 0x01, 0x00])
     payload.extend(addr32.to_bytes(4, "little"))
     payload.extend(int(value & 0xFFFF).to_bytes(2, "little"))
