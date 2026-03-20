@@ -21,7 +21,7 @@ This repository is part of the PLC Communication Workspace and follows the globa
 - **Distribution Control**: Ensure `pyproject.toml` excludes `docsrc/maintainer/`, `docsrc/validation/`, `tests/`, `tools/`, and `TODO.md` from PyPI/Wheel packages.
 
 ## 3. Reference Materials
-- **Official Specs**: Refer to `local_folder/JTEKT/` for authoritative English manuals (Local only).
+- **Official Specs**: Refer to `internal_reference_library/JTEKT/` for authoritative English manuals (Local only).
 - **Evidence**: Check `docsrc/validation/reports/` for verified communication results with TOYOPUC-Plus and Nano 10GX.
 
 ## 4. Development Workflow
@@ -47,4 +47,5 @@ Private or helper naming rules:
 - Prefer names that describe the subject, such as `_read_resolved_device`, `_write_resolved_device`, and `_offset_resolved_device`.
 - Keep protocol-family names explicit in helpers such as `_pack_pc10_multi_word_payload` or `_resolve_ext_bit`.
 - 32-bit codec helpers should include both type and word order, for example `_pack_uint32_low_word_first` or `_unpack_float32_low_word_first`.
+
 
