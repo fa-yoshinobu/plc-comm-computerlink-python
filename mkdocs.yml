@@ -1,7 +1,7 @@
 site_dir: docs
 docs_dir: docsrc
 site_name: Toyopuc Computer Link Python API
-site_url: https://github.com/fa-yoshinobu/plc-comm-computerlink-python
+site_url: https://fa-yoshinobu.github.io/plc-comm-computerlink-python/
 theme:
   name: material
   palette:
@@ -18,5 +18,6 @@ nav:
       - Client: api/client.md
   - QA Reports: validation/reports/
   - Change Log: ../CHANGELOG.md
+
 
 
