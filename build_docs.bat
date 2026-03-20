@@ -1,8 +1,7 @@
 @echo off
-set SITE_DIR=.\publish\docs
-echo [DOCS] Building Toyopuc Python Docs...
-python -m pip install --quiet mkdocs mkdocs-material mkdocstrings[python]
-python -m mkdocs build --clean --site-dir "%SITE_DIR%"
-echo [SUCCESS] Docs ready at %cd%\publish\docs\index.html
-pause
-
+echo [DOCS] Building Toyopuc Python Docs with MkDocs...
+mkdocs build
+if %errorlevel% neq 0 (
+    echo [ERROR] MkDocs build failed.
+)
+echo [SUCCESS] Documentation built to site/
