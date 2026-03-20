@@ -5,8 +5,8 @@ These examples show practical usage of `toyopuc`.
 Related documents:
 
 - [../README.md](../README.md)
-- [../docs/TESTING.md](../docs/TESTING.md)
-- [../docs/COMPUTER_LINK_SPEC.md](../docs/COMPUTER_LINK_SPEC.md)
+- [../docsrc/TESTING.md](../docsrc/TESTING.md)
+- [../docsrc/COMPUTER_LINK_SPEC.md](../docsrc/COMPUTER_LINK_SPEC.md)
 - [../tools/README.md](../tools/README.md)
 
 Run them from the repository root or after installing the package.
@@ -158,3 +158,4 @@ FR commit through relay:
 ```powershell
 python examples/relay_basic.py --host 192.168.250.101 --port 1027 --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode fr-commit --device FR000000 --wait
 ```
+

@@ -60,11 +60,11 @@ Observed limitation:
 ## Included Documents
 
 - `README.md`
-- `docs/TESTING.md`
-- `docs/COMPUTER_LINK_SPEC.md`
-- `docs/MODEL_RANGES.md`
-- `docs/RELEASE.md`
-- `docs/RELEASE_NOTES.md`
+- `docsrc/TESTING.md`
+- `docsrc/COMPUTER_LINK_SPEC.md`
+- `docsrc/MODEL_RANGES.md`
+- `docsrc/RELEASE.md`
+- `docsrc/RELEASE_NOTES.md`
 - `examples/README.md`
 - `tools/README.md`
 
@@ -83,7 +83,7 @@ Checked before release:
 - `python -m compileall toyopuc tools tests examples`
 - `python -m build`
 - `python -m twine check dist/*`
-- `python -m pdoc -o docs/api toyopuc`
+- `python -m pdoc -o docsrc/api toyopuc`
 
 ## Assets
 
@@ -99,3 +99,4 @@ Checked before release:
 - confirm the title is `v1.0.0`
 - confirm the tag is `v1.0.0`
 - confirm release notes match [RELEASE_NOTES.md](RELEASE_NOTES.md)
+

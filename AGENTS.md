@@ -15,23 +15,23 @@ This repository is part of the PLC Communication Workspace and follows the globa
   - All changes must pass `ruff` (linting/formatting) and `mypy` (type checking).
   - Use `ruff check .` and `ruff format .` before committing.
 - **Documentation Structure**: Follow the Modern Documentation Policy:
-  - `docs/user/`: User manuals and API guides. [DIST]
-  - `docs/maintainer/`: Protocol specs and internal logic. [REPO]
-  - `docs/validation/`: Hardware QA reports and bug analysis. [REPO]
-- **Distribution Control**: Ensure `pyproject.toml` excludes `docs/maintainer/`, `docs/validation/`, `tests/`, `tools/`, and `TODO.md` from PyPI/Wheel packages.
+  - `docsrc/user/`: User manuals and API guides. [DIST]
+  - `docsrc/maintainer/`: Protocol specs and internal logic. [REPO]
+  - `docsrc/validation/`: Hardware QA reports and bug analysis. [REPO]
+- **Distribution Control**: Ensure `pyproject.toml` excludes `docsrc/maintainer/`, `docsrc/validation/`, `tests/`, `tools/`, and `TODO.md` from PyPI/Wheel packages.
 
 ## 3. Reference Materials
 - **Official Specs**: Refer to `local_folder/JTEKT/` for authoritative English manuals (Local only).
-- **Evidence**: Check `docs/validation/reports/` for verified communication results with TOYOPUC-Plus and Nano 10GX.
+- **Evidence**: Check `docsrc/validation/reports/` for verified communication results with TOYOPUC-Plus and Nano 10GX.
 
 ## 4. Development Workflow
 - **Issue Tracking**: Log remaining tasks in `TODO.md`.
 - **Change Tracking**: Update `CHANGELOG.md` for every fix or feature.
-- **QA Requirement**: Every hardware-related fix must include an evidence report in `docs/validation/reports/`.
+- **QA Requirement**: Every hardware-related fix must include an evidence report in `docsrc/validation/reports/`.
 
 ## 5. API Naming Policy
 
-Detailed naming policy lives in `docs/maintainer/API_UNIFICATION_POLICY.md`.
+Detailed naming policy lives in `docsrc/maintainer/API_UNIFICATION_POLICY.md`.
 
 Public API rules:
 
@@ -47,3 +47,4 @@ Private or helper naming rules:
 - Prefer names that describe the subject, such as `_read_resolved_device`, `_write_resolved_device`, and `_offset_resolved_device`.
 - Keep protocol-family names explicit in helpers such as `_pack_pc10_multi_word_payload` or `_resolve_ext_bit`.
 - 32-bit codec helpers should include both type and word order, for example `_pack_uint32_low_word_first` or `_unpack_float32_low_word_first`.
+

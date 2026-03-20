@@ -20,7 +20,7 @@ Documentation and repository-link refresh release.
 - updated GitHub Pages links to the renamed repository path
 - added a related repository note for the `.NET` version:
   - `https://github.com/fa-yoshinobu/toyopuc-computer-link-dotnet`
-- refreshed generated API docs under `docs/api`
+- refreshed generated API docs under `docsrc/api`
 
 ## Verification
 
@@ -31,9 +31,9 @@ Documentation and repository-link refresh release.
 ## Included Documents
 
 - `README.md`
-- `docs/RELEASE.md`
-- `docs/RELEASE_NOTES.md`
-- `docs/api/*`
+- `docsrc/RELEASE.md`
+- `docsrc/RELEASE_NOTES.md`
+- `docsrc/api/*`
 
 ## Assets
 
@@ -47,3 +47,4 @@ Documentation and repository-link refresh release.
 - confirm the title is `v1.0.3`
 - confirm the tag is `v1.0.3`
 - confirm release notes match [RELEASE_NOTES.md](RELEASE_NOTES.md)
+

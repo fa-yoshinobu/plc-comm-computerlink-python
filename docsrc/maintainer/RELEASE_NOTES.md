@@ -24,7 +24,7 @@ Release date:
   - `https://fa-yoshinobu.github.io/toyopuc-computer-link-python/`
 - added related repository note for the `.NET` implementation:
   - `https://github.com/fa-yoshinobu/toyopuc-computer-link-dotnet`
-- refreshed generated API docs under `docs/api`
+- refreshed generated API docs under `docsrc/api`
 
 ### Verification
 
@@ -152,7 +152,7 @@ Release date:
   - `tools/final_whl_edge_test.py` with `--write-mode bits|hl`
   - `tools/run_final_whl_edge_matrix.bat` for `TCP/UDP x P1/P2/P3 x bits/hl`
 - relay high-level tool defaults aligned to prefixed targets (`P1-...`)
-- generated API docs refresh (`docs/api/*`)
+- generated API docs refresh (`docsrc/api/*`)
 
 ### Breaking Changes
 
@@ -207,4 +207,5 @@ python examples/relay_basic.py --mode word-read --device P1-D0000
 - [VER_1.0.1_FIX_NOTES.md](VER_1.0.1_FIX_NOTES.md)
 - [TESTING.md](TESTING.md)
 - [COMPUTER_LINK_SPEC.md](COMPUTER_LINK_SPEC.md)
+
 

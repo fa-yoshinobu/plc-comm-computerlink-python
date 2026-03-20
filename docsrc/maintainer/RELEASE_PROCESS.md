@@ -25,10 +25,10 @@ Confirm what is part of the release.
 - keep:
   - `toyopuc/`
   - `README.md`
-  - `docs/TESTING.md`
-  - `docs/COMPUTER_LINK_SPEC.md`
-  - `docs/MODEL_RANGES.md`
-  - `docs/PENDING.md`
+  - `docsrc/TESTING.md`
+  - `docsrc/COMPUTER_LINK_SPEC.md`
+  - `docsrc/MODEL_RANGES.md`
+  - `docsrc/PENDING.md`
   - `LICENSE`
   - `pyproject.toml`
 - exclude:
@@ -226,3 +226,4 @@ After release:
 - record tag / version
 - keep [MODEL_RANGES.md](MODEL_RANGES.md) updated when new hardware is tested
 - move completed items out of [PENDING.md](PENDING.md)
+

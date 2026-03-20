@@ -4,8 +4,8 @@ Related documents:
 
 - [README.md](README.md)
 - [../README.md](../README.md)
-- [../docs/TESTING.md](../docs/TESTING.md)
-- [../docs/COMPUTER_LINK_SPEC.md](../docs/COMPUTER_LINK_SPEC.md)
+- [../docsrc/TESTING.md](../docsrc/TESTING.md)
+- [../docsrc/COMPUTER_LINK_SPEC.md](../docsrc/COMPUTER_LINK_SPEC.md)
 
 `examples/device_monitor_gui.py` is a Tkinter-based monitor for quick operator use.
 
@@ -199,3 +199,4 @@ Relay write/readback on `P1-D0000`:
   - example: `clock: 2026-03-10 12:20:19 (wd=2)`
 - The GUI is for operational spot checks, not large-scale validation.
 - For scripted or exhaustive verification, use the tools under [../tools/README.md](../tools/README.md).
+

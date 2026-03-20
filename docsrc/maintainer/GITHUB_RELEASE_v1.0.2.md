@@ -20,7 +20,7 @@ Regression-guard release for sparse `pc10-word` `read_many` behavior.
   - `test_high_level_read_many_pc10_word_sparse_uses_block_read_only`
 - added relay regression test:
   - `test_high_level_relay_read_many_pc10_word_sparse_uses_block_read_only`
-- documented the regression guard in `docs/TESTING.md`
+- documented the regression guard in `docsrc/TESTING.md`
 
 ## Verification
 
@@ -32,11 +32,11 @@ Regression-guard release for sparse `pc10-word` `read_many` behavior.
 ## Included Documents
 
 - `README.md`
-- `docs/TESTING.md`
-- `docs/COMPUTER_LINK_SPEC.md`
-- `docs/MODEL_RANGES.md`
-- `docs/RELEASE.md`
-- `docs/RELEASE_NOTES.md`
+- `docsrc/TESTING.md`
+- `docsrc/COMPUTER_LINK_SPEC.md`
+- `docsrc/MODEL_RANGES.md`
+- `docsrc/RELEASE.md`
+- `docsrc/RELEASE_NOTES.md`
 - `examples/README.md`
 - `tools/README.md`
 
@@ -52,3 +52,4 @@ Regression-guard release for sparse `pc10-word` `read_many` behavior.
 - confirm the title is `v1.0.2`
 - confirm the tag is `v1.0.2`
 - confirm release notes match [RELEASE_NOTES.md](RELEASE_NOTES.md)
+

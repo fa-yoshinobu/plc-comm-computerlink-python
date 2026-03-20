@@ -5,9 +5,9 @@ Use this file as a short index for the `tools/` directory.
 Related documents:
 
 - [../README.md](../README.md)
-- [../docs/TESTING.md](../docs/TESTING.md)
-- [../docs/MODEL_RANGES.md](../docs/MODEL_RANGES.md)
-- [../docs/COMPUTER_LINK_SPEC.md](../docs/COMPUTER_LINK_SPEC.md)
+- [../docsrc/TESTING.md](../docsrc/TESTING.md)
+- [../docsrc/MODEL_RANGES.md](../docsrc/MODEL_RANGES.md)
+- [../docsrc/COMPUTER_LINK_SPEC.md](../docsrc/COMPUTER_LINK_SPEC.md)
 - [../examples/README.md](../examples/README.md)
 
 ## Main scripts
@@ -85,7 +85,7 @@ Related documents:
 - `tools/run_sim_tests.bat`
   Runs a small simulator-oriented smoke test set against `tools.sim_server`.
 - `tools/build_api_docs.bat`
-  Generates API HTML documentation with `pdoc` into `docs/api`.
+  Generates API HTML documentation with `pdoc` into `docsrc/api`.
 - `tools/build_device_monitor_gui.bat`
   Builds `examples/device_monitor_gui.py` into a Windows GUI executable with PyInstaller.
 - `tools/sim_server.py`
@@ -94,10 +94,10 @@ Related documents:
 ## Documents
 
 - Project overview: [../README.md](../README.md)
-- Test usage and verified results: [../docs/TESTING.md](../docs/TESTING.md)
-- Model-specific writable ranges: [../docs/MODEL_RANGES.md](../docs/MODEL_RANGES.md)
-- Communication protocol and address tables: [../docs/COMPUTER_LINK_SPEC.md](../docs/COMPUTER_LINK_SPEC.md)
-- Remaining open items: [../docs/PENDING.md](../docs/PENDING.md)
+- Test usage and verified results: [../docsrc/TESTING.md](../docsrc/TESTING.md)
+- Model-specific writable ranges: [../docsrc/MODEL_RANGES.md](../docsrc/MODEL_RANGES.md)
+- Communication protocol and address tables: [../docsrc/COMPUTER_LINK_SPEC.md](../docsrc/COMPUTER_LINK_SPEC.md)
+- Remaining open items: [../docsrc/PENDING.md](../docsrc/PENDING.md)
 
 ## Batch usage summary
 
@@ -132,3 +132,4 @@ python tools\final_whl_edge_test.py --host 192.168.250.101 --port 1027 --protoco
 tools\run_final_whl_edge_matrix.bat 192.168.250.101 1025 1027 12000 5 1 final_whl_edge_matrix_logs
 tools\run_sim_tests.bat 192.168.250.101 1027 udp 12000 5 2
 ```
+

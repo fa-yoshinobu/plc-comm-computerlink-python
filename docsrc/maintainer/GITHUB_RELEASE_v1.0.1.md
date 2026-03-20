@@ -26,7 +26,7 @@ behavior, prefix-required high-level inputs, and end-to-end verification tools.
   - `tools/final_whl_edge_test.py` (`--write-mode bits|hl`)
   - `tools/run_final_whl_edge_matrix.bat`
 - relay high-level defaults aligned to prefixed targets (`P1-...`)
-- refreshed API docs under `docs/api`
+- refreshed API docs under `docsrc/api`
 
 ## Breaking Changes
 
@@ -70,12 +70,12 @@ Hardware note:
 ## Included Documents
 
 - `README.md`
-- `docs/TESTING.md`
-- `docs/COMPUTER_LINK_SPEC.md`
-- `docs/MODEL_RANGES.md`
-- `docs/RELEASE.md`
-- `docs/RELEASE_NOTES.md`
-- `docs/VER_1.0.1_FIX_NOTES.md`
+- `docsrc/TESTING.md`
+- `docsrc/COMPUTER_LINK_SPEC.md`
+- `docsrc/MODEL_RANGES.md`
+- `docsrc/RELEASE.md`
+- `docsrc/RELEASE_NOTES.md`
+- `docsrc/VER_1.0.1_FIX_NOTES.md`
 - `examples/README.md`
 - `tools/README.md`
 
@@ -91,3 +91,4 @@ Hardware note:
 - confirm the title is `v1.0.1`
 - confirm the tag is `v1.0.1`
 - confirm release notes match [RELEASE_NOTES.md](RELEASE_NOTES.md)
+

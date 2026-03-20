@@ -39,8 +39,9 @@ Documentation = "https://fa-yoshinobu.github.io/plc-comm-computerlink-python/"
 
 [tool.setuptools.packages.find]
 include = ["toyopuc"]
-exclude = ["tests*", "scripts*", "docs/maintainer*", "docs/validation*"]
+exclude = ["tests*", "scripts*", "docsrc/maintainer*", "docsrc/validation*"]
 
 [tool.setuptools]
 include-package-data = true
 exclude-package-data = { "*" = ["TODO.md"] }
+

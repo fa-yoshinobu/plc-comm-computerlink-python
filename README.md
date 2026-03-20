@@ -38,10 +38,10 @@ with ToyopucDeviceClient("192.168.1.5", 1025) as client:
 
 Follows the workspace-wide hierarchical documentation policy:
 
-- [**User Guide**](docs/user/USER_GUIDE.md): Detailed usage and connection setup.
-- [**Model Ranges**](docs/user/MODEL_RANGES.md): Supported device ranges for different Toyopuc models.
-- [**QA Reports**](docs/validation/reports/): Formal evidence of communication with real Toyopuc hardware.
-- [**Protocol Spec**](docs/maintainer/PROTOCOL_SPEC.md): Internal technical details of the computer-link protocol.
+- [**User Guide**](docsrc/user/USER_GUIDE.md): Detailed usage and connection setup.
+- [**Model Ranges**](docsrc/user/MODEL_RANGES.md): Supported device ranges for different Toyopuc models.
+- [**QA Reports**](docsrc/validation/reports/): Formal evidence of communication with real Toyopuc hardware.
+- [**Protocol Spec**](docsrc/maintainer/PROTOCOL_SPEC.md): Internal technical details of the computer-link protocol.
 
 ## Development & CI
 
@@ -61,4 +61,5 @@ Validates the code and builds a standalone CLI tool in the `publish/` directory.
 ## License
 
 Distributed under the [MIT License](LICENSE).
+
 
