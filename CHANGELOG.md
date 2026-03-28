@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.1.4 - 2026-03-29
+
 ### Changed
 - `read_many()` / `write_many()` and `relay_read_many()` / `relay_write_many()` now route through the high-level batching path where grouped relay/direct commands are available, while preserving input order.
 - Direct high-level batching now uses `CMD=98` sparse extended reads, `CMD=99` sparse extended writes, `CMD=C4` sparse PC10 word reads, and `CMD=C5` sparse PC10 word writes where available.
