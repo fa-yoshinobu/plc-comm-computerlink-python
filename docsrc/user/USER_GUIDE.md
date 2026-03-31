@@ -15,7 +15,7 @@ Use one of these two styles:
 
 - `ToyopucDeviceClient`
   Best for scripts, tools, and desktop applications that want simple synchronous calls.
-- `open_and_connect(...)` plus helper functions such as `read_typed`, `read_named`, and `poll`
+- `ToyopucConnectionOptions` plus `open_and_connect(...)` and helper functions such as `read_typed`, `read_named`, and `poll`
   Best for asyncio applications.
 
 ## Quick start
@@ -40,10 +40,11 @@ with ToyopucDeviceClient("192.168.250.100", 1025) as plc:
 
 ```python
 import asyncio
-from toyopuc import open_and_connect, read_named, read_typed, write_typed
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -> None:
-    async with await open_and_connect("192.168.250.100", 1025) as plc:
+    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, "P1-D0100", "F")
         print(f"speed = {speed}")
 
@@ -71,6 +72,14 @@ asyncio.run(main())
   decimal or hexadecimal device number
 
 When a profile is in use, basic families `P/K/V/T/C/L/X/Y/M/S/N/R/D` should be written as `P1-*`, `P2-*`, or `P3-*`.
+
+### Normalize device text
+
+```python
+from toyopuc import normalize_address
+
+assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode") == "P1-D0000"
+```
 
 ### Common device families
 
@@ -158,11 +167,22 @@ await write_typed(plc, "P1-D0200", "S", -100)
 ### Read contiguous blocks
 
 ```python
-from toyopuc import read_words, read_dwords
+from toyopuc import (
+    read_dwords_chunked,
+    read_dwords_single_request,
+    read_words_chunked,
+    read_words_single_request,
+)
 
-words = await read_words(plc, "P1-D0000", 10)
-dwords = await read_dwords(plc, "P1-D0000", 4)
+words = await read_words_single_request(plc, "P1-D0000", 10)
+dwords = await read_dwords_single_request(plc, "P1-D0000", 4)
+
+large_words = await read_words_chunked(plc, "P1-D1000", 1000)
+large_dwords = await read_dwords_chunked(plc, "P1-D2000", 120)
 ```
+
+Use `*_single_request` when the transfer must stay on the high-level contiguous path.
+Use `*_chunked` only when the caller explicitly accepts multi-request chunking.
 
 ### Change one bit inside a word
 
@@ -201,10 +221,11 @@ print(result)
 
 ```python
 import asyncio
-from toyopuc import open_and_connect, poll
+from toyopuc import ToyopucConnectionOptions, open_and_connect, poll
 
 async def main() -> None:
-    async with await open_and_connect("192.168.250.100") as plc:
+    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         count = 0
         async for snapshot in poll(plc, ["P1-D0100", "P1-D0101:F"], interval=1.0):
             print(snapshot)

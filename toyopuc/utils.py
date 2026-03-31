@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from .async_client import AsyncToyopucDeviceClient
@@ -13,6 +14,160 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Connection helper
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ToyopucConnectionOptions:
+    """Stable connection settings for one TOYOPUC session."""
+
+    host: str
+    port: int = 1025
+    timeout: float = 3.0
+    retries: int = 0
+
+
+def normalize_address(device: str, *, profile: str | None = None) -> str:
+    """Return the canonical TOYOPUC device string."""
+
+    from .high_level import resolve_device
+
+    return resolve_device(device, profile=profile).text
+
+
+async def read_words_single_request(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    count: int,
+) -> list[int]:
+    """Read contiguous word values using one high-level logical operation."""
+
+    return await read_words(client, device, count)
+
+
+async def read_dwords_single_request(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    count: int,
+) -> list[int]:
+    """Read contiguous dword values using one high-level logical operation."""
+
+    values = await client.read_dwords(device, count, atomic_transfer=True)
+    return [int(value) & 0xFFFFFFFF for value in values]
+
+
+async def write_words_single_request(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    values: list[int],
+) -> None:
+    """Write contiguous word values using one high-level logical operation."""
+
+    sync_client = cast(Any, client._client)
+    runner = cast(Any, client._run_sync_in_worker)
+    resolved = sync_client.resolve_device(device)
+    await runner(sync_client._write_resolved_word_values, resolved, [int(v) & 0xFFFF for v in values], False)
+
+
+async def write_dwords_single_request(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    values: list[int],
+) -> None:
+    """Write contiguous dword values using one high-level logical operation."""
+
+    await client.write_dwords(device, [int(value) & 0xFFFFFFFF for value in values], atomic_transfer=True)
+
+
+async def read_words_chunked(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    count: int,
+    max_words_per_request: int = 64,
+) -> list[int]:
+    """Read contiguous word values across multiple logical operations."""
+
+    if max_words_per_request <= 0:
+        raise ValueError("max_words_per_request must be at least 1")
+
+    sync_client = cast(Any, client._client)
+    start = sync_client.resolve_device(device)
+    result: list[int] = []
+    remaining = count
+    offset = 0
+    while remaining > 0:
+        chunk = min(remaining, max_words_per_request)
+        chunk_device = sync_client._offset_resolved_device(start, offset).text
+        result.extend(await read_words_single_request(client, chunk_device, chunk))
+        offset += chunk
+        remaining -= chunk
+    return result
+
+
+async def read_dwords_chunked(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    count: int,
+    max_dwords_per_request: int = 32,
+) -> list[int]:
+    """Read contiguous dword values across multiple logical operations."""
+
+    if max_dwords_per_request <= 0:
+        raise ValueError("max_dwords_per_request must be at least 1")
+
+    sync_client = cast(Any, client._client)
+    start = sync_client.resolve_device(device)
+    result: list[int] = []
+    remaining = count
+    offset = 0
+    while remaining > 0:
+        chunk = min(remaining, max_dwords_per_request)
+        chunk_device = sync_client._offset_resolved_device(start, offset * 2).text
+        result.extend(await read_dwords_single_request(client, chunk_device, chunk))
+        offset += chunk
+        remaining -= chunk
+    return result
+
+
+async def write_words_chunked(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    values: list[int],
+    max_words_per_request: int = 64,
+) -> None:
+    """Write contiguous word values across multiple logical operations."""
+
+    if max_words_per_request <= 0:
+        raise ValueError("max_words_per_request must be at least 1")
+
+    sync_client = cast(Any, client._client)
+    start = sync_client.resolve_device(device)
+    offset = 0
+    while offset < len(values):
+        chunk = min(len(values) - offset, max_words_per_request)
+        chunk_device = sync_client._offset_resolved_device(start, offset).text
+        await write_words_single_request(client, chunk_device, values[offset : offset + chunk])
+        offset += chunk
+
+
+async def write_dwords_chunked(
+    client: AsyncToyopucDeviceClient,
+    device: str,
+    values: list[int],
+    max_dwords_per_request: int = 32,
+) -> None:
+    """Write contiguous dword values across multiple logical operations."""
+
+    if max_dwords_per_request <= 0:
+        raise ValueError("max_dwords_per_request must be at least 1")
+
+    sync_client = cast(Any, client._client)
+    start = sync_client.resolve_device(device)
+    offset = 0
+    while offset < len(values):
+        chunk = min(len(values) - offset, max_dwords_per_request)
+        chunk_device = sync_client._offset_resolved_device(start, offset * 2).text
+        await write_dwords_single_request(client, chunk_device, values[offset : offset + chunk])
+        offset += chunk
 
 
 async def read_words(
@@ -58,9 +213,10 @@ async def read_dwords(
 
 
 async def open_and_connect(
-    host: str,
+    host: str | ToyopucConnectionOptions,
     port: int = 1025,
     timeout: float = 3.0,
+    retries: int = 0,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
 
@@ -74,7 +230,12 @@ async def open_and_connect(
     """
     from .async_client import AsyncToyopucDeviceClient
 
-    client = AsyncToyopucDeviceClient(host, port, timeout=timeout)
+    if isinstance(host, ToyopucConnectionOptions):
+        options = host
+    else:
+        options = ToyopucConnectionOptions(host, port=port, timeout=timeout, retries=retries)
+
+    client = AsyncToyopucDeviceClient(options.host, options.port, timeout=options.timeout, retries=options.retries)
     await client.connect()
     return client
 

@@ -5,10 +5,21 @@ import pytest
 from toyopuc import (
     AsyncToyopucDeviceClient,
     ToyopucClient,
+    ToyopucConnectionOptions,
     ToyopucDeviceClient,
     encode_word_address,
+    normalize_address,
+    open_and_connect,
     parse_address,
+    read_dwords_chunked,
+    read_dwords_single_request,
     read_named,
+    read_words_chunked,
+    read_words_single_request,
+    write_dwords_chunked,
+    write_dwords_single_request,
+    write_words_chunked,
+    write_words_single_request,
 )
 
 
@@ -67,6 +78,32 @@ class _DummyAsyncUtilityClient(AsyncToyopucDeviceClient):
         object.__setattr__(self, "_client", _DummyUtilitySyncClient())
 
 
+class _DummySurfaceSyncClient(_DummyHighLevelClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.read_dword_map: dict[str, list[int]] = {}
+        self.write_dword_calls: list[tuple[str, list[int], bool]] = []
+
+    def resolve_device(self, device: str):
+        return super().resolve_device(device)
+
+    def read_dwords(self, device: int | str, count: int, *, atomic_transfer: bool = False):
+        assert isinstance(device, str)
+        return self.read_dword_map[device][:count]
+
+    def write_dwords(self, device: int | str, values, *, atomic_transfer: bool = False):
+        assert isinstance(device, str)
+        self.write_dword_calls.append((device, list(values), atomic_transfer))
+
+
+class _DummyAsyncSurfaceClient(AsyncToyopucDeviceClient):
+    def __init__(self) -> None:
+        object.__setattr__(self, "_client", _DummySurfaceSyncClient())
+
+    async def _run_sync_in_worker(self, func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+
 def test_low_level_32bit_helpers_use_low_word_first() -> None:
     client = _DummyWordClient()
     client.next_words = [0x5678, 0x1234]
@@ -122,3 +159,68 @@ def test_read_named_supports_hex_bit_indices() -> None:
         assert snapshot == {"B0000.A": True, "B0000.F": True}
 
     asyncio.run(run_checks())
+
+
+def test_normalize_address_uses_profile_rules() -> None:
+    assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Extended mode") == "P1-D0000"
+
+
+def test_connection_options_defaults() -> None:
+    options = ToyopucConnectionOptions("127.0.0.1")
+    assert options.port == 1025
+    assert options.timeout == 3.0
+    assert options.retries == 0
+
+
+def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int, float, int]] = []
+
+    class _FakeAsyncClient:
+        def __init__(self, host: str, port: int, *, timeout: float, retries: int) -> None:
+            calls.append((host, port, timeout, retries))
+
+        async def connect(self) -> None:
+            return None
+
+    monkeypatch.setattr("toyopuc.async_client.AsyncToyopucDeviceClient", _FakeAsyncClient, raising=False)
+
+    async def run() -> None:
+        client = await open_and_connect(ToyopucConnectionOptions("127.0.0.1", retries=2))
+        assert isinstance(client, _FakeAsyncClient)
+
+    asyncio.run(run())
+    assert calls == [("127.0.0.1", 1025, 3.0, 2)]
+
+
+def test_explicit_word_and_dword_surface() -> None:
+    client = _DummyAsyncSurfaceClient()
+    addr0 = _word_addr("B0000")
+    addr1 = _word_addr("B0001")
+    addr2 = _word_addr("B0002")
+    addr3 = _word_addr("B0003")
+    client.word_map = {addr0: 1, addr1: 2, addr2: 3, addr3: 4}
+    client.read_dword_map = {"B0000": [0x12345678], "B0002": [0xCAFEBABE]}
+
+    async def run_checks() -> None:
+        assert await read_words_single_request(client, "B0000", 2) == [1, 2]
+        assert await read_dwords_single_request(client, "B0000", 1) == [0x12345678]
+        assert await read_words_chunked(client, "B0000", 4, max_words_per_request=2) == [1, 2, 3, 4]
+        assert await read_dwords_chunked(client, "B0000", 2, max_dwords_per_request=1) == [0x12345678, 0xCAFEBABE]
+
+        await write_words_single_request(client, "B0000", [10, 11])
+        await write_dwords_single_request(client, "B0000", [0x12345678])
+        await write_words_chunked(client, "B0000", [20, 21, 22], max_words_per_request=2)
+        await write_dwords_chunked(client, "B0000", [0x11111111, 0x22222222], max_dwords_per_request=1)
+
+    asyncio.run(run_checks())
+
+    assert client.word_writes == [
+        (addr0, [10, 11]),
+        (addr0, [20, 21]),
+        (addr2, [22]),
+    ]
+    assert client.write_dword_calls == [
+        ("B0000", [0x12345678], True),
+        ("B0000", [0x11111111], True),
+        ("B0002", [0x22222222], True),
+    ]

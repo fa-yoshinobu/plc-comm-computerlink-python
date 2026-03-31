@@ -3,8 +3,10 @@
 TOYOPUC Computer Link - High-Level Asynchronous API Sample
 ==========================================================
 Demonstrates all high-level *async* utility helpers shipped with the
-toyopuc package: open_and_connect, read_typed, write_typed, read_named,
-read_words, read_dwords, write_bit_in_word, and poll.
+toyopuc package: ToyopucConnectionOptions, open_and_connect,
+normalize_address, read_typed, write_typed, read_named,
+read_words_single_request, read_dwords_single_request,
+read_words_chunked, read_dwords_chunked, write_bit_in_word, and poll.
 
 Usage
 -----
@@ -23,12 +25,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from toyopuc import (
+    ToyopucConnectionOptions,
+    normalize_address,
     open_and_connect,
     poll,
-    read_dwords,
+    read_dwords_chunked,
+    read_dwords_single_request,
     read_named,
     read_typed,
-    read_words,
+    read_words_chunked,
+    read_words_single_request,
     write_bit_in_word,
     write_typed,
 )
@@ -84,10 +90,14 @@ async def demo_open_and_connect(host: str, port: int) -> None:
     Use case: the simplest way to start an async session without manually
               constructing AsyncToyopucDeviceClient and calling connect().
     """
-    async with await open_and_connect(host, port=port) as plc:
+    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port)) as plc:
         print(f"[open_and_connect] Connected to {host}:{port}")
         val = await plc.read("P1-D0100")
         print(f"[open_and_connect] P1-D0100 = {val}")
+
+
+def demo_normalize_address() -> None:
+    print(f"[normalize_address] p1-d0100 -> {normalize_address('p1-d0100', profile='TOYOPUC-Plus:Plus Standard mode')}")
 
 
 async def demo_typed_rw(plc) -> None:
@@ -117,19 +127,24 @@ async def demo_typed_rw(plc) -> None:
 
 async def demo_array_reads(plc) -> None:
     """
-    read_words / read_dwords - read contiguous word / dword blocks.
+    Explicit contiguous helpers.
 
-    read_words(plc, device, count)  - returns list[int] (16-bit)
-    read_dwords(plc, device, count) - returns list[int] (32-bit, uint)
+    `*_single_request` keeps one high-level contiguous transfer.
+    `*_chunked` is the explicit opt-in surface for large multi-request reads.
 
     Use case: reading a block of 10 consecutive data registers in one
               Computer Link request for a periodic data logger.
     """
-    words = await read_words(plc, "P1-D0000", 10)
-    print(f"[read_words]  P1-D0000-D0009 = {words}")
+    words = await read_words_single_request(plc, "P1-D0000", 10)
+    print(f"[read_words_single_request]  P1-D0000-D0009 = {words}")
 
-    dwords = await read_dwords(plc, "P1-D0000", 4)
-    print(f"[read_dwords] P1-D0000-D0007 (as 4 x uint32) = {dwords}")
+    dwords = await read_dwords_single_request(plc, "P1-D0000", 4)
+    print(f"[read_dwords_single_request] P1-D0000-D0007 (as 4 x uint32) = {dwords}")
+
+    large_words = await read_words_chunked(plc, "P1-D1000", 1000)
+    large_dwords = await read_dwords_chunked(plc, "P1-D2000", 120)
+    print(f"[read_words_chunked] P1-D1000 block = {len(large_words)} words")
+    print(f"[read_dwords_chunked] P1-D2000 block = {len(large_dwords)} dwords")
 
 
 async def demo_bit_in_word(plc) -> None:
@@ -199,12 +214,13 @@ async def demo_poll(plc, count: int) -> None:
 
 async def run(args: argparse.Namespace) -> None:
     print("scenario: full asynchronous high-level cookbook")
+    demo_normalize_address()
 
     # 1. open_and_connect shortcut
     await demo_open_and_connect(args.host, args.port)
 
     # 2-6. connect once, run all remaining demos
-    async with await open_and_connect(args.host, port=args.port) as plc:
+    async with await open_and_connect(ToyopucConnectionOptions(host=args.host, port=args.port)) as plc:
         await demo_typed_rw(plc)
         await demo_array_reads(plc)
         await demo_bit_in_word(plc)

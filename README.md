@@ -11,6 +11,9 @@
 
 A user-focused Python library for JTEKT TOYOPUC Computer Link communication.
 The recommended entry points are the high-level `ToyopucDeviceClient` class and the async helper functions in `toyopuc`.
+For asyncio code, prefer `ToyopucConnectionOptions`, `open_and_connect`, `normalize_address`,
+`read_named`, `poll`, `read_words_single_request`, `read_dwords_single_request`,
+`read_words_chunked`, and `read_dwords_chunked`.
 
 ## Key Features
 
@@ -49,10 +52,11 @@ with ToyopucDeviceClient("192.168.250.100", 1025) as client:
 
 ```python
 import asyncio
-from toyopuc import open_and_connect, read_named, read_typed, write_typed
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -> None:
-    async with await open_and_connect("192.168.250.100", 1025) as plc:
+    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, "P1-D0100", "F")
         print(f"speed = {speed}")
 
@@ -68,10 +72,12 @@ Basic area families `P/K/V/T/C/L/X/Y/M/S/N/R/D` require a `P1-`, `P2-`, or `P3-`
 
 ## Common user tasks
 
+- Normalize one address string: `normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode")`
 - Read or write one device: `client.read("P1-D0000")`, `client.write("P1-M0000", 1)`
 - Read a mixed snapshot: `client.read_many([...])` or `await read_named(plc, [...])`
 - Read 32-bit or float values: `client.read_dword(...)`, `client.read_float32(...)`, `await read_typed(..., "D" / "L" / "F")`
 - Change one flag bit inside a word: `await write_bit_in_word(plc, "P1-D0100", bit_index=3, value=True)`
+- Read contiguous areas with explicit intent: `await read_words_single_request(...)`, `await read_words_chunked(...)`
 - Read or write FR storage: `client.read_fr(...)`, `client.write_fr(..., commit=True)`
 - Work through relay: `samples/relay_basic.py`
 - Inspect clock and CPU status: `samples/clock_and_status.py`
