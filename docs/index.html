@@ -727,10 +727,11 @@ with ToyopucDeviceClient(&quot;192.168.250.100&quot;, 1025) as client:
 </code></pre>
 <h3 id="asynchronous-example">Asynchronous example</h3>
 <pre><code class="language-python">import asyncio
-from toyopuc import open_and_connect, read_named, read_typed, write_typed
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -&gt; None:
-    async with await open_and_connect(&quot;192.168.250.100&quot;, 1025) as plc:
+    options = ToyopucConnectionOptions(host=&quot;192.168.250.100&quot;, port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, &quot;P1-D0100&quot;, &quot;F&quot;)
         print(f&quot;speed = {speed}&quot;)
 

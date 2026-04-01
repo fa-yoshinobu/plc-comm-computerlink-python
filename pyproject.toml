@@ -12,9 +12,9 @@ requires-python = ">=3.10"
 
 authors = [{name = "fa-yoshinobu"}]
 maintainers = [{name = "fa-yoshinobu"}]
+license = "MIT"
 keywords = ["toyopuc", "plc", "computer-link", "industrial", "tcp", "udp"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Manufacturing",

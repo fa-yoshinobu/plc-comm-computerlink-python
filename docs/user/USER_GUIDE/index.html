@@ -379,6 +379,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#normalize-device-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normalize device text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#common-device-families" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -782,6 +793,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#normalize-device-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normalize device text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#common-device-families" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -985,7 +1007,7 @@ Use it when you want to read and write TOYOPUC devices by device string such as 
 <ul>
 <li><code>ToyopucDeviceClient</code>
   Best for scripts, tools, and desktop applications that want simple synchronous calls.</li>
-<li><code>open_and_connect(...)</code> plus helper functions such as <code>read_typed</code>, <code>read_named</code>, and <code>poll</code>
+<li><code>ToyopucConnectionOptions</code> plus <code>open_and_connect(...)</code> and helper functions such as <code>read_typed</code>, <code>read_named</code>, and <code>poll</code>
   Best for asyncio applications.</li>
 </ul>
 <h2 id="quick-start">Quick start</h2>
@@ -1004,10 +1026,11 @@ with ToyopucDeviceClient(&quot;192.168.250.100&quot;, 1025) as plc:
 </code></pre>
 <h3 id="asynchronous-workflow">Asynchronous workflow</h3>
 <pre><code class="language-python">import asyncio
-from toyopuc import open_and_connect, read_named, read_typed, write_typed
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -&gt; None:
-    async with await open_and_connect(&quot;192.168.250.100&quot;, 1025) as plc:
+    options = ToyopucConnectionOptions(host=&quot;192.168.250.100&quot;, port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, &quot;P1-D0100&quot;, &quot;F&quot;)
         print(f&quot;speed = {speed}&quot;)
 
@@ -1031,6 +1054,11 @@ asyncio.run(main())
   decimal or hexadecimal device number</li>
 </ul>
 <p>When a profile is in use, basic families <code>P/K/V/T/C/L/X/Y/M/S/N/R/D</code> should be written as <code>P1-*</code>, <code>P2-*</code>, or <code>P3-*</code>.</p>
+<h3 id="normalize-device-text">Normalize device text</h3>
+<pre><code class="language-python">from toyopuc import normalize_address
+
+assert normalize_address(&quot;p1-d0000&quot;, profile=&quot;TOYOPUC-Plus:Plus Standard mode&quot;) == &quot;P1-D0000&quot;
+</code></pre>
 <h3 id="common-device-families">Common device families</h3>
 <table>
 <thead>
@@ -1187,11 +1215,21 @@ await write_typed(plc, &quot;P1-D0100&quot;, &quot;F&quot;, 3.14)
 await write_typed(plc, &quot;P1-D0200&quot;, &quot;S&quot;, -100)
 </code></pre>
 <h3 id="read-contiguous-blocks">Read contiguous blocks</h3>
-<pre><code class="language-python">from toyopuc import read_words, read_dwords
+<pre><code class="language-python">from toyopuc import (
+    read_dwords_chunked,
+    read_dwords_single_request,
+    read_words_chunked,
+    read_words_single_request,
+)
 
-words = await read_words(plc, &quot;P1-D0000&quot;, 10)
-dwords = await read_dwords(plc, &quot;P1-D0000&quot;, 4)
+words = await read_words_single_request(plc, &quot;P1-D0000&quot;, 10)
+dwords = await read_dwords_single_request(plc, &quot;P1-D0000&quot;, 4)
+
+large_words = await read_words_chunked(plc, &quot;P1-D1000&quot;, 1000)
+large_dwords = await read_dwords_chunked(plc, &quot;P1-D2000&quot;, 120)
 </code></pre>
+<p>Use <code>*_single_request</code> when the transfer must stay on the high-level contiguous path.
+Use <code>*_chunked</code> only when the caller explicitly accepts multi-request chunking.</p>
 <h3 id="change-one-bit-inside-a-word">Change one bit inside a word</h3>
 <pre><code class="language-python">from toyopuc import write_bit_in_word
 
@@ -1244,10 +1282,11 @@ print(result)
 <h3 id="poll-values-repeatedly">Poll values repeatedly</h3>
 <p><code>poll</code> yields a snapshot dictionary every interval.</p>
 <pre><code class="language-python">import asyncio
-from toyopuc import open_and_connect, poll
+from toyopuc import ToyopucConnectionOptions, open_and_connect, poll
 
 async def main() -&gt; None:
-    async with await open_and_connect(&quot;192.168.250.100&quot;) as plc:
+    options = ToyopucConnectionOptions(host=&quot;192.168.250.100&quot;, port=1025, timeout=3.0, retries=0)
+    async with await open_and_connect(options) as plc:
         count = 0
         async for snapshot in poll(plc, [&quot;P1-D0100&quot;, &quot;P1-D0101:F&quot;], interval=1.0):
             print(snapshot)
