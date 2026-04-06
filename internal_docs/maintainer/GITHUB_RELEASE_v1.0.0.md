@@ -60,10 +60,10 @@ Observed limitation:
 ## Included Documents
 
 - `README.md`
-- `docsrc/maintainer/TESTING_GUIDE.md`
-- `docsrc/maintainer/PROTOCOL_SPEC.md`
+- `internal_docs/maintainer/TESTING_GUIDE.md`
+- `internal_docs/maintainer/PROTOCOL_SPEC.md`
 - `docsrc/MODEL_RANGES.md`
-- `docsrc/maintainer/RELEASE_PROCESS.md`
+- `internal_docs/maintainer/RELEASE_PROCESS.md`
 - `docsrc/RELEASE_NOTES.md`
 - `samples/README.md`
 - `scripts/README.md`

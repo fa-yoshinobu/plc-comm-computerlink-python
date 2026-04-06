@@ -6,9 +6,9 @@ Use this file as a short index for the `scripts/` directory.
 Related documents:
 
 - [../README.md](../README.md)
-- [../docsrc/maintainer/TESTING_GUIDE.md](../docsrc/maintainer/TESTING_GUIDE.md)
+- [../internal_docs/maintainer/TESTING_GUIDE.md](../internal_docs/maintainer/TESTING_GUIDE.md)
 - [../docsrc/user/MODEL_RANGES.md](../docsrc/user/MODEL_RANGES.md)
-- [../docsrc/maintainer/PROTOCOL_SPEC.md](../docsrc/maintainer/PROTOCOL_SPEC.md)
+- [../internal_docs/maintainer/PROTOCOL_SPEC.md](../internal_docs/maintainer/PROTOCOL_SPEC.md)
 - [../samples/README.md](../samples/README.md)
 
 ## Main scripts
@@ -93,9 +93,9 @@ Related documents:
 ## Documents
 
 - Project overview: [../README.md](../README.md)
-- Test usage and verified results: [../docsrc/maintainer/TESTING_GUIDE.md](../docsrc/maintainer/TESTING_GUIDE.md)
+- Test usage and verified results: [../internal_docs/maintainer/TESTING_GUIDE.md](../internal_docs/maintainer/TESTING_GUIDE.md)
 - Model-specific writable ranges: [../docsrc/user/MODEL_RANGES.md](../docsrc/user/MODEL_RANGES.md)
-- Communication protocol and address tables: [../docsrc/maintainer/PROTOCOL_SPEC.md](../docsrc/maintainer/PROTOCOL_SPEC.md)
+- Communication protocol and address tables: [../internal_docs/maintainer/PROTOCOL_SPEC.md](../internal_docs/maintainer/PROTOCOL_SPEC.md)
 - Remaining open items: [../TODO.md](../TODO.md)
 
 ## Batch usage summary

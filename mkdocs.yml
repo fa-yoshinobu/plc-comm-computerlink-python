@@ -17,12 +17,10 @@ exclude_docs: |
   validation/**
 nav:
   - Overview: index.md
+  - Getting Started: user/GETTING_STARTED.md
+  - Supported PLC Registers: user/SUPPORTED_REGISTERS.md
+  - Latest Communication Verification: user/LATEST_COMMUNICATION_VERIFICATION.md
   - User Guide: user/USER_GUIDE.md
   - Model Ranges: user/MODEL_RANGES.md
   - API Reference:
       - Client: api/client.md
-
-
-
-
-

@@ -70,10 +70,10 @@ Hardware note:
 ## Included Documents
 
 - `README.md`
-- `docsrc/maintainer/TESTING_GUIDE.md`
-- `docsrc/maintainer/PROTOCOL_SPEC.md`
+- `internal_docs/maintainer/TESTING_GUIDE.md`
+- `internal_docs/maintainer/PROTOCOL_SPEC.md`
 - `docsrc/MODEL_RANGES.md`
-- `docsrc/maintainer/RELEASE_PROCESS.md`
+- `internal_docs/maintainer/RELEASE_PROCESS.md`
 - `docsrc/RELEASE_NOTES.md`
 - `docsrc/VER_1.0.1_FIX_NOTES.md`
 - `samples/README.md`

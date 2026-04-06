@@ -2,18 +2,30 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/</loc>
-         <lastmod>2026-04-01</lastmod>
+         <lastmod>2026-04-05</lastmod>
     </url>
     <url>
          <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/api/client/</loc>
-         <lastmod>2026-04-01</lastmod>
+         <lastmod>2026-04-05</lastmod>
+    </url>
+    <url>
+         <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/user/GETTING_STARTED/</loc>
+         <lastmod>2026-04-05</lastmod>
+    </url>
+    <url>
+         <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/user/LATEST_COMMUNICATION_VERIFICATION/</loc>
+         <lastmod>2026-04-05</lastmod>
     </url>
     <url>
          <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/user/MODEL_RANGES/</loc>
-         <lastmod>2026-04-01</lastmod>
+         <lastmod>2026-04-05</lastmod>
+    </url>
+    <url>
+         <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/user/SUPPORTED_REGISTERS/</loc>
+         <lastmod>2026-04-05</lastmod>
     </url>
     <url>
          <loc>https://fa-yoshinobu.github.io/plc-comm-computerlink-python/user/USER_GUIDE/</loc>
-         <lastmod>2026-04-01</lastmod>
+         <lastmod>2026-04-05</lastmod>
     </url>
 </urlset>

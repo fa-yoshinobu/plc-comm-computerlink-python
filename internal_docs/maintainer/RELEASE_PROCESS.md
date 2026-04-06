@@ -25,8 +25,8 @@ Confirm what is part of the release.
 - keep:
   - `toyopuc/`
   - `README.md`
-  - `docsrc/maintainer/TESTING_GUIDE.md`
-  - `docsrc/maintainer/PROTOCOL_SPEC.md`
+  - `internal_docs/maintainer/TESTING_GUIDE.md`
+  - `internal_docs/maintainer/PROTOCOL_SPEC.md`
   - `docsrc/user/MODEL_RANGES.md`
   - `TODO.md`
   - `LICENSE`

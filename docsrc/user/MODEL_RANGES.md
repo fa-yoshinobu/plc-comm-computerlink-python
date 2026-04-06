@@ -4,8 +4,7 @@ Related documents:
 
 - [USER_GUIDE.md](USER_GUIDE.md)
 - [Project README](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/README.md)
-- [Maintainer Testing Guide](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/docsrc/maintainer/TESTING_GUIDE.md)
-- [Maintainer Release Notes](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/docsrc/maintainer/RELEASE_NOTES.md)
+- Maintainer-only validation notes are kept under `internal_docs/maintainer/`.
 
 This document records writable device ranges confirmed per hardware model.
 

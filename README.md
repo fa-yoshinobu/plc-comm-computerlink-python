@@ -7,20 +7,22 @@
 
 # Computer Link Protocol for Python
 
-![Illustration](docsrc/assets/toyopuc.png)
+![Illustration](https://raw.githubusercontent.com/fa-yoshinobu/plc-comm-computerlink-python/main/docsrc/assets/toyopuc.png)
 
 A user-focused Python library for JTEKT TOYOPUC Computer Link communication.
 The recommended entry points are the high-level `ToyopucDeviceClient` class and the async helper functions in `toyopuc`.
-For asyncio code, prefer `ToyopucConnectionOptions`, `open_and_connect`, `normalize_address`,
-`read_named`, `poll`, `read_words_single_request`, `read_dwords_single_request`,
-`read_words_chunked`, and `read_dwords_chunked`.
 
-## Key Features
+For asyncio code, prefer:
 
-- **High-Level First**: Read and write by device string such as `P1-D0000`, `P1-M0000`, `ES0000`, and `FR000000`.
-- **Common Tasks Included**: Batch reads, typed 32-bit / float access, bit-in-word updates, FR writes, relay access, and GUI monitoring.
-- **Profile-Aware Addressing**: Supports TOYOPUC-Plus, Nano 10GX, PC10G, and related profiles.
-- **Practical Samples**: Sync, async, UDP, FR, relay, clock/status, and GUI examples are included.
+- `ToyopucConnectionOptions`
+- `open_and_connect`
+- `normalize_address`
+- `read_named`
+- `poll`
+- `read_words_single_request`
+- `read_dwords_single_request`
+- `read_words_chunked`
+- `read_dwords_chunked`
 
 ## Quick Start
 
@@ -30,9 +32,9 @@ For asyncio code, prefer `ToyopucConnectionOptions`, `open_and_connect`, `normal
 pip install toyopuc-computerlink
 ```
 
-Latest release metadata and downloads are available at https://pypi.org/project/toyopuc-computerlink/.
+Latest release metadata and downloads are available at <https://pypi.org/project/toyopuc-computerlink/>.
 
-### Synchronous example
+### Synchronous Example
 
 ```python
 from toyopuc import ToyopucDeviceClient
@@ -48,7 +50,7 @@ with ToyopucDeviceClient("192.168.250.100", 1025) as client:
     print(snapshot)
 ```
 
-### Asynchronous example
+### Asynchronous Example
 
 ```python
 import asyncio
@@ -70,23 +72,26 @@ asyncio.run(main())
 
 Basic area families `P/K/V/T/C/L/X/Y/M/S/N/R/D` require a `P1-`, `P2-`, or `P3-` prefix when a profile is in use.
 
-## Common user tasks
+## Supported PLC Registers
 
-- Normalize one address string: `normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode")`
-- Read or write one device: `client.read("P1-D0000")`, `client.write("P1-M0000", 1)`
-- Read a mixed snapshot: `client.read_many([...])` or `await read_named(plc, [...])`
-- Read 32-bit or float values: `client.read_dword(...)`, `client.read_float32(...)`, `await read_typed(..., "D" / "L" / "F")`
-- Change one flag bit inside a word: `await write_bit_in_word(plc, "P1-D0100", bit_index=3, value=True)`
-- Read contiguous areas with explicit intent: `await read_words_single_request(...)`, `await read_words_chunked(...)`
-- Read or write FR storage: `client.read_fr(...)`, `client.write_fr(..., commit=True)`
-- Work through relay: `samples/relay_basic.py`
-- Inspect clock and CPU status: `samples/clock_and_status.py`
+Start with these public high-level families first:
 
-## User docs
+- prefixed word/register areas: `P1-D0000`, `P1-S0000`, `P1-N0100`, `P1-R0000`
+- prefixed bit/control areas: `P1-M0000`, `P1-X0000`, `P1-Y0000`
+- extension areas: `ES0000`, `EN0000`
+- FR storage: `FR000000`
+- typed and bit views: `P1-D0100:S`, `P1-D0200:D`, `P1-D0300:F`, `P1-D0000.3`
 
+See the full public table in [Supported PLC Registers](docsrc/user/SUPPORTED_REGISTERS.md).
+
+## Public Docs
+
+- [Getting Started](docsrc/user/GETTING_STARTED.md)
+- [Supported PLC Registers](docsrc/user/SUPPORTED_REGISTERS.md)
+- [Latest Communication Verification](docsrc/user/LATEST_COMMUNICATION_VERIFICATION.md)
 - [User Guide](docsrc/user/USER_GUIDE.md)
-- [Sample Guide](samples/README.md)
 - [Model Ranges](docsrc/user/MODEL_RANGES.md)
+- [Sample Guide](samples/README.md)
 
 Start with these sample programs:
 
@@ -95,25 +100,23 @@ Start with these sample programs:
 - `samples/high_level_all_sync.py`
 - `samples/high_level_all_async.py`
 - `samples/high_level_udp.py`
-- `samples/fr_basic.py`
-- `samples/relay_basic.py`
-- `samples/clock_and_status.py`
 
-Maintainer-only protocol details remain under `docsrc/maintainer/`.
+Maintainer-only notes and retained evidence live under `internal_docs/`.
+
+## Common User Tasks
+
+- normalize one address string: `normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode")`
+- read or write one device: `client.read("P1-D0000")`, `client.write("P1-M0000", 1)`
+- read a mixed snapshot: `client.read_many([...])` or `await read_named(plc, [...])`
+- read 32-bit or float values: `client.read_dword(...)`, `client.read_float32(...)`, `await read_typed(..., "D" / "L" / "F")`
+- change one flag bit inside a word: `await write_bit_in_word(plc, "P1-D0100", bit_index=3, value=True)`
+- read contiguous areas with explicit intent: `await read_words_single_request(...)`, `await read_words_chunked(...)`
+- read or write FR storage: `client.read_fr(...)`, `client.write_fr(..., commit=True)`
 
 ## Development & CI
 
-Quality is managed via `run_ci.bat`.
-
-### Local checks
-
 ```bash
 run_ci.bat
-```
-
-For a release-style verification including docs:
-
-```bash
 release_check.bat
 ```
 

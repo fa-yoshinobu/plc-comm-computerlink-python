@@ -31,7 +31,7 @@ Documentation and repository-link refresh release.
 ## Included Documents
 
 - `README.md`
-- `docsrc/maintainer/RELEASE_PROCESS.md`
+- `internal_docs/maintainer/RELEASE_PROCESS.md`
 - `docsrc/RELEASE_NOTES.md`
 - `docsrc/api/*`
 
