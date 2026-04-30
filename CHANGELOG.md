@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added TOYOPUC scan control helpers for scan resume, scan stop, and scan stop release, including relay and async wrapper support.
 - Added `ToyopucDeviceCatalog.format_address_range()` and `format_address_ranges()` using `..` as the explicit endpoint separator for split ranges.
+- Verified the Python PC10G direct API smoke on hardware for split-range formatting, split-range reads, and scan stop/release/resume.
 
 ## 0.1.7 - 2026-04-27
 
