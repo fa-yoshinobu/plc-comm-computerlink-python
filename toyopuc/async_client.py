@@ -118,6 +118,9 @@ _CLIENT_ASYNC_METHODS = [
     "relay_write_words",
     "relay_read_clock",
     "relay_write_clock",
+    "relay_resume_scan",
+    "relay_stop_scan",
+    "relay_release_scan_stop",
     "relay_read_cpu_status",
     "relay_read_cpu_status_a0_raw",
     "relay_read_cpu_status_a0",
@@ -133,6 +136,9 @@ _CLIENT_ASYNC_METHODS = [
     "read_cpu_status_a0",
     "wait_fr_write_complete",
     "write_clock",
+    "resume_scan",
+    "stop_scan",
+    "release_scan_stop",
 ]
 
 _HIGH_LEVEL_ASYNC_METHODS = [

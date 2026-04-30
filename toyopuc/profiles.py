@@ -772,6 +772,25 @@ class ToyopucDeviceCatalog:
         resolved_unit = cls._default_unit(descriptor, unit, packed)
         return cls._get_supported_ranges(descriptor, prefixed, resolved_unit, packed)
 
+    @staticmethod
+    def format_address_range(family_code: str, address_range: ToyopucAddressRange, width: int) -> str:
+        if not family_code or not family_code.strip():
+            raise ValueError("family_code is required")
+        return (
+            f"{ToyopucDeviceCatalog._format_device_address(family_code, address_range.start, width)}"
+            f"..{ToyopucDeviceCatalog._format_device_address(family_code, address_range.end, width)}"
+        )
+
+    @staticmethod
+    def format_address_ranges(
+        family_code: str,
+        ranges: tuple[ToyopucAddressRange, ...] | list[ToyopucAddressRange],
+        width: int,
+    ) -> str:
+        if not family_code or not family_code.strip():
+            raise ValueError("family_code is required")
+        return ", ".join(ToyopucDeviceCatalog.format_address_range(family_code, r, width) for r in ranges)
+
     @classmethod
     def get_supported_range(
         cls,
@@ -894,6 +913,10 @@ class ToyopucDeviceCatalog:
     @staticmethod
     def _will_overflow_next(value: int, step: int) -> bool:
         return value > (2**31 - 1) - step
+
+    @staticmethod
+    def _format_device_address(family_code: str, index: int, width: int) -> str:
+        return f"{family_code}{index:0{width}X}"
 
 
 # Populate class-level profile instances

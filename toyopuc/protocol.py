@@ -322,6 +322,21 @@ def build_cpu_status_read_a0() -> bytes:
     return build_command(0xA0, bytes([0x01, 0x10]))
 
 
+def build_scan_resume() -> bytes:
+    """Build `CMD=32 / 01 00` scan-resume command."""
+    return build_command(0x32, bytes([0x01, 0x00]))
+
+
+def build_scan_stop() -> bytes:
+    """Build `CMD=32 / 02 00 01` scan-stop command."""
+    return build_command(0x32, bytes([0x02, 0x00, 0x01]))
+
+
+def build_scan_stop_release() -> bytes:
+    """Build `CMD=32 / 02 00 00` scan-stop-release command."""
+    return build_command(0x32, bytes([0x02, 0x00, 0x00]))
+
+
 def build_clock_write(
     second: int,
     minute: int,

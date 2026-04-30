@@ -109,6 +109,14 @@ def test_device_catalog_supported_ranges_and_start_addresses() -> None:
     assert "0000" not in prefixed_m_starts
 
 
+def test_device_catalog_format_address_ranges_uses_explicit_separator() -> None:
+    ranges = ToyopucDeviceCatalog.get_supported_ranges("P", prefixed=True, profile="Generic")
+
+    text = ToyopucDeviceCatalog.format_address_ranges("P1-P", ranges, width=4)
+
+    assert text == "P1-P0000..P1-P01FF, P1-P1000..P1-P17FF"
+
+
 def test_device_catalog_rejects_direct_basic_start_addresses() -> None:
     with pytest.raises(ValueError, match="not available for direct access"):
         ToyopucDeviceCatalog.get_suggested_start_addresses("D")

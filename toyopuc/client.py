@@ -41,6 +41,9 @@ from .protocol import (
     build_pc10_multi_write,
     build_relay_command,
     build_relay_nested,
+    build_scan_resume,
+    build_scan_stop,
+    build_scan_stop_release,
     build_word_read,
     build_word_write,
     parse_clock_data,
@@ -777,6 +780,30 @@ class ToyopucClient:
         if resp.data != bytes([0x71, 0x00]):
             raise ToyopucProtocolError("Unexpected relay clock-write response body")
 
+    def relay_resume_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
+        """Resume CPU scan through relay hops via `CMD=32 / 01 00`."""
+        resp = self.send_via_relay(hops, build_scan_resume())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in relay scan-resume response")
+        if resp.data != bytes([0x01, 0x00]):
+            raise ToyopucProtocolError("Unexpected relay scan-resume response body")
+
+    def relay_stop_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
+        """Stop CPU scan through relay hops via `CMD=32 / 02 00 01`."""
+        resp = self.send_via_relay(hops, build_scan_stop())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in relay scan-stop response")
+        if resp.data != bytes([0x02, 0x00]):
+            raise ToyopucProtocolError("Unexpected relay scan-stop response body")
+
+    def relay_release_scan_stop(self, hops: str | Iterable[tuple[int, int]]) -> None:
+        """Release CPU scan stop through relay hops via `CMD=32 / 02 00 00`."""
+        resp = self.send_via_relay(hops, build_scan_stop_release())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in relay scan-stop-release response")
+        if resp.data != bytes([0x02, 0x00]):
+            raise ToyopucProtocolError("Unexpected relay scan-stop-release response body")
+
     def relay_read_cpu_status(self, hops: str | Iterable[tuple[int, int]]) -> CpuStatusData:
         """Read the 8-byte CPU status block through relay hops."""
         resp = self.send_via_relay(hops, build_cpu_status_read())
@@ -1031,3 +1058,27 @@ class ToyopucClient:
             raise ToyopucProtocolError("Unexpected CMD in response")
         if resp.data != bytes([0x71, 0x00]):
             raise ToyopucProtocolError("Unexpected clock write response body")
+
+    def resume_scan(self) -> None:
+        """Resume CPU scan via `CMD=32 / 01 00`."""
+        resp = self._send_and_recv(build_scan_resume())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in response")
+        if resp.data != bytes([0x01, 0x00]):
+            raise ToyopucProtocolError("Unexpected scan-resume response body")
+
+    def stop_scan(self) -> None:
+        """Stop CPU scan via `CMD=32 / 02 00 01`."""
+        resp = self._send_and_recv(build_scan_stop())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in response")
+        if resp.data != bytes([0x02, 0x00]):
+            raise ToyopucProtocolError("Unexpected scan-stop response body")
+
+    def release_scan_stop(self) -> None:
+        """Release CPU scan stop via `CMD=32 / 02 00 00`."""
+        resp = self._send_and_recv(build_scan_stop_release())
+        if resp.cmd != 0x32:
+            raise ToyopucProtocolError("Unexpected CMD in response")
+        if resp.data != bytes([0x02, 0x00]):
+            raise ToyopucProtocolError("Unexpected scan-stop-release response body")

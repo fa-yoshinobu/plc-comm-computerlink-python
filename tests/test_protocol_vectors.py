@@ -18,6 +18,9 @@ from toyopuc.protocol import (
     build_byte_read,
     build_clock_read,
     build_cpu_status_read,
+    build_scan_resume,
+    build_scan_stop,
+    build_scan_stop_release,
     build_word_read,
     pack_bcd,
     parse_response,
@@ -53,6 +56,12 @@ def test_frame_build(vec: dict[str, Any]) -> None:
     result = _build_frame(vec)
     expected = bytes.fromhex(vec["hex"])
     assert result == expected, f"[{vec['id']}] got {result.hex()}, expected {vec['hex']}"
+
+
+def test_scan_control_frame_builders() -> None:
+    assert build_scan_resume() == bytes([0x00, 0x00, 0x03, 0x00, 0x32, 0x01, 0x00])
+    assert build_scan_stop() == bytes([0x00, 0x00, 0x04, 0x00, 0x32, 0x02, 0x00, 0x01])
+    assert build_scan_stop_release() == bytes([0x00, 0x00, 0x04, 0x00, 0x32, 0x02, 0x00, 0x00])
 
 
 @pytest.mark.parametrize("vec", _RESPONSE_VECTORS, ids=lambda v: v["id"])

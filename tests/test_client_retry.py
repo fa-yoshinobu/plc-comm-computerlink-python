@@ -1,6 +1,7 @@
 import pytest
 
-from toyopuc import ToyopucClient, ToyopucError
+from toyopuc import ToyopucClient, ToyopucError, ToyopucProtocolError
+from toyopuc.protocol import build_scan_resume, build_scan_stop, build_scan_stop_release
 
 
 class _FakeSocket:
@@ -57,3 +58,42 @@ def test_send_and_recv_exhausts_response_error_0x73_retries() -> None:
         client.send_raw(0x1C)
 
     assert len(sock.sent) == 1
+
+
+def test_stop_scan_uses_scan_stop_frame() -> None:
+    sock = _FakeSocket([_response(0x32, b"\x02\x00")])
+    client = ToyopucClient("127.0.0.1", 1025, retries=0, retry_delay=0)
+    client._sock = sock
+
+    client.stop_scan()
+
+    assert sock.sent == [build_scan_stop()]
+
+
+def test_resume_scan_uses_scan_resume_frame() -> None:
+    sock = _FakeSocket([_response(0x32, b"\x01\x00")])
+    client = ToyopucClient("127.0.0.1", 1025, retries=0, retry_delay=0)
+    client._sock = sock
+
+    client.resume_scan()
+
+    assert sock.sent == [build_scan_resume()]
+
+
+def test_release_scan_stop_uses_scan_stop_release_frame() -> None:
+    sock = _FakeSocket([_response(0x32, b"\x02\x00")])
+    client = ToyopucClient("127.0.0.1", 1025, retries=0, retry_delay=0)
+    client._sock = sock
+
+    client.release_scan_stop()
+
+    assert sock.sent == [build_scan_stop_release()]
+
+
+def test_stop_scan_rejects_unexpected_response_body() -> None:
+    sock = _FakeSocket([_response(0x32, b"\x01\x00")])
+    client = ToyopucClient("127.0.0.1", 1025, retries=0, retry_delay=0)
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="scan-stop response body"):
+        client.stop_scan()
