@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.1.8 - 2026-05-02
+
 ### Added
+- Added public device-address parse/try-parse/format helpers for typed and bit-in-word address notation.
+- Added `ToyopucDeviceCatalog.get_device_matrix()` and `ToyopucDeviceMatrixRow` for maintained profile/device range review.
+- Expanded `ToyopucConnectionOptions` and `open_and_connect()` so transport, local port, retry delay, receive buffer size, and trace hooks remain explicit in async helper code.
 - Added TOYOPUC scan control helpers for scan resume, scan stop, and scan stop release, including relay and async wrapper support.
 - Added `ToyopucDeviceCatalog.format_address_range()` and `format_address_ranges()` using `..` as the explicit endpoint separator for split ranges.
 - Verified the Python PC10G direct API smoke on hardware for split-range formatting, split-range reads, and scan stop/release/resume.

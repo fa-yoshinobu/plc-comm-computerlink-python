@@ -4,7 +4,8 @@ TOYOPUC Computer Link - High-Level Asynchronous API Sample
 ==========================================================
 Demonstrates all high-level *async* utility helpers shipped with the
 toyopuc package: ToyopucConnectionOptions, open_and_connect,
-normalize_address, read_typed, write_typed, read_named,
+normalize_address, parse_device_address, format_device_address,
+read_typed, write_typed, read_named,
 read_words_single_request, read_dwords_single_request,
 read_words_chunked, read_dwords_chunked, write_bit_in_word, and poll.
 
@@ -26,8 +27,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from toyopuc import (
     ToyopucConnectionOptions,
+    format_device_address,
     normalize_address,
     open_and_connect,
+    parse_device_address,
     poll,
     read_dwords_chunked,
     read_dwords_single_request,
@@ -97,7 +100,10 @@ async def demo_open_and_connect(host: str, port: int) -> None:
 
 
 def demo_normalize_address() -> None:
+    parsed = parse_device_address("p1-d0100:f", profile="TOYOPUC-Plus:Plus Standard mode")
     print(f"[normalize_address] p1-d0100 -> {normalize_address('p1-d0100', profile='TOYOPUC-Plus:Plus Standard mode')}")
+    print(f"[parse_device_address] p1-d0100:f -> {parsed}")
+    print(f"[format_device_address] parsed -> {format_device_address(parsed)}")
 
 
 async def demo_typed_rw(plc) -> None:

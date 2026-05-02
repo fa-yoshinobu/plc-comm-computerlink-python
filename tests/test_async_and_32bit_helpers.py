@@ -8,14 +8,17 @@ from toyopuc import (
     ToyopucConnectionOptions,
     ToyopucDeviceClient,
     encode_word_address,
+    format_device_address,
     normalize_address,
     open_and_connect,
     parse_address,
+    parse_device_address,
     read_dwords_chunked,
     read_dwords_single_request,
     read_named,
     read_words_chunked,
     read_words_single_request,
+    try_parse_device_address,
     write_dwords_chunked,
     write_dwords_single_request,
     write_words_chunked,
@@ -165,19 +168,44 @@ def test_normalize_address_uses_profile_rules() -> None:
     assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Extended mode") == "P1-D0000"
 
 
+def test_public_device_address_helpers_parse_and_format() -> None:
+    typed = parse_device_address("p1-d0100:f", profile="Generic")
+    bit = parse_device_address("p1-d0100.a", profile="Generic")
+
+    assert typed.text == "P1-D0100:F"
+    assert typed.base_device == "P1-D0100"
+    assert typed.dtype == "F"
+    assert typed.bit_index is None
+    assert bit.text == "P1-D0100.A"
+    assert bit.base_device == "P1-D0100"
+    assert bit.dtype == "BIT_IN_WORD"
+    assert bit.bit_index == 10
+    assert format_device_address(typed) == "P1-D0100:F"
+    assert format_device_address(bit) == "P1-D0100.A"
+    assert format_device_address("p1-d0100:s", profile="Generic") == "P1-D0100:S"
+
+
+def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
+    assert try_parse_device_address("P1-D1000", profile="TOYOPUC-Plus:Plus Standard mode") is None
+    assert try_parse_device_address("P1-D0100.10", profile="Generic") is None
+
+
 def test_connection_options_defaults() -> None:
     options = ToyopucConnectionOptions("127.0.0.1")
     assert options.port == 1025
+    assert options.local_port == 0
+    assert options.transport == "tcp"
     assert options.timeout == 3.0
     assert options.retries == 0
+    assert options.retry_delay == 0.2
 
 
 def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[str, int, float, int]] = []
+    calls: list[tuple[str, int, dict[str, object]]] = []
 
     class _FakeAsyncClient:
-        def __init__(self, host: str, port: int, *, timeout: float, retries: int) -> None:
-            calls.append((host, port, timeout, retries))
+        def __init__(self, host: str, port: int, **kwargs: object) -> None:
+            calls.append((host, port, kwargs))
 
         async def connect(self) -> None:
             return None
@@ -189,7 +217,21 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
         assert isinstance(client, _FakeAsyncClient)
 
     asyncio.run(run())
-    assert calls == [("127.0.0.1", 1025, 3.0, 2)]
+    assert calls == [
+        (
+            "127.0.0.1",
+            1025,
+            {
+                "local_port": 0,
+                "transport": "tcp",
+                "timeout": 3.0,
+                "retries": 2,
+                "retry_delay": 0.2,
+                "recv_bufsize": 8192,
+                "trace_hook": None,
+            },
+        )
+    ]
 
 
 def test_explicit_word_and_dword_surface() -> None:

@@ -117,6 +117,30 @@ def test_device_catalog_format_address_ranges_uses_explicit_separator() -> None:
     assert text == "P1-P0000..P1-P01FF, P1-P1000..P1-P17FF"
 
 
+def test_device_catalog_matrix_returns_review_rows_for_profile() -> None:
+    matrix = ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")
+    d_row = next(row for row in matrix if row.area == "D" and row.access == "prefixed" and row.unit == "word")
+    m_word_row = next(
+        row for row in matrix if row.area == "M" and row.access == "prefixed" and row.unit == "word" and row.packed_word
+    )
+    m_byte_row = next(row for row in matrix if row.area == "M" and row.access == "prefixed" and row.unit == "byte")
+
+    assert d_row.profile == "PC10G:PC10 mode"
+    assert d_row.ranges == "P1-D0000..P1-D2FFF"
+    assert d_row.example_start_addresses[0] == "P1-D0000"
+    assert m_word_row.address_suffixes == ("W",)
+    assert m_word_row.ranges == "P1-M000..P1-M07F, P1-M100..P1-M17F"
+    assert m_word_row.example_start_addresses[0] == "P1-M000W"
+    assert m_byte_row.address_suffixes == ("L", "H")
+    assert m_byte_row.to_dict()["address_suffixes"] == ["L", "H"]
+
+
+def test_device_catalog_matrix_without_profile_includes_all_profiles() -> None:
+    profiles = {row.profile for row in ToyopucDeviceCatalog.get_device_matrix()}
+
+    assert set(ToyopucDeviceProfiles.get_names()).issubset(profiles)
+
+
 def test_device_catalog_rejects_direct_basic_start_addresses() -> None:
     with pytest.raises(ValueError, match="not available for direct access"):
         ToyopucDeviceCatalog.get_suggested_start_addresses("D")

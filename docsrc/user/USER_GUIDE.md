@@ -73,12 +73,21 @@ asyncio.run(main())
 
 When a profile is in use, basic families `P/K/V/T/C/L/X/Y/M/S/N/R/D` should be written as `P1-*`, `P2-*`, or `P3-*`.
 
-### Normalize device text
+### Parse, normalize, and format device text
 
 ```python
-from toyopuc import normalize_address
+from toyopuc import format_device_address, normalize_address, parse_device_address, try_parse_device_address
 
 assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode") == "P1-D0000"
+
+parsed = parse_device_address("p1-d0100:f", profile="Generic")
+assert parsed.text == "P1-D0100:F"
+assert parsed.base_device == "P1-D0100"
+assert parsed.dtype == "F"
+assert format_device_address(parsed) == "P1-D0100:F"
+
+maybe_address = try_parse_device_address("P1-D1000", profile="TOYOPUC-Plus:Plus Standard mode")
+assert maybe_address is None
 ```
 
 ### Common device families
@@ -101,6 +110,20 @@ assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode") 
 | `FR` | File register flash area | `FR000000` |
 
 Extended areas such as `ES`, `EN`, `H`, `U`, `EB`, and `FR` do not require a program prefix.
+
+### Review model/profile ranges
+
+Use `ToyopucDeviceCatalog.get_device_matrix(...)` when you need a maintained profile matrix for release checks, UI device pickers, or configuration validation.
+
+```python
+from toyopuc import ToyopucDeviceCatalog
+
+rows = ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")
+for row in rows:
+    print(row.area, row.access, row.unit, row.ranges, row.example_start_addresses[:3])
+```
+
+Each row includes the profile name, device area, direct or prefixed access mode, unit, suffixes such as `W` or `L/H`, the supported range text, and a short list of example start addresses.
 
 ### Byte and packed-word suffixes
 

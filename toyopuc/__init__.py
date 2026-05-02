@@ -14,7 +14,7 @@ but the helpers above are the preferred surface for normal application code
 and generated user documentation.
 """
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 from .address import (
     encode_bit_address,
@@ -41,15 +41,19 @@ from .profiles import (
     ToyopucAddressRange,
     ToyopucAreaDescriptor,
     ToyopucDeviceCatalog,
+    ToyopucDeviceMatrixRow,
     ToyopucDeviceProfile,
     ToyopucDeviceProfiles,
 )
 from .protocol import ClockData, CpuStatusData
 from .relay import RelayLayer, format_relay_hop, normalize_relay_hops, parse_relay_hops
 from .utils import (
+    ToyopucAddress,
     ToyopucConnectionOptions,
+    format_device_address,
     normalize_address,
     open_and_connect,
+    parse_device_address,
     poll,
     read_dwords,
     read_dwords_chunked,
@@ -59,6 +63,7 @@ from .utils import (
     read_words,
     read_words_chunked,
     read_words_single_request,
+    try_parse_device_address,
     write_bit_in_word,
     write_dwords_chunked,
     write_dwords_single_request,
@@ -82,8 +87,11 @@ __all__ = [
     "ToyopucTraceDirection",
     "ToyopucTraceFrame",
     "ToyopucConnectionOptions",
+    "ToyopucAddress",
+    "format_device_address",
     "normalize_address",
     "open_and_connect",
+    "parse_device_address",
     "poll",
     "read_dwords",
     "read_dwords_chunked",
@@ -99,6 +107,7 @@ __all__ = [
     "write_typed",
     "write_words_chunked",
     "write_words_single_request",
+    "try_parse_device_address",
     "parse_address",
     "parse_prefixed_address",
     "encode_word_address",
@@ -121,6 +130,7 @@ __all__ = [
     "ToyopucAddressingOptions",
     "ToyopucAreaDescriptor",
     "ToyopucDeviceCatalog",
+    "ToyopucDeviceMatrixRow",
     "ToyopucDeviceProfile",
     "ToyopucDeviceProfiles",
 ]

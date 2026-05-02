@@ -66,7 +66,8 @@ Address note:
   Full synchronous cookbook for `ToyopucDeviceClient`
 - `samples/high_level_all_async.py`
   Full asynchronous cookbook for `ToyopucConnectionOptions`, `open_and_connect`,
-  `normalize_address`, `read_typed`, `read_named`, `poll`, and explicit contiguous helpers
+  `normalize_address`, `parse_device_address`, `read_typed`, `read_named`, `poll`,
+  and explicit contiguous helpers
 - `samples/high_level_minimal.py`
   Smallest possible read / write workflow
 - `samples/high_level_basic.py`

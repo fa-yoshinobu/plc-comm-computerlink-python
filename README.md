@@ -17,6 +17,12 @@ For asyncio code, prefer:
 - `ToyopucConnectionOptions`
 - `open_and_connect`
 - `normalize_address`
+- `parse_device_address`
+- `try_parse_device_address`
+- `format_device_address`
+- `read_typed`
+- `write_typed`
+- `write_bit_in_word`
 - `read_named`
 - `poll`
 - `read_words_single_request`
@@ -106,6 +112,9 @@ Maintainer-only notes and retained evidence live under `internal_docs/`.
 ## Common User Tasks
 
 - normalize one address string: `normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode")`
+- parse one typed address string: `parse_device_address("p1-d0100:f", profile="Generic")`
+- format stored address metadata: `format_device_address(parsed_address)`
+- review model/profile ranges: `ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")`
 - read or write one device: `client.read("P1-D0000")`, `client.write("P1-M0000", 1)`
 - read a mixed snapshot: `client.read_many([...])` or `await read_named(plc, [...])`
 - read 32-bit or float values: `client.read_dword(...)`, `client.read_float32(...)`, `await read_typed(..., "D" / "L" / "F")`

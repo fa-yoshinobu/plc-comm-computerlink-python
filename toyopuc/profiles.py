@@ -204,6 +204,32 @@ class ToyopucDeviceProfile:
     areas: tuple[ToyopucAreaDescriptor, ...]
 
 
+@dataclass(frozen=True)
+class ToyopucDeviceMatrixRow:
+    """One review row in the maintained profile/device addressing matrix."""
+
+    profile: str
+    area: str
+    access: str
+    unit: str
+    packed_word: bool
+    address_suffixes: tuple[str, ...]
+    ranges: str
+    example_start_addresses: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "profile": self.profile,
+            "area": self.area,
+            "access": self.access,
+            "unit": self.unit,
+            "packed_word": self.packed_word,
+            "address_suffixes": list(self.address_suffixes),
+            "ranges": self.ranges,
+            "example_start_addresses": list(self.example_start_addresses),
+        }
+
+
 # ---------------------------------------------------------------------------
 # Area builder helpers (private)
 # ---------------------------------------------------------------------------
@@ -742,6 +768,8 @@ class ToyopucDeviceProfiles:
 class ToyopucDeviceCatalog:
     """Convenience API for profile area metadata used by UI/device lists."""
 
+    _MATRIX_EXAMPLE_LIMIT: ClassVar[int] = 6
+
     @classmethod
     def get_area_descriptors(cls, profile: str | None = None) -> tuple[ToyopucAreaDescriptor, ...]:
         return ToyopucDeviceProfiles.from_name(profile).areas
@@ -792,6 +820,24 @@ class ToyopucDeviceCatalog:
         return ", ".join(ToyopucDeviceCatalog.format_address_range(family_code, r, width) for r in ranges)
 
     @classmethod
+    def get_device_matrix(cls, profile: str | None = None) -> tuple[ToyopucDeviceMatrixRow, ...]:
+        """Return a compact device/profile matrix for release review.
+
+        When *profile* is omitted, rows for all known profiles are returned.
+        Prefixed rows use ``P1-`` as the representative program prefix.
+        """
+
+        profiles = (ToyopucDeviceProfiles.from_name(profile),) if profile else ToyopucDeviceProfiles._all()
+        rows: list[ToyopucDeviceMatrixRow] = []
+        for device_profile in profiles:
+            for descriptor in device_profile.areas:
+                if descriptor.supports_direct:
+                    rows.extend(cls._get_device_matrix_rows(device_profile, descriptor, prefixed=False))
+                if descriptor.supports_prefixed:
+                    rows.extend(cls._get_device_matrix_rows(device_profile, descriptor, prefixed=True))
+        return tuple(rows)
+
+    @classmethod
     def get_supported_range(
         cls,
         area: str,
@@ -805,8 +851,7 @@ class ToyopucDeviceCatalog:
         if len(ranges) == 1:
             return ranges[0]
         raise ValueError(
-            f"Area {area} for profile {profile or 'Generic'!r} has multiple ranges; "
-            "use get_supported_ranges() instead."
+            f"Area {area} for profile {profile or 'Generic'!r} has multiple ranges; use get_supported_ranges() instead."
         )
 
     @classmethod
@@ -917,6 +962,87 @@ class ToyopucDeviceCatalog:
     @staticmethod
     def _format_device_address(family_code: str, index: int, width: int) -> str:
         return f"{family_code}{index:0{width}X}"
+
+    @classmethod
+    def _get_device_matrix_rows(
+        cls,
+        profile: ToyopucDeviceProfile,
+        descriptor: ToyopucAreaDescriptor,
+        *,
+        prefixed: bool,
+    ) -> tuple[ToyopucDeviceMatrixRow, ...]:
+        unit = "bit" if descriptor.supports_packed_word else "word"
+        row_specs: list[tuple[str, bool, tuple[str, ...]]] = [(unit, False, ())]
+        if descriptor.supports_packed_word:
+            row_specs.extend(
+                [
+                    ("word", True, ("W",)),
+                    ("byte", False, ("L", "H")),
+                ]
+            )
+
+        rows: list[ToyopucDeviceMatrixRow] = []
+        for row_unit, packed_word, suffixes in row_specs:
+            rows.append(
+                cls._build_device_matrix_row(
+                    profile,
+                    descriptor,
+                    prefixed=prefixed,
+                    unit=row_unit,
+                    packed_word=packed_word,
+                    suffixes=suffixes,
+                )
+            )
+        return tuple(rows)
+
+    @classmethod
+    def _build_device_matrix_row(
+        cls,
+        profile: ToyopucDeviceProfile,
+        descriptor: ToyopucAreaDescriptor,
+        *,
+        prefixed: bool,
+        unit: str,
+        packed_word: bool,
+        suffixes: tuple[str, ...],
+    ) -> ToyopucDeviceMatrixRow:
+        family_code = f"P1-{descriptor.area}" if prefixed else descriptor.area
+        ranges = cls._get_supported_ranges(descriptor, prefixed, unit, packed_word)
+        width = descriptor.get_address_width(unit, packed_word)
+        starts = cls.get_suggested_start_addresses(
+            descriptor.area,
+            prefix="P1" if prefixed else None,
+            profile=profile.name,
+            unit=unit,
+            packed=packed_word,
+            options=profile.addressing_options,
+        )
+        return ToyopucDeviceMatrixRow(
+            profile=profile.name,
+            area=descriptor.area,
+            access="prefixed" if prefixed else "direct",
+            unit=unit,
+            packed_word=packed_word,
+            address_suffixes=suffixes,
+            ranges=cls.format_address_ranges(family_code, ranges, width),
+            example_start_addresses=cls._format_matrix_examples(family_code, starts, suffixes),
+        )
+
+    @classmethod
+    def _format_matrix_examples(
+        cls,
+        family_code: str,
+        starts: list[str],
+        suffixes: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        examples: list[str] = []
+        suffix_list = suffixes or ("",)
+        for start in starts:
+            for suffix in suffix_list:
+                examples.append(f"{family_code}{start}{suffix}")
+                if len(examples) >= cls._MATRIX_EXAMPLE_LIMIT:
+                    return tuple(examples)
+        return tuple(examples)
 
 
 # Populate class-level profile instances

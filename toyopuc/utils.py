@@ -9,12 +9,13 @@ single-request or chunked contiguous access helpers.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from .async_client import AsyncToyopucDeviceClient
+    from .client import ToyopucTraceFrame
 
 
 # ---------------------------------------------------------------------------
@@ -29,14 +30,38 @@ class ToyopucConnectionOptions:
     Attributes:
         host: PLC hostname or IP address.
         port: TOYOPUC computer-link port.
+        local_port: UDP source port. Leave zero for an ephemeral port.
+        transport: ``"tcp"`` or ``"udp"``.
         timeout: Socket timeout in seconds.
         retries: Number of retry attempts performed by the async client.
+        retry_delay: Delay between retry attempts, in seconds.
+        recv_bufsize: Socket receive buffer size used by the sync client.
+        trace_hook: Optional callback invoked for sent and received frames.
     """
 
     host: str
     port: int = 1025
+    local_port: int = 0
+    transport: str = "tcp"
     timeout: float = 3.0
     retries: int = 0
+    retry_delay: float = 0.2
+    recv_bufsize: int = 8192
+    trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
+
+
+@dataclass(frozen=True)
+class ToyopucAddress:
+    """Parsed public device address notation.
+
+    ``text`` is the canonical full notation. ``base_device`` is the resolved
+    PLC device without value-format or bit-in-word suffix.
+    """
+
+    text: str
+    base_device: str
+    dtype: str
+    bit_index: int | None = None
 
 
 def normalize_address(device: str, *, profile: str | None = None) -> str:
@@ -54,6 +79,65 @@ def normalize_address(device: str, *, profile: str | None = None) -> str:
     from .high_level import resolve_device
 
     return resolve_device(device, profile=profile).text
+
+
+def parse_device_address(device: str, *, profile: str | None = None) -> ToyopucAddress:
+    """Parse user-facing TOYOPUC address notation.
+
+    Supported forms match :func:`read_named`:
+
+    - ``"P1-D0100"`` as unsigned 16-bit word notation
+    - ``"P1-D0100:F"`` with explicit dtype ``U/S/D/L/F``
+    - ``"P1-D0100.A"`` for one bit inside a word
+    """
+
+    base_device, dtype, bit_index = _parse_address(device)
+    canonical_base = normalize_address(base_device, profile=profile)
+    if dtype == "BIT_IN_WORD":
+        if bit_index is None or not 0 <= bit_index <= 15:
+            raise ValueError(f"bit-in-word index must be 0-F: {device!r}")
+        return ToyopucAddress(
+            text=f"{canonical_base}.{bit_index:X}",
+            base_device=canonical_base,
+            dtype=dtype,
+            bit_index=bit_index,
+        )
+
+    if dtype not in {"U", "S", "D", "L", "F"}:
+        raise ValueError(f"Unsupported dtype {dtype!r}; expected one of U/S/D/L/F")
+    suffix = "" if dtype == "U" else f":{dtype}"
+    return ToyopucAddress(
+        text=f"{canonical_base}{suffix}",
+        base_device=canonical_base,
+        dtype=dtype,
+        bit_index=None,
+    )
+
+
+def try_parse_device_address(device: str, *, profile: str | None = None) -> ToyopucAddress | None:
+    """Return parsed address information, or ``None`` when parsing fails."""
+
+    try:
+        return parse_device_address(device, profile=profile)
+    except Exception:
+        return None
+
+
+def format_device_address(address: ToyopucAddress | str, *, profile: str | None = None) -> str:
+    """Return canonical public address text for a parsed address or string."""
+
+    if isinstance(address, str):
+        return parse_device_address(address, profile=profile).text
+    base = normalize_address(address.base_device, profile=profile) if profile else address.base_device
+    if address.dtype == "BIT_IN_WORD":
+        if address.bit_index is None or not 0 <= address.bit_index <= 15:
+            raise ValueError("bit-in-word address requires bit_index 0-F")
+        return f"{base}.{address.bit_index:X}"
+    if address.dtype == "U":
+        return base
+    if address.dtype not in {"S", "D", "L", "F"}:
+        raise ValueError(f"Unsupported dtype {address.dtype!r}; expected one of U/S/D/L/F")
+    return f"{base}:{address.dtype}"
 
 
 async def read_words_single_request(
@@ -271,6 +355,12 @@ async def open_and_connect(
     port: int = 1025,
     timeout: float = 3.0,
     retries: int = 0,
+    *,
+    local_port: int = 0,
+    transport: str = "tcp",
+    retry_delay: float = 0.2,
+    recv_bufsize: int = 8192,
+    trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
 
@@ -278,8 +368,13 @@ async def open_and_connect(
         host: PLC IP address, hostname, or a
             :class:`ToyopucConnectionOptions` instance.
         port: TOYOPUC computer-link port. Defaults to 1025.
+        local_port: UDP source port. Leave zero for an ephemeral port.
+        transport: ``"tcp"`` or ``"udp"``.
         timeout: Socket timeout in seconds.
         retries: Retry count used by the async client.
+        retry_delay: Delay between retry attempts, in seconds.
+        recv_bufsize: Socket receive buffer size.
+        trace_hook: Optional callback invoked for sent and received frames.
 
     Returns:
         A connected AsyncToyopucDeviceClient.
@@ -289,9 +384,29 @@ async def open_and_connect(
     if isinstance(host, ToyopucConnectionOptions):
         options = host
     else:
-        options = ToyopucConnectionOptions(host, port=port, timeout=timeout, retries=retries)
+        options = ToyopucConnectionOptions(
+            host,
+            port=port,
+            local_port=local_port,
+            transport=transport,
+            timeout=timeout,
+            retries=retries,
+            retry_delay=retry_delay,
+            recv_bufsize=recv_bufsize,
+            trace_hook=trace_hook,
+        )
 
-    client = AsyncToyopucDeviceClient(options.host, options.port, timeout=options.timeout, retries=options.retries)
+    client = AsyncToyopucDeviceClient(
+        options.host,
+        options.port,
+        local_port=options.local_port,
+        transport=options.transport,
+        timeout=options.timeout,
+        retries=options.retries,
+        retry_delay=options.retry_delay,
+        recv_bufsize=options.recv_bufsize,
+        trace_hook=options.trace_hook,
+    )
     await client.connect()
     return client
 

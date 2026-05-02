@@ -1,7 +1,7 @@
 # API Unification Policy
 
-This document defines the planned public API rules for the TOYOPUC Python library.
-It is a design policy document. It does not claim that every rule is implemented yet.
+This document defines the public API rules for the TOYOPUC Python library.
+The current high-level helper surface follows these rules as of 0.1.8.
 
 ## Purpose
 
@@ -24,6 +24,28 @@ Planned asyncio parity must use separate async classes.
 2. `AsyncToyopucDeviceClient`
 
 Do not expose provisional top-level constructors such as `Toyopuc(...)`.
+
+The top-level async helper surface is:
+
+- `ToyopucConnectionOptions`
+- `open_and_connect`
+- `normalize_address`
+- `parse_device_address`
+- `try_parse_device_address`
+- `format_device_address`
+- `read_typed`
+- `write_typed`
+- `write_bit_in_word`
+- `read_named`
+- `poll`
+- `read_words_single_request`
+- `read_dwords_single_request`
+- `write_words_single_request`
+- `write_dwords_single_request`
+- `read_words_chunked`
+- `read_dwords_chunked`
+- `write_words_chunked`
+- `write_dwords_chunked`
 
 ## Naming Rules
 
@@ -149,6 +171,42 @@ README and samples must prefer these canonical entry points.
 - Advanced samples: `ToyopucClient` or `AsyncToyopucClient`
 
 README must not use undocumented aliases as the primary form.
+
+## Address Helper Rules
+
+Public application helpers must use string-device notation and must not require
+callers to know protocol command units.
+
+- Use `normalize_address(...)` when only canonical text is needed.
+- Use `parse_device_address(...)` when dtype or bit-in-word notation must be retained.
+- Use `try_parse_device_address(...)` for UI validation paths that should not raise.
+- Use `format_device_address(...)` when stored address metadata must be rendered back to canonical text.
+- Keep `toyopuc.address.parse_address(...)` available for protocol-oriented code that already knows the command unit.
+
+## Protocol Option Rules
+
+TOYOPUC-specific options must stay explicit at the API boundary.
+
+- Connection helpers expose `transport`, `local_port`, `timeout`, `retries`, `retry_delay`, `recv_bufsize`, and `trace_hook`.
+- Device range validation uses explicit `profile` parameters.
+- Relay access uses explicit `hops` arguments and the public relay-hop parse/format helpers.
+
+## Addressing Matrix Rules
+
+Device/profile range knowledge must be reviewable from code, not only from prose.
+
+- Use `ToyopucDeviceCatalog.get_device_matrix(profile)` for release-review tables and UI option generation.
+- Matrix rows include profile, area, access mode, unit, suffixes, supported ranges, and example start addresses.
+- Hardware evidence can update range data, but the matrix API shape should remain stable.
+
+## Semantic Atomicity Rules
+
+High-level helpers must keep one user-visible logical value intact unless the
+caller chooses a chunked helper.
+
+- `*_single_request` helpers keep contiguous logical access on the single-request path.
+- `*_chunked` helpers are explicit opt-in paths and must keep 32-bit values aligned.
+- FR segmentation and PC10 block segmentation are allowed only at protocol-defined boundaries.
 
 ## Stability Rules
 
