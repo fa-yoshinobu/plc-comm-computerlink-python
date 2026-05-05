@@ -9,6 +9,13 @@
 
 ![Illustration](https://raw.githubusercontent.com/fa-yoshinobu/plc-comm-computerlink-python/main/docsrc/assets/toyopuc.png)
 
+[![Release](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/release.yml/badge.svg)](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/release.yml)
+[![VirusTotal scan on release](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/VirusTotal%20scan%20on%20release.yml/badge.svg)](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/VirusTotal%20scan%20on%20release.yml)
+
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![MkDocs](https://img.shields.io/badge/MkDocs-526CFE?logo=materialformkdocs&logoColor=white)](https://www.mkdocs.org/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-222222?logo=githubpages&logoColor=white)](https://pages.github.com/)
+
 A user-focused Python library for JTEKT TOYOPUC Computer Link communication.
 The recommended entry points are the high-level `ToyopucDeviceClient` class and the async helper functions in `toyopuc`.
 
