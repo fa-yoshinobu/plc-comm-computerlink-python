@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from .async_client import AsyncToyopucDeviceClient
     from .client import ToyopucTraceFrame
 
+UDP_RECEIVE_BUFFER_SIZE = 65_535
+
 
 # ---------------------------------------------------------------------------
 # Connection helper
@@ -46,7 +48,7 @@ class ToyopucConnectionOptions:
     timeout: float = 3.0
     retries: int = 0
     retry_delay: float = 0.2
-    recv_bufsize: int = 8192
+    recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
 
 
@@ -359,7 +361,7 @@ async def open_and_connect(
     local_port: int = 0,
     transport: str = "tcp",
     retry_delay: float = 0.2,
-    recv_bufsize: int = 8192,
+    recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.

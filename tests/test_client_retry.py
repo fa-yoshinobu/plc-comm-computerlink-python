@@ -27,9 +27,39 @@ class _FakeSocket:
         return None
 
 
+class _FakeUdpSocket:
+    def __init__(self, response: bytes) -> None:
+        self._response = response
+        self.sent: list[tuple[bytes, tuple[str, int]]] = []
+        self.recv_sizes: list[int] = []
+
+    def sendto(self, payload: bytes, address: tuple[str, int]) -> None:
+        self.sent.append((payload, address))
+
+    def recvfrom(self, size: int) -> tuple[bytes, tuple[str, int]]:
+        self.recv_sizes.append(size)
+        return self._response, ("127.0.0.1", 1025)
+
+    def close(self) -> None:
+        return None
+
+
 def _response(cmd: int, data: bytes = b"", *, rc: int = 0x00) -> bytes:
     length = 1 + len(data)
     return bytes([0x80, rc, length & 0xFF, (length >> 8) & 0xFF, cmd & 0xFF]) + data
+
+
+def test_udp_send_and_recv_accepts_large_datagram_response() -> None:
+    data = bytes(index & 0xFF for index in range(9000))
+    sock = _FakeUdpSocket(_response(0x1C, data))
+    client = ToyopucClient("127.0.0.1", 1025, transport="udp")
+    client._sock = sock
+
+    frame = client.send_raw(0x1C)
+
+    assert frame.cmd == 0x1C
+    assert frame.data == data
+    assert sock.recv_sizes == [65535]
 
 
 def test_send_and_recv_retries_response_error_0x73() -> None:

@@ -227,7 +227,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
                 "timeout": 3.0,
                 "retries": 2,
                 "retry_delay": 0.2,
-                "recv_bufsize": 8192,
+                "recv_bufsize": 65535,
                 "trace_hook": None,
             },
         )

@@ -104,6 +104,7 @@ ERROR_CODE_DESCRIPTIONS = {
 
 
 _RETRYABLE_RESPONSE_ERROR_CODES = {0x73}
+UDP_RECEIVE_BUFFER_SIZE = 65_535
 _FR_BLOCK_WORDS = 0x8000
 _FR_MAX_INDEX = 0x1FFFFF
 _FR_IO_CHUNK_WORDS = 0x0200
@@ -259,7 +260,7 @@ class ToyopucClient:
         timeout: float = 3.0,
         retries: int = 0,
         retry_delay: float = 0.2,
-        recv_bufsize: int = 8192,
+        recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
         trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
     ) -> None:
         self.host = host
@@ -366,7 +367,7 @@ class ToyopucClient:
                     frame = bytes(frame_buffer)
                 else:
                     self._sock.sendto(payload, (self.host, self.port))
-                    frame, _ = self._sock.recvfrom(self.recv_bufsize)
+                    frame, _ = self._sock.recvfrom(max(self.recv_bufsize, UDP_RECEIVE_BUFFER_SIZE))
             except TimeoutError as e:
                 last_err = ToyopucTimeoutError("Send/receive timeout")
                 if attempt <= self.retries:
