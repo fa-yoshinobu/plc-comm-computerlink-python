@@ -4,6 +4,29 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from ._batching import (
+    _batch_key,
+    _batch_run_length,
+    _contains_packed_pc10_word_device,
+    _is_consecutive_basic,
+    _is_consecutive_ext_word,
+    _is_consecutive_pc10_word,
+    _pc10_word_segment_length,
+)
+from ._batching import (
+    _pc10_block as _pc10_block,
+)
+from ._pc10 import (
+    _build_pc10_multi_word_read_payload,
+    _pack_pc10_multi_bit_payload,
+    _pack_pc10_multi_word_payload,
+    _parse_ext_multi_bit_data,
+    _parse_pc10_multi_word_data,
+    _read_pc10_block_word,
+    _read_pc10_multi_bits,
+    _read_pc10_multi_words,
+    _write_pc10_block_word,
+)
 from .address import (
     ParsedAddress,
     encode_bit_address,
@@ -531,165 +554,8 @@ def resolve_device(
     )
 
 
-def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> list[int]:
-    payload = bytearray([len(addrs32) & 0xFF, 0x00, 0x00, 0x00])
-    for addr32 in addrs32:
-        payload.extend(addr32.to_bytes(4, "little"))
-    data = client.pc10_multi_read(bytes(payload))[4:]
-    return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(len(addrs32))]
-
-
-def _parse_ext_multi_bit_data(data: bytes, count: int) -> list[int]:
-    need = (count + 7) // 8
-    if len(data) < need:
-        raise ToyopucProtocolError("Extended multi-bit response too short")
-    return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(count)]
-
-
-def _build_pc10_multi_word_read_payload(addrs32: Sequence[int]) -> bytes:
-    payload = bytearray(4 + len(addrs32) * 4)
-    payload[2] = len(addrs32) & 0xFF
-    for i, addr32 in enumerate(addrs32):
-        payload[4 + i * 4 : 8 + i * 4] = addr32.to_bytes(4, "little")
-    return bytes(payload)
-
-
-def _parse_pc10_multi_word_data(data: bytes, count: int) -> list[int]:
-    need = 4 + count * 2
-    if len(data) < need:
-        raise ToyopucProtocolError("PC10 multi-word response too short")
-    return [int.from_bytes(data[4 + i * 2 : 6 + i * 2], "little") for i in range(count)]
-
-
-def _read_pc10_multi_words(client: ToyopucClient, addrs32: Sequence[int]) -> list[int]:
-    data = client.pc10_multi_read(_build_pc10_multi_word_read_payload(addrs32))
-    return _parse_pc10_multi_word_data(data, len(addrs32))
-
-
-def _read_pc10_block_word(client: ToyopucClient, addr32: int) -> int:
-    data = client.pc10_block_read(addr32, 2)
-    return int.from_bytes(data[:2], "little")
-
-
-def _write_pc10_block_word(client: ToyopucClient, addr32: int, value: int) -> None:
-    client.pc10_block_write(addr32, int(value & 0xFFFF).to_bytes(2, "little"))
-
-
-def _pack_pc10_multi_bit_payload(addr32_values: Sequence[tuple[int, int]]) -> bytes:
-    payload = bytearray([len(addr32_values) & 0xFF, 0x00, 0x00, 0x00])
-    for addr32, _ in addr32_values:
-        payload.extend(addr32.to_bytes(4, "little"))
-    bit_bytes = bytearray((len(addr32_values) + 7) // 8)
-    for i, (_, value) in enumerate(addr32_values):
-        if int(value) & 0x01:
-            bit_bytes[i // 8] |= 1 << (i % 8)
-    payload.extend(bit_bytes)
-    return bytes(payload)
-
-
-def _pack_pc10_multi_word_payload(addr32_values: Sequence[tuple[int, int]]) -> bytes:
-    payload = bytearray(4 + len(addr32_values) * 4 + len(addr32_values) * 2)
-    payload[2] = len(addr32_values) & 0xFF
-    for i, (addr32, _) in enumerate(addr32_values):
-        payload[4 + i * 4 : 8 + i * 4] = addr32.to_bytes(4, "little")
-    values_offset = 4 + len(addr32_values) * 4
-    for i, (_, value) in enumerate(addr32_values):
-        payload[values_offset + i * 2 : values_offset + i * 2 + 2] = int(value & 0xFFFF).to_bytes(2, "little")
-    return bytes(payload)
-
-
 def _raise_generic_fr_write_error() -> None:
     raise ValueError("Generic FR writes are disabled; use write_fr(..., commit=False|True) or commit_fr() explicitly")
-
-
-# ---------------------------------------------------------------------------
-# Batch-read helpers (module-level, scheme-based grouping)
-# ---------------------------------------------------------------------------
-
-_SCHEME_BATCH_KEY: dict[str, str] = {
-    "basic-word": "basic-word",
-    "basic-byte": "basic-byte",
-    "ext-word": "ext-word",
-    "program-word": "ext-word",
-    "ext-byte": "ext-byte",
-    "program-byte": "ext-byte",
-    "ext-bit": "ext-bit",
-    "program-bit": "ext-bit",
-    "pc10-bit": "pc10-bit",
-    "pc10-word": "pc10-word",
-    "pc10-byte": "pc10-byte",
-}
-
-
-def _batch_key(resolved: ResolvedDevice) -> str | None:
-    return _SCHEME_BATCH_KEY.get(resolved.scheme)
-
-
-def _pc10_block(resolved: ResolvedDevice) -> int | None:
-    if resolved.addr32 is not None and resolved.scheme in (
-        "pc10-bit",
-        "pc10-word",
-        "pc10-byte",
-    ):
-        return resolved.addr32 >> 16
-    return None
-
-
-def _batch_run_length(devices: list[ResolvedDevice], start: int, split_pc10: bool) -> int:
-    key = _batch_key(devices[start])
-    if key is None:
-        return 1
-    pc10_blk = _pc10_block(devices[start]) if split_pc10 else None
-    idx = start + 1
-    while idx < len(devices):
-        if _batch_key(devices[idx]) != key:
-            break
-        if split_pc10 and _pc10_block(devices[idx]) != pc10_blk:
-            break
-        idx += 1
-    return idx - start
-
-
-def _is_consecutive_basic(devices: list[ResolvedDevice], step: int = 1) -> bool:
-    if not devices:
-        return True
-    start = devices[0].basic_addr
-    if start is None:
-        return False
-    return all(d.basic_addr == start + i * step for i, d in enumerate(devices))
-
-
-def _is_consecutive_ext_word(devices: list[ResolvedDevice]) -> bool:
-    if not devices:
-        return True
-    no0 = devices[0].no
-    addr0 = devices[0].addr
-    if no0 is None or addr0 is None:
-        return False
-    return all(d.no == no0 and d.addr == addr0 + i for i, d in enumerate(devices))
-
-
-def _is_consecutive_pc10_word(devices: list[ResolvedDevice]) -> bool:
-    if not devices:
-        return True
-    a0 = devices[0].addr32
-    if a0 is None:
-        return False
-    return all(d.addr32 == a0 + i * 2 for i, d in enumerate(devices))
-
-
-def _contains_packed_pc10_word_device(devices: list[ResolvedDevice]) -> bool:
-    return any(d.scheme == "pc10-word" and d.unit == "word" and d.packed for d in devices)
-
-
-def _pc10_word_segment_length(devices: list[ResolvedDevice], start: int) -> int:
-    a0 = _require(devices[start].addr32, "pc10 addr32")
-    run = 1
-    while start + run < len(devices):
-        if _require(devices[start + run].addr32, "pc10 addr32") != a0 + run * 2:
-            break
-        run += 1
-    return run
 
 
 class ToyopucDeviceClient(ToyopucClient):
