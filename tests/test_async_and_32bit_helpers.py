@@ -155,11 +155,22 @@ def test_async_high_level_helpers_wrap_sync_implementation() -> None:
 
 def test_read_named_supports_hex_bit_indices() -> None:
     client = _DummyAsyncUtilityClient()
-    client.values = {"B0000": (1 << 10) | (1 << 15)}
+    client.values = {"B0000": (1 << 10) | (1 << 13) | (1 << 15)}
 
     async def run_checks() -> None:
-        snapshot = await read_named(client, ["B0000.A", "B0000.F"])
-        assert snapshot == {"B0000.A": True, "B0000.F": True}
+        snapshot = await read_named(client, ["B0000.A", "B0000.D", "B0000.F"])
+        assert snapshot == {"B0000.A": True, "B0000.D": True, "B0000.F": True}
+
+    asyncio.run(run_checks())
+
+
+def test_read_named_rejects_invalid_bit_index() -> None:
+    client = _DummyAsyncUtilityClient()
+    client.values = {"B0000": 0}
+
+    async def run_checks() -> None:
+        with pytest.raises(ValueError):
+            await read_named(client, ["B0000.10"])
 
     asyncio.run(run_checks())
 
@@ -171,6 +182,7 @@ def test_normalize_address_uses_profile_rules() -> None:
 def test_public_device_address_helpers_parse_and_format() -> None:
     typed = parse_device_address("p1-d0100:f", profile="Generic")
     bit = parse_device_address("p1-d0100.a", profile="Generic")
+    bit_d = parse_device_address("p1-d0100.d", profile="Generic")
 
     assert typed.text == "P1-D0100:F"
     assert typed.base_device == "P1-D0100"
@@ -180,8 +192,13 @@ def test_public_device_address_helpers_parse_and_format() -> None:
     assert bit.base_device == "P1-D0100"
     assert bit.dtype == "BIT_IN_WORD"
     assert bit.bit_index == 10
+    assert bit_d.text == "P1-D0100.D"
+    assert bit_d.base_device == "P1-D0100"
+    assert bit_d.dtype == "BIT_IN_WORD"
+    assert bit_d.bit_index == 13
     assert format_device_address(typed) == "P1-D0100:F"
     assert format_device_address(bit) == "P1-D0100.A"
+    assert format_device_address(bit_d) == "P1-D0100.D"
     assert format_device_address("p1-d0100:s", profile="Generic") == "P1-D0100:S"
 
 
