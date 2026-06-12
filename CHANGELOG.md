@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-12
+
 ### Fixed
 - Fixed `CMD=98`/`CMD=99` multi-point word addressing: word points now carry monitor byte addresses (manual 3-60/3-61 "byte address N") instead of `CMD=94/95` word addresses. Sparse `read_many()` of word devices (including packed bit-device words such as `P1-V000W`) previously read the wrong area and returned incorrect (typically all-zero) data, and sparse `write_many()` of word devices previously wrote to the wrong area. Verified against real hardware where `read_many(["P1-V000W", "P1-V002W"])` returned all-zero before the fix.
 - `read_ext_multi()` / `write_ext_multi()` word-point addresses are now documented as monitor byte addresses; callers passing `CMD=94/95` word addresses must double them.

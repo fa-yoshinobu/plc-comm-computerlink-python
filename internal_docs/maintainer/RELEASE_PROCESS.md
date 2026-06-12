@@ -12,9 +12,9 @@ This document is a practical checklist for releasing the library as a package.
 
 Naming used by this project:
 
-- GitHub repository: `toyopuc-computer-link-python`
-- GitHub URL: `https://github.com/fa-yoshinobu/toyopuc-computer-link-python`
-- GitHub Pages: `https://fa-yoshinobu.github.io/toyopuc-computer-link-python/`
+- GitHub repository: `plc-comm-computerlink-python`
+- GitHub URL: `https://github.com/fa-yoshinobu/plc-comm-computerlink-python`
+- GitHub Pages: `https://fa-yoshinobu.github.io/plc-comm-computerlink-python/`
 - package name: `toyopuc-computerlink`
 - import name: `toyopuc`
 
@@ -130,6 +130,12 @@ Confirm caution notes are present before release.
 
 ## 8. Code Checks
 
+Install release dependencies before running checks:
+
+```bash
+python -m pip install -e .[dev]
+```
+
 Run syntax checks:
 
 ```bash
@@ -179,17 +185,19 @@ scripts\\build_api_docs.bat
 
 Current status:
 
-- `python -m build`: completed
-- `python -m twine check dist/*`: completed for `toyopuc_computerlink-1.0.0`
+- `release_check.bat`: completed for `toyopuc-computerlink` `0.1.9`
+- `python -m build`: completed for `toyopuc-computerlink` `0.1.9`
+- `python -m twine check dist/*`: completed for `toyopuc-computerlink` `0.1.9`
 
 Recommended release order:
 
 1. `python -m build`
 2. `python -m twine check dist/*`
-3. `pip install .[docs]`
-4. `scripts\\build_api_docs.bat`
+3. `pip install -e .[docs]`
+4. `build_docs.bat`
 
-Treat `scripts\\build_api_docs.bat` as part of the normal release flow when docstrings or public API have changed.
+Treat `build_docs.bat` as part of the normal release flow when docstrings or
+public API have changed.
 
 ## 10. Final Git Check
 

@@ -206,6 +206,7 @@ Evidence:
 - runtime tests
 - coarse device-range scan
 - TCP and UDP runtime results agree on the tested families
+- FR visible configuration recheck on 2026-06-12 over TCP confirmed `CMD=C2/C3` read/write/restore, the `0x03F0` byte single-frame limit, `CMD=CA` commit/wait/restore commit, and post-reset persistence.
 
 ### Basic Bit
 
@@ -290,7 +291,7 @@ Upper prefixed ranges (`1000` series) are not implemented in either PC3 mode or 
 
 | Device | Range | Notes |
 | --- | --- | --- |
-| `FR` | *(not exposed on this CPU)* | `CMD=C2/C3/CA` always returns `0x40`. |
+| `FR` | `FR000000-FR1FFFFF` when the CPU/configuration exposes FR | Use the dedicated PC10 FR path (`CMD=C2/C3`, `Ex No.=0x40-0x7F`). 2026-06-12 TCP recheck confirmed read, work-area write/restore, exact 0x03F0-byte transfers, helper split at 0x01F9 words, `CMD=CA` commit/wait/restore commit, and post-reset persistence. |
 
 ## PC10G-CPU (TCC-6353)
 

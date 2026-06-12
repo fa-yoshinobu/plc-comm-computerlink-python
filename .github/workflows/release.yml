@@ -3,6 +3,10 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix"
+        required: true
 permissions:
   contents: write
 jobs:
@@ -21,5 +25,5 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
-          tag="${{ github.ref_name }}"; if [[ -z "$tag" || "$tag" == "main" ]]; then tag="v0.1.2"; fi
-          gh release upload "$tag" dist/* --clobber || gh release create "$tag" dist/* --title "Release $tag" --generate-notes
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then tag="${{ github.ref_name }}"; else tag="v${{ inputs.version }}"; fi
+          gh release upload "$tag" dist/* --clobber || gh release create "$tag" dist/* --target main --title "Release $tag" --generate-notes

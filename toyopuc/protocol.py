@@ -46,8 +46,7 @@ def _require_ext_multi_read_limits(
     data_bytes = ((bit_count + 7) // 8) + byte_count + (word_count * 2)
     if data_bytes > _EXT_MULTI_MAX_DATA_BYTES:
         raise ValueError(
-            f"CMD=98 response data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} "
-            f"({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
+            f"CMD=98 response data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} ({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
         )
 
 
@@ -61,8 +60,7 @@ def _require_ext_multi_write_limits(
     data_bytes = bit_count + byte_count + (word_count * 2)
     if data_bytes > _EXT_MULTI_MAX_DATA_BYTES:
         raise ValueError(
-            f"CMD=99 write data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} "
-            f"({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
+            f"CMD=99 write data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} ({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
         )
 
 
