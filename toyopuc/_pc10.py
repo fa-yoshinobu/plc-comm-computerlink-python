@@ -5,8 +5,28 @@ from collections.abc import Sequence
 from .client import ToyopucClient
 from .errors import ToyopucProtocolError
 
+_PC10_MULTI_READ_MAX_POINTS = 0x7F
+_PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES = 0x0200
+
+
+def _require_pc10_multi_read_count(count: int) -> None:
+    if count < 1 or count > _PC10_MULTI_READ_MAX_POINTS:
+        raise ValueError(
+            f"CMD=C4 PC10 multi-read point count must be 1..0x{_PC10_MULTI_READ_MAX_POINTS:X} "
+            f"({_PC10_MULTI_READ_MAX_POINTS})"
+        )
+
+
+def _require_pc10_multi_write_payload(payload: bytes) -> None:
+    if len(payload) < 1 or len(payload) > _PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES:
+        raise ValueError(
+            f"CMD=C5 PC10 multi-write payload must be 1..0x{_PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES:X} "
+            f"({_PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES}) bytes"
+        )
+
 
 def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> list[int]:
+    _require_pc10_multi_read_count(len(addrs32))
     payload = bytearray([len(addrs32) & 0xFF, 0x00, 0x00, 0x00])
     for addr32 in addrs32:
         payload.extend(addr32.to_bytes(4, "little"))
@@ -22,6 +42,7 @@ def _parse_ext_multi_bit_data(data: bytes, count: int) -> list[int]:
 
 
 def _build_pc10_multi_word_read_payload(addrs32: Sequence[int]) -> bytes:
+    _require_pc10_multi_read_count(len(addrs32))
     payload = bytearray(4 + len(addrs32) * 4)
     payload[2] = len(addrs32) & 0xFF
     for i, addr32 in enumerate(addrs32):
@@ -59,6 +80,7 @@ def _pack_pc10_multi_bit_payload(addr32_values: Sequence[tuple[int, int]]) -> by
         if int(value) & 0x01:
             bit_bytes[i // 8] |= 1 << (i % 8)
     payload.extend(bit_bytes)
+    _require_pc10_multi_write_payload(payload)
     return bytes(payload)
 
 
@@ -70,4 +92,5 @@ def _pack_pc10_multi_word_payload(addr32_values: Sequence[tuple[int, int]]) -> b
     values_offset = 4 + len(addr32_values) * 4
     for i, (_, value) in enumerate(addr32_values):
         payload[values_offset + i * 2 : values_offset + i * 2 + 2] = int(value & 0xFFFF).to_bytes(2, "little")
+    _require_pc10_multi_write_payload(payload)
     return bytes(payload)

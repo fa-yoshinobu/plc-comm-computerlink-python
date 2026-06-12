@@ -238,6 +238,14 @@ def test_resolve_eb_area_pc10_disabled_falls_through_to_ext_word() -> None:
     assert r.scheme == "ext-word"
 
 
+def test_resolve_eb_extended_no_stops_at_manual_range_when_pc10_disabled() -> None:
+    assert resolve_device("EB20000").scheme == "pc10-word"
+
+    opts = ToyopucAddressingOptions(use_eb_pc10=False)
+    with pytest.raises(ValueError, match="EB extended-No index out of range"):
+        resolve_device("EB20000", options=opts)
+
+
 def test_resolve_fr_area_pc10_enabled() -> None:
     r = resolve_device("FR000000")
     assert r.scheme == "pc10-word"

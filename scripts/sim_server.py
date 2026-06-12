@@ -510,7 +510,16 @@ def handle_command(mem: Memory, frame: bytes) -> bytes:
         for no, addr in bytespec:
             out.append(mem.ext_byte.get((no, addr), 0) & 0xFF)
         for no, addr in wordspec:
-            v = mem.ext_word.get((no, addr), 0) & 0xFFFF
+            # Word points carry monitor byte addresses (manual: "byte address N").
+            word_addr = addr >> 1
+            byte_addr = (
+                _program_word_byte_addr(word_addr) if no in (0x01, 0x02, 0x03) else _ext_word_byte_addr(no, word_addr)
+            )
+            if byte_addr is not None:
+                store = mem.program_packed_byte if no in (0x01, 0x02, 0x03) else mem.ext_packed_byte
+                v = _read_u16_from_map(store, (no, byte_addr), (no, byte_addr + 1))
+            else:
+                v = mem.ext_word.get((no, word_addr), 0) & 0xFFFF
             out.extend([v & 0xFF, (v >> 8) & 0xFF])
         return build_response(cmd, bytes(out))
 
@@ -555,7 +564,16 @@ def handle_command(mem: Memory, frame: bytes) -> bytes:
             addr = data[idx + 1] | (data[idx + 2] << 8)
             value = data[idx + 3] | (data[idx + 4] << 8)
             idx += 5
-            mem.ext_word[(no, addr)] = value
+            # Word points carry monitor byte addresses (manual: "byte address N").
+            word_addr = addr >> 1
+            byte_addr = (
+                _program_word_byte_addr(word_addr) if no in (0x01, 0x02, 0x03) else _ext_word_byte_addr(no, word_addr)
+            )
+            if byte_addr is not None:
+                store = mem.program_packed_byte if no in (0x01, 0x02, 0x03) else mem.ext_packed_byte
+                _write_u16_to_map(store, (no, byte_addr), (no, byte_addr + 1), value)
+            else:
+                mem.ext_word[(no, word_addr)] = value
         return build_response(cmd, b"")
 
     if cmd == 0xC4:  # PC10 multi read (sim format)

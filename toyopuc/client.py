@@ -107,7 +107,7 @@ _RETRYABLE_RESPONSE_ERROR_CODES = {0x73}
 UDP_RECEIVE_BUFFER_SIZE = 65_535
 _FR_BLOCK_WORDS = 0x8000
 _FR_MAX_INDEX = 0x1FFFFF
-_FR_IO_CHUNK_WORDS = 0x0200
+_FR_IO_CHUNK_WORDS = 0x01F8
 
 
 def _validate_fr_index(index: int) -> int:
@@ -558,6 +558,10 @@ class ToyopucClient:
         `bit_points` items are `(no, bit_no, addr)`.
         `byte_points` items are `(no, addr)`.
         `word_points` items are `(no, addr)`.
+
+        All `addr` fields are monitor byte addresses, including `word_points`
+        (manual: "byte address N"). A `CMD=94` word address must be doubled
+        before it is used as a `word_points` address.
         """
         resp = self._send_and_recv(build_ext_multi_read(list(bit_points), list(byte_points), list(word_points)))
         if resp.cmd != 0x98:
@@ -570,7 +574,11 @@ class ToyopucClient:
         byte_points: Iterable[tuple[int, int, int]],
         word_points: Iterable[tuple[int, int, int]],
     ) -> None:
-        """Write mixed extended points with `CMD=99`."""
+        """Write mixed extended points with `CMD=99`.
+
+        All `addr` fields are monitor byte addresses, including `word_points`
+        (manual: "byte address N"), as in :meth:`read_ext_multi`.
+        """
         resp = self._send_and_recv(build_ext_multi_write(list(bit_points), list(byte_points), list(word_points)))
         if resp.cmd != 0x99:
             raise ToyopucProtocolError("Unexpected CMD in response")
@@ -816,7 +824,7 @@ class ToyopucClient:
             raise ToyopucProtocolError(f"Failed to parse relay CPU status response data={resp.data.hex()}") from e
 
     def relay_read_cpu_status_a0_raw(self, hops: str | Iterable[tuple[int, int]]) -> bytes:
-        """Read raw 8-byte CPU status through relay hops via `CMD=A0 / 01 10`."""
+        """Read raw 8-byte CPU status through relay hops via `CMD=A0 / 00 11 00`."""
         resp = self.send_via_relay(hops, build_cpu_status_read_a0())
         if resp.cmd != 0xA0:
             raise ToyopucProtocolError("Unexpected CMD in relay A0 CPU status response")
@@ -826,7 +834,7 @@ class ToyopucClient:
             raise ToyopucProtocolError(f"Failed to parse relay A0 CPU status response data={resp.data.hex()}") from e
 
     def relay_read_cpu_status_a0(self, hops: str | Iterable[tuple[int, int]]) -> CpuStatusData:
-        """Read decoded CPU status through relay hops via `CMD=A0 / 01 10`."""
+        """Read decoded CPU status through relay hops via `CMD=A0 / 00 11 00`."""
         resp = self.send_via_relay(hops, build_cpu_status_read_a0())
         if resp.cmd != 0xA0:
             raise ToyopucProtocolError("Unexpected CMD in relay A0 CPU status response")
@@ -984,7 +992,7 @@ class ToyopucClient:
             raise ToyopucProtocolError(f"Failed to parse CPU status response data={resp.data.hex()}") from e
 
     def read_cpu_status_a0_raw(self) -> bytes:
-        """Read raw 8-byte CPU status via `CMD=A0 / 01 10`.
+        """Read raw 8-byte CPU status via `CMD=A0 / 00 11 00`.
 
         This command path is used in the flash/FR completion flow. The library
         currently returns the 8 raw status bytes because the exact bit mapping
@@ -999,7 +1007,7 @@ class ToyopucClient:
             raise ToyopucProtocolError(f"Failed to parse A0 CPU status response data={resp.data.hex()}") from e
 
     def read_cpu_status_a0(self) -> CpuStatusData:
-        """Read decoded CPU status via `CMD=A0 / 01 10`."""
+        """Read decoded CPU status via `CMD=A0 / 00 11 00`."""
         resp = self._send_and_recv(build_cpu_status_read_a0())
         if resp.cmd != 0xA0:
             raise ToyopucProtocolError("Unexpected CMD in response")
@@ -1011,7 +1019,7 @@ class ToyopucClient:
     def wait_fr_write_complete(self, *, timeout: float = 30.0, poll_interval: float = 0.2) -> CpuStatusData:
         """Poll FR flash-write completion status.
 
-        Prefer `CMD=A0 / 01 10` when available. If the target rejects `A0`
+        Prefer `CMD=A0 / 00 11 00` when available. If the target rejects `A0`
         with an invalid-subcommand style error, fall back to normal CPU status
         `CMD=32 / 11 00`, which exposes the same `Data7` flash-write bits on
         the Nano 10GX tested in this project.

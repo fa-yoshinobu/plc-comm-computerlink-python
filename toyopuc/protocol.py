@@ -9,6 +9,62 @@ from .errors import ToyopucProtocolError
 FT_COMMAND = 0x00
 FT_RESPONSE = 0x80
 
+_CONTINUOUS_WORD_MAX = 0x0200
+_CONTINUOUS_BYTE_MAX = 0x0400
+_BASIC_MULTI_MAX_POINTS = 0x0080
+_EXT_MULTI_MAX_POINTS = 0x00B0
+_EXT_MULTI_MAX_DATA_BYTES = 0x0080
+_PC10_BLOCK_MAX_BYTES = 0x03F0
+_PC10_MULTI_MAX_PAYLOAD_BYTES = 0x0200
+
+
+def _require_count(label: str, count: int, max_count: int) -> int:
+    n = int(count)
+    if n < 1 or n > max_count:
+        raise ValueError(f"{label} count must be 1..0x{max_count:X} ({max_count})")
+    return n
+
+
+def _require_length(label: str, length: int, max_length: int) -> None:
+    if length < 1 or length > max_length:
+        raise ValueError(f"{label} length must be 1..0x{max_length:X} ({max_length}) bytes")
+
+
+def _require_pc10_block_range(addr32: int, byte_count: int) -> None:
+    offset = int(addr32) & 0xFFFF
+    if offset + int(byte_count) > 0x10000:
+        raise ValueError("PC10 block access must not cross the 16-bit block boundary")
+
+
+def _require_ext_multi_read_limits(
+    bit_count: int,
+    byte_count: int,
+    word_count: int,
+) -> None:
+    total = bit_count + byte_count + word_count
+    _require_count("CMD=98 point", total, _EXT_MULTI_MAX_POINTS)
+    data_bytes = ((bit_count + 7) // 8) + byte_count + (word_count * 2)
+    if data_bytes > _EXT_MULTI_MAX_DATA_BYTES:
+        raise ValueError(
+            f"CMD=98 response data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} "
+            f"({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
+        )
+
+
+def _require_ext_multi_write_limits(
+    bit_count: int,
+    byte_count: int,
+    word_count: int,
+) -> None:
+    total = bit_count + byte_count + word_count
+    _require_count("CMD=99 point", total, _EXT_MULTI_MAX_POINTS)
+    data_bytes = bit_count + byte_count + (word_count * 2)
+    if data_bytes > _EXT_MULTI_MAX_DATA_BYTES:
+        raise ValueError(
+            f"CMD=99 write data would exceed 0x{_EXT_MULTI_MAX_DATA_BYTES:X} "
+            f"({_EXT_MULTI_MAX_DATA_BYTES}) bytes"
+        )
+
 
 @dataclass(frozen=True)
 class ResponseFrame:
@@ -313,13 +369,12 @@ def build_cpu_status_read() -> bytes:
 
 
 def build_cpu_status_read_a0() -> bytes:
-    """Build `CMD=A0 / 01 10` CPU-status-read command.
+    """Build `CMD=A0 / 00 11 00` CPU-status-read command.
 
     This path is documented separately from `CMD=32 / 11 00` and is used by
-    the FR/flash write completion flow. The current implementation exposes the
-    payload as raw 8 status bytes until bit-level interpretation is confirmed.
+    the FR/flash write completion flow.
     """
-    return build_command(0xA0, bytes([0x01, 0x10]))
+    return build_command(0xA0, bytes([0x00, 0x11, 0x00]))
 
 
 def build_scan_resume() -> bytes:
@@ -397,42 +452,46 @@ def parse_cpu_status_data(data: bytes) -> CpuStatusData:
 
 
 def parse_cpu_status_data_a0(data: bytes) -> CpuStatusData:
-    """Parse a `CMD=A0 / 01 10` CPU-status payload into `CpuStatusData`."""
-    if len(data) != 10 or data[0] != 0x01 or data[1] != 0x10:
-        raise ToyopucProtocolError("A0 CPU status response must be 10 bytes starting with 01 10")
+    """Parse a `CMD=A0 / 00 11 00` CPU-status payload into `CpuStatusData`."""
+    if len(data) != 11 or data[:3] != bytes([0x00, 0x11, 0x00]):
+        raise ToyopucProtocolError("A0 CPU status response must be 11 bytes starting with 00 11 00")
     return CpuStatusData(
-        data1=data[2],
-        data2=data[3],
-        data3=data[4],
-        data4=data[5],
-        data5=data[6],
-        data6=data[7],
-        data7=data[8],
-        data8=data[9],
+        data1=data[3],
+        data2=data[4],
+        data3=data[5],
+        data4=data[6],
+        data5=data[7],
+        data6=data[8],
+        data7=data[9],
+        data8=data[10],
     )
 
 
 def parse_cpu_status_data_a0_raw(data: bytes) -> bytes:
-    """Parse `CMD=A0 / 01 10` CPU-status payload and return raw status bytes."""
+    """Parse `CMD=A0 / 00 11 00` CPU-status payload and return raw status bytes."""
     return parse_cpu_status_data_a0(data).raw_bytes
 
 
 def build_word_read(addr: int, count: int) -> bytes:
-    return build_command(0x1C, pack_u16_le(addr) + pack_u16_le(count))
+    n = _require_count("CMD=1C word-read", count, _CONTINUOUS_WORD_MAX)
+    return build_command(0x1C, pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_word_write(addr: int, values: Iterable[int]) -> bytes:
     vals = list(values)
+    _require_count("CMD=1D word-write", len(vals), _CONTINUOUS_WORD_MAX)
     data = pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
     return build_command(0x1D, data)
 
 
 def build_byte_read(addr: int, count: int) -> bytes:
-    return build_command(0x1E, pack_u16_le(addr) + pack_u16_le(count))
+    n = _require_count("CMD=1E byte-read", count, _CONTINUOUS_BYTE_MAX)
+    return build_command(0x1E, pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_byte_write(addr: int, values: Iterable[int]) -> bytes:
     vals = bytes(values)
+    _require_count("CMD=1F byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     return build_command(0x1F, pack_u16_le(addr) + vals)
 
 
@@ -445,41 +504,53 @@ def build_bit_write(addr: int, value: int) -> bytes:
 
 
 def build_multi_word_read(addrs: Iterable[int]) -> bytes:
-    data = b"".join(pack_u16_le(a) for a in addrs)
+    items = list(addrs)
+    _require_count("CMD=22 multi-word-read", len(items), _BASIC_MULTI_MAX_POINTS)
+    data = b"".join(pack_u16_le(a) for a in items)
     return build_command(0x22, data)
 
 
 def build_multi_word_write(pairs: Iterable[tuple[int, int]]) -> bytes:
-    data = b"".join(pack_u16_le(a) + pack_u16_le(v) for a, v in pairs)
+    items = list(pairs)
+    _require_count("CMD=23 multi-word-write", len(items), _BASIC_MULTI_MAX_POINTS)
+    data = b"".join(pack_u16_le(a) + pack_u16_le(v) for a, v in items)
     return build_command(0x23, data)
 
 
 def build_multi_byte_read(addrs: Iterable[int]) -> bytes:
-    data = b"".join(pack_u16_le(a) for a in addrs)
+    items = list(addrs)
+    _require_count("CMD=24 multi-byte-read", len(items), _BASIC_MULTI_MAX_POINTS)
+    data = b"".join(pack_u16_le(a) for a in items)
     return build_command(0x24, data)
 
 
 def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
-    data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in pairs)
+    items = list(pairs)
+    _require_count("CMD=25 multi-byte-write", len(items), _BASIC_MULTI_MAX_POINTS)
+    data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in items)
     return build_command(0x25, data)
 
 
 def build_ext_word_read(no: int, addr: int, count: int) -> bytes:
-    return build_command(0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count))
+    n = _require_count("CMD=94 ext-word-read", count, _CONTINUOUS_WORD_MAX)
+    return build_command(0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
     vals = list(values)
+    _require_count("CMD=95 ext-word-write", len(vals), _CONTINUOUS_WORD_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
     return build_command(0x95, data)
 
 
 def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
-    return build_command(0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(count))
+    n = _require_count("CMD=96 ext-byte-read", count, _CONTINUOUS_BYTE_MAX)
+    return build_command(0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
     vals = bytes(values)
+    _require_count("CMD=97 ext-byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + vals
     return build_command(0x97, data)
 
@@ -489,6 +560,7 @@ def build_ext_multi_read(
     byte_points: Sequence[tuple[int, int]],
     word_points: Sequence[tuple[int, int]],
 ) -> bytes:
+    _require_ext_multi_read_limits(len(bit_points), len(byte_points), len(word_points))
     data = bytearray()
     data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
     for no, bit, addr in bit_points:
@@ -508,6 +580,7 @@ def build_ext_multi_write(
     byte_points: Sequence[tuple[int, int, int]],
     word_points: Sequence[tuple[int, int, int]],
 ) -> bytes:
+    _require_ext_multi_write_limits(len(bit_points), len(byte_points), len(word_points))
     data = bytearray()
     data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
     for no, bit, addr, value in bit_points:
@@ -527,14 +600,18 @@ def build_ext_multi_write(
 
 # PC10 commands (C2-C6)
 def build_pc10_block_read(addr32: int, count: int) -> bytes:
+    n = _require_count("CMD=C2 PC10 block-read", count, _PC10_BLOCK_MAX_BYTES)
+    _require_pc10_block_range(addr32, n)
     # Address is 32-bit (low word, high word)
     return build_command(
         0xC2,
-        pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + pack_u16_le(count),
+        pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + pack_u16_le(n),
     )
 
 
 def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
+    _require_length("CMD=C3 PC10 block-write", len(data_bytes), _PC10_BLOCK_MAX_BYTES)
+    _require_pc10_block_range(addr32, len(data_bytes))
     return build_command(
         0xC3,
         pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + data_bytes,
@@ -543,11 +620,13 @@ def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
 
 def build_pc10_multi_read(payload: bytes) -> bytes:
     # Payload is already formatted per manual (CMD=C4)
+    _require_length("CMD=C4 PC10 multi-read payload", len(payload), _PC10_MULTI_MAX_PAYLOAD_BYTES)
     return build_command(0xC4, payload)
 
 
 def build_pc10_multi_write(payload: bytes) -> bytes:
     # Payload is already formatted per manual (CMD=C5)
+    _require_length("CMD=C5 PC10 multi-write payload", len(payload), _PC10_MULTI_MAX_PAYLOAD_BYTES)
     return build_command(0xC5, payload)
 
 

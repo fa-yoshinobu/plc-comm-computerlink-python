@@ -863,7 +863,8 @@ def run_ext_multi_mixed(
             ),
             (
                 encode_ext_no_address("EN", 0x0000, "word").no,
-                encode_ext_no_address("EN", 0x0000, "word").addr,
+                # CMD=98/99 word points carry monitor byte addresses.
+                encode_ext_no_address("EN", 0x0000, "word").addr * 2,
             ),
         )
     )
@@ -877,7 +878,7 @@ def run_ext_multi_mixed(
             ),
             (
                 encode_ext_no_address("ES", 0x0000, "word").no,
-                encode_ext_no_address("ES", 0x0000, "word").addr,
+                encode_ext_no_address("ES", 0x0000, "word").addr * 2,
             ),
         )
     )
@@ -888,7 +889,7 @@ def run_ext_multi_mixed(
             "P1-M0000 + P1-D0000(byte) + P1-D0000(word)",
             _prefixed_bit_ext_addr("P1", "M", 0x0000),
             (0x01, encode_program_byte_address(parsed_byte)),
-            (0x01, encode_program_word_address(parsed_word)),
+            (0x01, encode_program_word_address(parsed_word) * 2),
         )
     )
 
@@ -930,7 +931,7 @@ def run_ext_multi_mixed(
             ),
             (
                 encode_ext_no_address("ES", 0x0000, "word").no,
-                encode_ext_no_address("ES", 0x0000, "word").addr,
+                encode_ext_no_address("ES", 0x0000, "word").addr * 2,
             ),
         ),
         (
@@ -939,7 +940,7 @@ def run_ext_multi_mixed(
             None,
             (
                 encode_ext_no_address("ES", 0x0000, "word").no,
-                encode_ext_no_address("ES", 0x0000, "word").addr,
+                encode_ext_no_address("ES", 0x0000, "word").addr * 2,
             ),
         ),
     ]

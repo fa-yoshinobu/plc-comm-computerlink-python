@@ -128,7 +128,8 @@ def _parse_ext_multi_read_specs(tokens: list[str]):
             area = parts[1].upper()
             index = _parse_ints([parts[2]])[0]
             ext = encode_ext_no_address(area, index, "word")
-            word_points.append((ext.no, ext.addr))
+            # CMD=98 word points carry monitor byte addresses.
+            word_points.append((ext.no, ext.addr * 2))
             labels.append(("word", f"{area}{index:04X}"))
         else:
             raise ValueError(f"Invalid ext multi read spec: {token}")
@@ -162,7 +163,8 @@ def _parse_ext_multi_write_specs(tokens: list[str]):
             index = _parse_ints([parts[2]])[0]
             value = _parse_ints([parts[3]])[0]
             ext = encode_ext_no_address(area, index, "word")
-            word_points.append((ext.no, ext.addr, value))
+            # CMD=99 word points carry monitor byte addresses.
+            word_points.append((ext.no, ext.addr * 2, value))
             labels.append(("word", f"{area}{index:04X}", value & 0xFFFF))
         else:
             raise ValueError(f"Invalid ext multi write spec: {token}")

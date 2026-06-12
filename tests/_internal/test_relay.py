@@ -241,7 +241,7 @@ def test_client_relay_read_cpu_status_accepts_p_style_hops():
 
 
 def test_client_relay_read_cpu_status_a0_accepts_p_style_hops():
-    outer = parse_response(bytes.fromhex("8000120060120200060b00a00110820000000000000e"))
+    outer = parse_response(bytes.fromhex("8000140060120200060c00a000110082000000000000000e"))
     client = _DummyRelayClient(outer)
     status = client.relay_read_cpu_status_a0("P1-L2:N2")
     assert client.last_hops == [(0x12, 0x0002)]
@@ -356,7 +356,20 @@ def test_high_level_read_many_ext_word_sparse_uses_ext_multi_read():
     resolved = [resolve_device(d) for d in devices]
 
     assert values == [0x1234, 0x5678]
-    assert client.ext_multi_reads == [([], [], [(_r.no, _r.addr) for _r in resolved])]
+    # CMD=98 word points carry monitor byte addresses (manual: "byte address N").
+    assert client.ext_multi_reads == [([], [], [(_r.no, _r.addr * 2) for _r in resolved])]
+
+
+def test_high_level_read_many_program_packed_word_sparse_uses_byte_addresses():
+    client = _DummyAdvancedBatchDirectClient()
+    values = client.read_many(["P1-V000W", "P1-V002W"])
+
+    assert values == [0x1234, 0x5678]
+    # P1-V000W/P1-V002W resolve to CMD=94 word addresses 0x0050/0x0052; the
+    # CMD=98 word points must carry the monitor byte addresses 0x00A0/0x00A4.
+    # Sending the word address here made real hardware read another area
+    # (all-zero data) instead of the V registers.
+    assert client.ext_multi_reads == [([], [], [(0x01, 0x00A0), (0x01, 0x00A4)])]
 
 
 def test_high_level_read_many_ext_bit_sparse_unpacks_packed_multi_read():
@@ -431,8 +444,16 @@ def test_high_level_write_many_ext_word_sparse_uses_ext_multi_write():
 
     client.write_many(items)
 
-    expected = [(_r.no, _r.addr, v) for _r, v in zip(resolved, items.values(), strict=False)]
+    # CMD=99 word points carry monitor byte addresses (manual: "byte address N").
+    expected = [(_r.no, _r.addr * 2, v) for _r, v in zip(resolved, items.values(), strict=False)]
     assert client.ext_multi_writes == [([], [], expected)]
+
+
+def test_high_level_write_many_program_packed_word_sparse_uses_byte_addresses():
+    client = _DummyAdvancedBatchDirectClient()
+    client.write_many({"P1-V000W": 0x0050, "P1-V002W": 0x0040})
+
+    assert client.ext_multi_writes == [([], [], [(0x01, 0x00A0, 0x0050), (0x01, 0x00A4, 0x0040)])]
 
 
 def test_high_level_write_many_pc10_word_sparse_uses_multi_write():
@@ -456,6 +477,15 @@ def test_high_level_relay_read_many_ext_bit_sparse_unpacks_packed_multi_read():
 
     assert values == [True, False, True, False, True, False, True, False, True, True]
     assert client.inner_calls == [build_ext_multi_read([(_r.no, _r.bit_no, _r.addr) for _r in resolved], [], [])]
+
+
+def test_high_level_relay_read_many_program_packed_word_sparse_uses_byte_addresses():
+    outer = _relay_success_response(0x98, bytes.fromhex("50004000"))
+    client = _DummyRelayHighLevelClient(outer)
+    values = client.relay_read_many("P1-L2:N2", ["P1-V000W", "P1-V002W"])
+
+    assert values == [0x0050, 0x0040]
+    assert client.inner_calls == [build_ext_multi_read([], [], [(0x01, 0x00A0), (0x01, 0x00A4)])]
 
 
 def test_high_level_relay_read_many_pc10_word_sparse_uses_multi_read():

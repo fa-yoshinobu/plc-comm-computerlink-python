@@ -807,10 +807,15 @@ Example response:
 
 ### `CMD=98` extended multi-point read
 
+Point addresses are monitor byte addresses for all three sections (bit, byte,
+and word points; manual 3-60/3-61 "byte address N"). A `CMD=94/95` word
+address must be doubled before it is used as a multi-point word address
+(`EN0000`: word address `0x1000`, multi-point word address `0x2000`).
+
 Read 1 bit from `EX0000`, 1 byte from `U0000`, 1 word from `EN0000`:
 
 ```text
-00 00 0D 00 98 01 01 01 00 00 0B 08 00 00 00 00 10
+00 00 0D 00 98 01 01 01 00 00 0B 08 00 00 00 00 20
 ```
 
 Example response:
@@ -827,10 +832,12 @@ Interpretation:
 
 ### `CMD=99` extended multi-point write
 
+Point addresses are monitor byte addresses, as in `CMD=98`.
+
 Write bit `EX0000=1`, byte `U0000=1EH`, word `EN0000=C42CH`:
 
 ```text
-00 00 11 00 99 01 01 01 00 00 0B 01 08 00 00 1E 00 00 10 2C C4
+00 00 11 00 99 01 01 01 00 00 0B 01 08 00 00 1E 00 00 20 2C C4
 ```
 
 Example response:

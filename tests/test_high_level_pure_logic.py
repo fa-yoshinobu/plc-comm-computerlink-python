@@ -67,6 +67,15 @@ def test_pc10_multi_word_payloads_pack_counts_addresses_and_values() -> None:
     ) == bytes.fromhex("00 00 04 0000 00 10 0002 00 10 0000 00 40 0002 00 40 0034 12 ff ff 00 00 ff ff")
 
 
+def test_pc10_payload_helpers_reject_count_wrap_and_oversized_writes() -> None:
+    with pytest.raises(ValueError, match="CMD=C4"):
+        _build_pc10_multi_word_read_payload([0x00100000] * 0x80)
+    with pytest.raises(ValueError, match="CMD=C5"):
+        _pack_pc10_multi_word_payload([(0x00100000, 0)] * 85)
+    with pytest.raises(ValueError, match="CMD=C5"):
+        _pack_pc10_multi_bit_payload([(0x00100000 + i, 1) for i in range(124)])
+
+
 def test_pc10_multi_response_parsers_keep_current_bit_and_word_layout() -> None:
     assert _parse_ext_multi_bit_data(bytes([0b10101101, 0b00000010]), 10) == [1, 0, 1, 1, 0, 1, 0, 1, 0, 1]
     assert _parse_pc10_multi_word_data(bytes.fromhex("aa bb cc dd 34 12 ff ff 00 00"), 3) == [

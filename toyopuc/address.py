@@ -563,9 +563,10 @@ def encode_ext_no_address(area: str, index: int, unit: str) -> ExtNoAddress:
         else:
             raise ValueError(f"Unsupported unit for extended No mapping: {unit}")
     elif area_u == "EB":
-        # EB blocks are 0x8000 each
-        if index < 0x00000 or index > 0x3FFFF:
-            raise ValueError("EB index out of range (0x00000-0x3FFFF)")
+        # CMD=94-99 EB is defined through No. 0x09-0x0C (0x00000-0x1FFFF).
+        # The wider EB PC10 route is encoded separately by high-level PC10 helpers.
+        if index < 0x00000 or index > 0x1FFFF:
+            raise ValueError("EB extended-No index out of range (0x00000-0x1FFFF)")
         block = index // 0x8000
         no = 0x09 + block
         addr = index % 0x8000

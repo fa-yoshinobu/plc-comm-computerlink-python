@@ -18,11 +18,18 @@ from toyopuc.protocol import (
     build_byte_read,
     build_clock_read,
     build_cpu_status_read,
+    build_cpu_status_read_a0,
+    build_ext_multi_read,
+    build_ext_multi_write,
+    build_multi_word_read,
+    build_pc10_block_read,
+    build_pc10_multi_read,
     build_scan_resume,
     build_scan_stop,
     build_scan_stop_release,
     build_word_read,
     pack_bcd,
+    parse_cpu_status_data_a0,
     parse_response,
 )
 
@@ -62,6 +69,29 @@ def test_scan_control_frame_builders() -> None:
     assert build_scan_resume() == bytes([0x00, 0x00, 0x03, 0x00, 0x32, 0x01, 0x00])
     assert build_scan_stop() == bytes([0x00, 0x00, 0x04, 0x00, 0x32, 0x02, 0x00, 0x01])
     assert build_scan_stop_release() == bytes([0x00, 0x00, 0x04, 0x00, 0x32, 0x02, 0x00, 0x00])
+
+
+def test_a0_cpu_status_frame_and_parse() -> None:
+    assert build_cpu_status_read_a0() == bytes([0x00, 0x00, 0x04, 0x00, 0xA0, 0x00, 0x11, 0x00])
+    status = parse_cpu_status_data_a0(bytes([0x00, 0x11, 0x00, 0x42, 0, 0, 0, 0, 0, 0, 0]))
+    assert status.raw_bytes == bytes([0x42, 0, 0, 0, 0, 0, 0, 0])
+
+
+def test_protocol_builders_reject_over_limit_single_frame_requests() -> None:
+    with pytest.raises(ValueError, match="CMD=1C"):
+        build_word_read(0x0000, 0x0201)
+    with pytest.raises(ValueError, match="CMD=22"):
+        build_multi_word_read(range(0x0081))
+    with pytest.raises(ValueError, match="CMD=98 response data"):
+        build_ext_multi_read([], [], [(0x01, i * 2) for i in range(65)])
+    with pytest.raises(ValueError, match="CMD=99 write data"):
+        build_ext_multi_write([(0x01, 0, i, 1) for i in range(129)], [], [])
+    with pytest.raises(ValueError, match="CMD=C2"):
+        build_pc10_block_read(0x00000000, 0x03F1)
+    with pytest.raises(ValueError, match="block boundary"):
+        build_pc10_block_read(0x0000FFFE, 4)
+    with pytest.raises(ValueError, match="CMD=C4"):
+        build_pc10_multi_read(bytes(0x0201))
 
 
 @pytest.mark.parametrize("vec", _RESPONSE_VECTORS, ids=lambda v: v["id"])

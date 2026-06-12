@@ -133,6 +133,15 @@ def _require(value: T | None, label: str) -> T:
     return value
 
 
+def _ext_word_monitor_addr(word_addr: int) -> int:
+    """Convert a `CMD=94/95` word address into the monitor byte address.
+
+    `CMD=98/99` word points carry byte addresses (manual: "byte address N"),
+    while `ResolvedDevice.addr` holds the `CMD=94/95` word address.
+    """
+    return word_addr * 2
+
+
 @dataclass(frozen=True)
 class ResolvedDevice:
     """Resolved high-level device description."""
@@ -1521,7 +1530,7 @@ class ToyopucDeviceClient(ToyopucClient):
             self.read_ext_multi(
                 [],
                 [],
-                [(_require(d.no, "no"), _require(d.addr, "addr")) for d in devices],
+                [(_require(d.no, "no"), _ext_word_monitor_addr(_require(d.addr, "addr"))) for d in devices],
             )
         )[: len(devices)]
 
@@ -1646,7 +1655,7 @@ class ToyopucDeviceClient(ToyopucClient):
             build_ext_multi_read(
                 [],
                 [],
-                [(_require(d.no, "no"), _require(d.addr, "addr")) for d in devices],
+                [(_require(d.no, "no"), _ext_word_monitor_addr(_require(d.addr, "addr"))) for d in devices],
             ),
         )
         if resp.cmd != 0x98:
@@ -1792,7 +1801,10 @@ class ToyopucDeviceClient(ToyopucClient):
             self.write_ext_multi(
                 [],
                 [],
-                [(_require(d.no, "no"), _require(d.addr, "addr"), v) for d, v in zip(devices, values, strict=False)],
+                [
+                    (_require(d.no, "no"), _ext_word_monitor_addr(_require(d.addr, "addr")), v)
+                    for d, v in zip(devices, values, strict=False)
+                ],
             )
 
     def _write_ext_byte_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
@@ -1925,7 +1937,10 @@ class ToyopucDeviceClient(ToyopucClient):
             build_ext_multi_write(
                 [],
                 [],
-                [(_require(d.no, "no"), _require(d.addr, "addr"), v) for d, v in zip(devices, values, strict=False)],
+                [
+                    (_require(d.no, "no"), _ext_word_monitor_addr(_require(d.addr, "addr")), v)
+                    for d, v in zip(devices, values, strict=False)
+                ],
             ),
         )
         if resp.cmd != 0x99:

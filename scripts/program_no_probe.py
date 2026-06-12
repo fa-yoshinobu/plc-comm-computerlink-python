@@ -196,7 +196,8 @@ def _read_snapshot(plc: ToyopucClient, case: ProbeCase, no: int) -> ProbeSnapsho
         byte_points.append((no, addr))
     if case.word is not None:
         addr = _require_field(case.word.addr, f"{case.key}: word case missing addr")
-        word_points.append((no, addr))
+        # CMD=98 word points carry monitor byte addresses.
+        word_points.append((no, addr * 2))
     data = plc.read_ext_multi(bit_points, byte_points, word_points)
     bit_count, byte_count, word_count = case.counts()
     bits, bytes_out, words_out = _decode_ext_multi_read_data(data, bit_count, byte_count, word_count)
@@ -220,7 +221,8 @@ def _write_snapshot(plc: ToyopucClient, case: ProbeCase, no: int, snapshot: Prob
         byte_points.append((no, addr, int(snapshot.byte) & 0xFF))
     if case.word is not None and snapshot.word is not None:
         addr = _require_field(case.word.addr, f"{case.key}: word case missing addr")
-        word_points.append((no, addr, int(snapshot.word) & 0xFFFF))
+        # CMD=99 word points carry monitor byte addresses.
+        word_points.append((no, addr * 2, int(snapshot.word) & 0xFFFF))
     plc.write_ext_multi(bit_points, byte_points, word_points)
 
 
