@@ -347,20 +347,15 @@ def resolve_device(
 
     Args:
         device: Device address string (e.g. ``"P1-D0100"``, ``"P1-M1000"``).
-        options: Addressing option flags that control PC10 routing.  When
-            *None* and *profile* is given the profile's options are used;
-            otherwise the Generic (all-True) defaults apply.
-        profile: Optional PLC profile name (e.g.
-            ``"toyopuc:plus:standard"``).  When given, the address
-            index is validated against the profile's supported ranges.
+        options: Addressing option flags that control PC10 routing. When
+            *None*, the explicit profile's options are used.
+        profile: Required canonical PLC profile name (e.g.
+            ``"toyopuc:plus:standard"``). The address index is validated
+            against the profile's supported ranges.
     """
+    normalized_profile = ToyopucPlcProfiles.from_name(profile).name
     if options is None:
-        if profile:
-            options = ToyopucPlcProfiles.from_name(profile).addressing_options
-        else:
-            options = ToyopucAddressingOptions()
-
-    normalized_profile: str | None = ToyopucPlcProfiles.from_name(profile).name if profile else None
+        options = ToyopucAddressingOptions.from_profile(normalized_profile)
 
     prefix, area, unit = _infer_unit_and_area(device)
     text = device.strip().upper()
@@ -369,8 +364,7 @@ def resolve_device(
 
     if prefix:
         ex_no, parsed = parse_prefixed_address(text, unit)
-        if normalized_profile:
-            _validate_profile_access(parsed, prefix, normalized_profile, device)
+        _validate_profile_access(parsed, prefix, normalized_profile, device)
         if unit == "bit":
             bit_no, addr = encode_program_bit_address(parsed)
             addr32: int | None = None
@@ -422,8 +416,7 @@ def resolve_device(
         )
 
     parsed = parse_address(text, unit)
-    if normalized_profile:
-        _validate_profile_access(parsed, prefix=None, profile=normalized_profile, device=device)
+    _validate_profile_access(parsed, prefix=None, profile=normalized_profile, device=device)
 
     if unit == "bit":
         pc10_bit = _try_resolve_direct_pc10_bit(parsed, text, options)
@@ -578,10 +571,8 @@ class ToyopucDeviceClient(ToyopucClient):
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.plc_profile = None if not plc_profile or not plc_profile.strip() else ToyopucPlcProfiles.from_name(plc_profile).name
-        self.addressing_options = addressing_options or (
-            ToyopucAddressingOptions.from_profile(self.plc_profile) if self.plc_profile else ToyopucAddressingOptions()
-        )
+        self.plc_profile = ToyopucPlcProfiles.from_name(plc_profile).name
+        self.addressing_options = addressing_options or ToyopucAddressingOptions.from_profile(self.plc_profile)
         self._resolved_device_cache: dict[str, ResolvedDevice] = {}
         self._run_plan_cache: dict[tuple[bool, tuple[ResolvedDevice, ...]], tuple[int, ...]] = {}
 

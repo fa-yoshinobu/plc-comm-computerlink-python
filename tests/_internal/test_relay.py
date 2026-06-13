@@ -5,7 +5,7 @@ from toyopuc import (
     ToyopucDeviceClient,
     encode_word_address,
     parse_address,
-    resolve_device,
+    resolve_device as _resolve_device,
 )
 from toyopuc.client import _extract_relay_nak_error_code
 from toyopuc.protocol import (
@@ -31,6 +31,13 @@ from toyopuc.relay import (
     parse_relay_hops,
     unwrap_relay_response_chain,
 )
+
+GENERIC_PROFILE = "toyopuc:generic"
+
+
+def resolve_device(device: str, **kwargs):
+    kwargs.setdefault("profile", GENERIC_PROFILE)
+    return _resolve_device(device, **kwargs)
 
 
 def _word_addr(text: str) -> int:
@@ -82,7 +89,7 @@ class _DummyRelayClient(ToyopucClient):
 
 class _DummyRelayHighLevelClient(ToyopucDeviceClient):
     def __init__(self, response):
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
         self.response = response
         self.last_hops = None
         self.last_inner = None
@@ -97,7 +104,7 @@ class _DummyRelayHighLevelClient(ToyopucDeviceClient):
 
 class _DummyDirectHighLevelClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
         self.pc10_block_reads = []
         self.pc10_multi_reads = []
 
@@ -112,7 +119,7 @@ class _DummyDirectHighLevelClient(ToyopucDeviceClient):
 
 class _DummyBatchDirectClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
         self.word_reads = []
         self.word_multi_reads = []
         self.word_writes = []
@@ -136,7 +143,7 @@ class _DummyBatchDirectClient(ToyopucDeviceClient):
 
 class _DummyAdvancedBatchDirectClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
         self.ext_multi_reads = []
         self.ext_multi_writes = []
         self.byte_multi_writes = []
@@ -297,7 +304,7 @@ def test_high_level_relay_read_accepts_basic_bit_device():
 def test_high_level_relay_write_accepts_ext_byte_device():
     outer = parse_response(bytes.fromhex("800008006012020006010097"))
     client = _DummyRelayHighLevelClient(outer)
-    resolved = resolve_device("EX0000L")
+    resolved = resolve_device("EX000L")
     client.relay_write("P1-L2:N2", resolved, 0x7F)
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_ext_byte_write(resolved.no, resolved.addr, [0x7F])

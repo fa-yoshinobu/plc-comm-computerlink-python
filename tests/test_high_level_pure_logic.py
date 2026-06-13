@@ -19,8 +19,15 @@ from toyopuc.high_level import (
     _pc10_block,
     _pc10_word_segment_length,
     _raise_generic_fr_write_error,
-    resolve_device,
+    resolve_device as _resolve_device,
 )
+
+GENERIC_PROFILE = "toyopuc:generic"
+
+
+def resolve_device(device: str, **kwargs):
+    kwargs.setdefault("profile", GENERIC_PROFILE)
+    return _resolve_device(device, **kwargs)
 
 
 def _devices(names: list[str]) -> list[ResolvedDevice]:

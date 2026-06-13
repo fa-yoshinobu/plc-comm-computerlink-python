@@ -25,6 +25,8 @@ from toyopuc import (
     write_words_single_request,
 )
 
+GENERIC_PROFILE = "toyopuc:generic"
+
 
 def _word_addr(text: str) -> int:
     return encode_word_address(parse_address(text, "word"))
@@ -49,7 +51,7 @@ class _DummyWordClient(ToyopucClient):
 
 class _DummyHighLevelClient(ToyopucDeviceClient):
     def __init__(self) -> None:
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
         self.word_map: dict[int, int] = {}
         self.word_reads: list[tuple[int, int]] = []
         self.word_writes: list[tuple[int, list[int]]] = []
@@ -208,14 +210,14 @@ def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
 
 
 def test_connection_options_defaults() -> None:
-    options = ToyopucConnectionOptions("127.0.0.1")
+    options = ToyopucConnectionOptions("127.0.0.1", plc_profile=GENERIC_PROFILE)
     assert options.port == 1025
     assert options.local_port == 0
     assert options.transport == "tcp"
     assert options.timeout == 3.0
     assert options.retries == 0
     assert options.retry_delay == 0.2
-    assert options.plc_profile is None
+    assert options.plc_profile == GENERIC_PROFILE
 
 
 def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -231,7 +233,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("toyopuc.async_client.AsyncToyopucDeviceClient", _FakeAsyncClient, raising=False)
 
     async def run() -> None:
-        client = await open_and_connect(ToyopucConnectionOptions("127.0.0.1", retries=2))
+        client = await open_and_connect(ToyopucConnectionOptions("127.0.0.1", retries=2, plc_profile=GENERIC_PROFILE))
         assert isinstance(client, _FakeAsyncClient)
 
     asyncio.run(run())
@@ -246,7 +248,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
                 "retries": 2,
                 "retry_delay": 0.2,
                 "recv_bufsize": 65535,
-                "plc_profile": None,
+                "plc_profile": GENERIC_PROFILE,
                 "trace_hook": None,
             },
         )

@@ -731,7 +731,7 @@ class ToyopucPlcProfiles:
     @classmethod
     def from_name(cls, profile: str | None) -> ToyopucPlcProfile:
         if not profile or not profile.strip():
-            return cls.Generic
+            raise ValueError("PLC profile is required. Use an explicit canonical profile name.")
         normalized = profile.strip()
         for p in cls._all():
             if p.name == normalized:
@@ -851,7 +851,8 @@ class ToyopucDeviceCatalog:
         if len(ranges) == 1:
             return ranges[0]
         raise ValueError(
-            f"Area {area} for profile {profile or 'toyopuc:generic'!r} has multiple ranges; use get_supported_ranges() instead."
+            f"Area {area} for profile {ToyopucPlcProfiles.from_name(profile).name!r} has multiple ranges; "
+            "use get_supported_ranges() instead."
         )
 
     @classmethod
@@ -865,8 +866,9 @@ class ToyopucDeviceCatalog:
         unit: str | None = None,
         packed: bool = False,
     ) -> bool:
+        plc_profile = ToyopucPlcProfiles.from_name(profile)
         try:
-            ranges = cls.get_supported_ranges(area, prefixed, profile, unit=unit, packed=packed)
+            ranges = cls.get_supported_ranges(area, prefixed, plc_profile.name, unit=unit, packed=packed)
         except Exception:
             return False
         return any(r.contains(index) for r in ranges)
@@ -882,12 +884,13 @@ class ToyopucDeviceCatalog:
         packed: bool = False,
         options: ToyopucAddressingOptions | None = None,
     ) -> list[str]:
-        descriptor = cls.get_area_descriptor(area, profile)
+        plc_profile = ToyopucPlcProfiles.from_name(profile)
+        descriptor = cls.get_area_descriptor(area, plc_profile.name)
         normalized_prefix = cls._normalize_prefix(prefix)
         prefixed = normalized_prefix is not None
         resolved_unit = cls._default_unit(descriptor, unit, packed)
         ranges = cls._get_supported_ranges(descriptor, prefixed, resolved_unit, packed)
-        resolved_options = options or ToyopucPlcProfiles.from_name(profile).addressing_options
+        resolved_options = options or plc_profile.addressing_options
 
         suffix = "W" if resolved_unit == "word" and packed else "L" if resolved_unit == "byte" else ""
         device_prefix = f"{normalized_prefix}-" if normalized_prefix else ""
@@ -898,7 +901,7 @@ class ToyopucDeviceCatalog:
         def add_candidate(value: int) -> None:
             candidate = f"{value:0{width}X}"
             device = f"{device_prefix}{descriptor.area}{candidate}{suffix}"
-            if candidate not in seen and cls._can_resolve(device, resolved_options):
+            if candidate not in seen and cls._can_resolve(device, resolved_options, plc_profile.name):
                 seen.add(candidate)
                 results.append(candidate)
 
@@ -946,11 +949,11 @@ class ToyopucDeviceCatalog:
         return normalized
 
     @staticmethod
-    def _can_resolve(device: str, options: ToyopucAddressingOptions) -> bool:
+    def _can_resolve(device: str, options: ToyopucAddressingOptions, profile: str) -> bool:
         from .high_level import resolve_device
 
         try:
-            resolve_device(device, options=options)
+            resolve_device(device, options=options, profile=profile)
             return True
         except Exception:
             return False
