@@ -12,4 +12,5 @@ This file tracks the remaining tasks and known issues for the Toyopuc Computer L
 - [x] **Review public address helper exposure**: Decide whether Toyopuc address parse/normalize/format helpers should be promoted into a documented utility API so applications do not need private copies.
 - [x] **Keep protocol-specific options explicit**: Preserve Toyopuc-specific settings such as profile selection, relay hops, local port, retries, and retry delay as first-class options instead of hiding them behind ambiguous defaults.
 - [x] **Preserve semantic atomicity by default**: Allow segmentation only on protocol-defined boundaries such as FR or PC10 block limits. Do not silently split one logical value or one user-visible logical block into different semantics.
+- [ ] **Unify PLC profile naming across libraries**: Review the public Computer Link `profile` / device-profile selector and align it with the cross-library `PlcProfile` naming policy where practical. Standard saved/displayed profile names should converge on one canonical form, with legacy names accepted only as input aliases.
 
