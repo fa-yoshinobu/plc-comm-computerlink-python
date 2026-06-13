@@ -38,7 +38,7 @@ class ToyopucConnectionOptions:
         retries: Number of retry attempts performed by the async client.
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size used by the sync client.
-        plc_profile: Optional canonical PLC profile name such as
+        plc_profile: Canonical PLC profile name such as
             ``"toyopuc:pc10g:pc10"``.
         trace_hook: Optional callback invoked for sent and received frames.
     """
@@ -53,6 +53,10 @@ class ToyopucConnectionOptions:
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE
     plc_profile: str | None = None
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
+
+    def __post_init__(self) -> None:
+        if self.plc_profile is None or not self.plc_profile.strip():
+            raise ValueError("plc_profile is required. Use an explicit canonical PLC profile name.")
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,7 @@ def normalize_address(device: str, *, profile: str | None = None) -> str:
 
     Args:
         device: User-facing device text such as ``"p1-d0100"``.
-        profile: Optional addressing profile used by :func:`resolve_device`.
+        profile: Required canonical addressing profile used by :func:`resolve_device`.
 
     Returns:
         Canonical uppercase address text suitable for logs and configuration
@@ -380,7 +384,7 @@ async def open_and_connect(
         retries: Retry count used by the async client.
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size.
-        plc_profile: Optional canonical PLC profile name.
+        plc_profile: Required canonical PLC profile name.
         trace_hook: Optional callback invoked for sent and received frames.
 
     Returns:

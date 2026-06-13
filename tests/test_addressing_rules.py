@@ -1,7 +1,14 @@
 import pytest
 
 from toyopuc.address import parse_address, parse_prefixed_address
-from toyopuc.high_level import resolve_device
+from toyopuc.high_level import resolve_device as _resolve_device
+
+GENERIC_PROFILE = "toyopuc:generic"
+
+
+def resolve_device(device: str, **kwargs):
+    kwargs.setdefault("profile", GENERIC_PROFILE)
+    return _resolve_device(device, **kwargs)
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,14 @@ from toyopuc import (
     ToyopucDeviceCatalog,
     ToyopucPlcProfiles,
 )
-from toyopuc.high_level import resolve_device
+from toyopuc.high_level import resolve_device as _resolve_device
+
+GENERIC_PROFILE = "toyopuc:generic"
+
+
+def resolve_device(device: str, **kwargs):
+    kwargs.setdefault("profile", GENERIC_PROFILE)
+    return _resolve_device(device, **kwargs)
 
 # ---------------------------------------------------------------------------
 # Profile catalog
@@ -21,10 +28,10 @@ def test_get_names_returns_all_11_profiles() -> None:
     assert "toyopuc:plus:standard" in names
 
 
-def test_from_name_none_returns_generic() -> None:
-    assert ToyopucPlcProfiles.from_name(None) is ToyopucPlcProfiles.Generic
-    assert ToyopucPlcProfiles.from_name("") is ToyopucPlcProfiles.Generic
-    assert ToyopucPlcProfiles.from_name("  ") is ToyopucPlcProfiles.Generic
+def test_from_name_requires_explicit_profile() -> None:
+    for value in (None, "", "  "):
+        with pytest.raises(ValueError, match="PLC profile is required"):
+            ToyopucPlcProfiles.from_name(value)
 
 
 def test_from_name_rejects_short_alias() -> None:
@@ -33,7 +40,7 @@ def test_from_name_rejects_short_alias() -> None:
 
 
 def test_from_name_accepts_canonical_name() -> None:
-    p = ToyopucPlcProfiles.from_name("toyopuc:generic")
+    p = ToyopucPlcProfiles.from_name(GENERIC_PROFILE)
     assert p is ToyopucPlcProfiles.Generic
 
 
@@ -85,9 +92,9 @@ def test_get_area_descriptor_area_absent_from_profile_raises() -> None:
 
 
 def test_device_catalog_returns_area_metadata() -> None:
-    direct_areas = ToyopucDeviceCatalog.get_areas(prefixed=False)
-    prefixed_areas = ToyopucDeviceCatalog.get_areas(prefixed=True)
-    fr = ToyopucDeviceCatalog.get_area_descriptor("FR")
+    direct_areas = ToyopucDeviceCatalog.get_areas(prefixed=False, profile=GENERIC_PROFILE)
+    prefixed_areas = ToyopucDeviceCatalog.get_areas(prefixed=True, profile=GENERIC_PROFILE)
+    fr = ToyopucDeviceCatalog.get_area_descriptor("FR", profile=GENERIC_PROFILE)
 
     assert "FR" in direct_areas
     assert "FR" not in prefixed_areas
@@ -148,10 +155,10 @@ def test_device_catalog_matrix_without_profile_includes_all_profiles() -> None:
 
 def test_device_catalog_rejects_direct_basic_start_addresses() -> None:
     with pytest.raises(ValueError, match="not available for direct access"):
-        ToyopucDeviceCatalog.get_suggested_start_addresses("D")
+        ToyopucDeviceCatalog.get_suggested_start_addresses("D", profile=GENERIC_PROFILE)
 
-    assert ToyopucDeviceCatalog.is_supported_index("D", 0, prefixed=False) is False
-    assert ToyopucDeviceCatalog.is_supported_index("D", 0, prefixed=True) is True
+    assert ToyopucDeviceCatalog.is_supported_index("D", 0, prefixed=False, profile=GENERIC_PROFILE) is False
+    assert ToyopucDeviceCatalog.is_supported_index("D", 0, prefixed=True, profile=GENERIC_PROFILE) is True
 
 
 def test_area_descriptor_get_ranges_packed() -> None:
@@ -192,9 +199,9 @@ def test_addressing_options_from_profile() -> None:
     assert opts.use_fr_pc10 is False
 
 
-def test_addressing_options_from_profile_none_returns_generic() -> None:
-    opts = ToyopucAddressingOptions.from_profile(None)
-    assert opts == ToyopucAddressingOptions()
+def test_addressing_options_from_profile_requires_explicit_profile() -> None:
+    with pytest.raises(ValueError, match="PLC profile is required"):
+        ToyopucAddressingOptions.from_profile(None)
 
 
 # ---------------------------------------------------------------------------
