@@ -176,13 +176,13 @@ def test_read_named_rejects_invalid_bit_index() -> None:
 
 
 def test_normalize_address_uses_profile_rules() -> None:
-    assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Extended mode") == "P1-D0000"
+    assert normalize_address("p1-d0000", profile="toyopuc:plus:extended") == "P1-D0000"
 
 
 def test_public_device_address_helpers_parse_and_format() -> None:
-    typed = parse_device_address("p1-d0100:f", profile="Generic")
-    bit = parse_device_address("p1-d0100.a", profile="Generic")
-    bit_d = parse_device_address("p1-d0100.d", profile="Generic")
+    typed = parse_device_address("p1-d0100:f", profile="toyopuc:generic")
+    bit = parse_device_address("p1-d0100.a", profile="toyopuc:generic")
+    bit_d = parse_device_address("p1-d0100.d", profile="toyopuc:generic")
 
     assert typed.text == "P1-D0100:F"
     assert typed.base_device == "P1-D0100"
@@ -199,12 +199,12 @@ def test_public_device_address_helpers_parse_and_format() -> None:
     assert format_device_address(typed) == "P1-D0100:F"
     assert format_device_address(bit) == "P1-D0100.A"
     assert format_device_address(bit_d) == "P1-D0100.D"
-    assert format_device_address("p1-d0100:s", profile="Generic") == "P1-D0100:S"
+    assert format_device_address("p1-d0100:s", profile="toyopuc:generic") == "P1-D0100:S"
 
 
 def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
-    assert try_parse_device_address("P1-D1000", profile="TOYOPUC-Plus:Plus Standard mode") is None
-    assert try_parse_device_address("P1-D0100.10", profile="Generic") is None
+    assert try_parse_device_address("P1-D1000", profile="toyopuc:plus:standard") is None
+    assert try_parse_device_address("P1-D0100.10", profile="toyopuc:generic") is None
 
 
 def test_connection_options_defaults() -> None:
@@ -215,6 +215,7 @@ def test_connection_options_defaults() -> None:
     assert options.timeout == 3.0
     assert options.retries == 0
     assert options.retry_delay == 0.2
+    assert options.plc_profile is None
 
 
 def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,6 +246,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
                 "retries": 2,
                 "retry_delay": 0.2,
                 "recv_bufsize": 65535,
+                "plc_profile": None,
                 "trace_hook": None,
             },
         )

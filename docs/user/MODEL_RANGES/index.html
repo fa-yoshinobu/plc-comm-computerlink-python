@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -1546,6 +1546,7 @@ scripts\run_device_range_scan.bat 192.168.250.100 1027 udp 12000 16 32
 <li>runtime tests</li>
 <li>coarse device-range scan</li>
 <li>TCP and UDP runtime results agree on the tested families</li>
+<li>FR visible configuration recheck on 2026-06-12 over TCP confirmed <code>CMD=C2/C3</code> read/write/restore, the <code>0x03F0</code> byte single-frame limit, <code>CMD=CA</code> commit/wait/restore commit, and post-reset persistence.</li>
 </ul>
 <h3 id="basic-bit_1">Basic Bit</h3>
 <table>
@@ -1800,8 +1801,8 @@ scripts\run_device_range_scan.bat 192.168.250.100 1027 udp 12000 16 32
 <tbody>
 <tr>
 <td><code>FR</code></td>
-<td><em>(not exposed on this CPU)</em></td>
-<td><code>CMD=C2/C3/CA</code> always returns <code>0x40</code>.</td>
+<td><code>FR000000-FR1FFFFF</code> when the CPU/configuration exposes FR</td>
+<td>Use the dedicated PC10 FR path (<code>CMD=C2/C3</code>, <code>Ex No.=0x40-0x7F</code>). 2026-06-12 TCP recheck confirmed read, work-area write/restore, exact 0x03F0-byte transfers, helper split at 0x01F9 words, <code>CMD=CA</code> commit/wait/restore commit, and post-reset persistence.</td>
 </tr>
 </tbody>
 </table>

@@ -49,7 +49,7 @@ from .client import (
     _unpack_uint32_low_word_first_words,
 )
 from .errors import ToyopucProtocolError
-from .profiles import ToyopucAddressingOptions, ToyopucDeviceProfiles
+from .profiles import ToyopucAddressingOptions, ToyopucPlcProfiles
 from .protocol import (
     build_bit_read,
     build_bit_write,
@@ -319,7 +319,7 @@ def _validate_profile_access(
 
     Raises ValueError with a descriptive message on violation.
     """
-    descriptor = ToyopucDeviceProfiles.get_area_descriptor(parsed.area, profile)
+    descriptor = ToyopucPlcProfiles.get_area_descriptor(parsed.area, profile)
     if parsed.packed and not descriptor.supports_packed_word:
         raise ValueError(f"W suffix is not available for area {parsed.area!r} in profile {profile!r}: {device}")
     expected_width = descriptor.get_address_width(parsed.unit, parsed.packed)
@@ -350,17 +350,17 @@ def resolve_device(
         options: Addressing option flags that control PC10 routing.  When
             *None* and *profile* is given the profile's options are used;
             otherwise the Generic (all-True) defaults apply.
-        profile: Optional device profile name (e.g.
-            ``"TOYOPUC-Plus:Plus Standard mode"``).  When given, the address
+        profile: Optional PLC profile name (e.g.
+            ``"toyopuc:plus:standard"``).  When given, the address
             index is validated against the profile's supported ranges.
     """
     if options is None:
         if profile:
-            options = ToyopucDeviceProfiles.from_name(profile).addressing_options
+            options = ToyopucPlcProfiles.from_name(profile).addressing_options
         else:
             options = ToyopucAddressingOptions()
 
-    normalized_profile: str | None = ToyopucDeviceProfiles.from_name(profile).name if profile else None
+    normalized_profile: str | None = ToyopucPlcProfiles.from_name(profile).name if profile else None
 
     prefix, area, unit = _infer_unit_and_area(device)
     text = device.strip().upper()
@@ -570,8 +570,18 @@ def _raise_generic_fr_write_error() -> None:
 class ToyopucDeviceClient(ToyopucClient):
     """High-level client that accepts string device addresses."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        addressing_options: ToyopucAddressingOptions | None = None,
+        plc_profile: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self.plc_profile = None if not plc_profile or not plc_profile.strip() else ToyopucPlcProfiles.from_name(plc_profile).name
+        self.addressing_options = addressing_options or (
+            ToyopucAddressingOptions.from_profile(self.plc_profile) if self.plc_profile else ToyopucAddressingOptions()
+        )
         self._resolved_device_cache: dict[str, ResolvedDevice] = {}
         self._run_plan_cache: dict[tuple[bool, tuple[ResolvedDevice, ...]], tuple[int, ...]] = {}
 
@@ -596,7 +606,7 @@ class ToyopucDeviceClient(ToyopucClient):
         key = device.strip().upper()
         resolved = self._resolved_device_cache.get(key)
         if resolved is None:
-            resolved = resolve_device(key)
+            resolved = resolve_device(key, options=self.addressing_options, profile=self.plc_profile)
             if len(self._resolved_device_cache) >= _DEVICE_CACHE_MAX:
                 self._resolved_device_cache.clear()
             self._resolved_device_cache[key] = resolved
@@ -1496,13 +1506,13 @@ class ToyopucDeviceClient(ToyopucClient):
             suffix = "H" if resolved.high else "L"
             index = resolved.index + delta
             if resolved.prefix:
-                return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
-            return resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
+                return self.resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
+            return self.resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
         index = resolved.index + delta
         suffix = "W" if resolved.packed and resolved.unit == "word" else ""
         if resolved.prefix:
-            return resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
-        return resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
+            return self.resolve_device(f"{resolved.prefix}-{resolved.area}{index:0{width}X}{suffix}")
+        return self.resolve_device(f"{resolved.area}{index:0{width}X}{suffix}")
 
     def _seq_devices(self, resolved: ResolvedDevice, count: int) -> list[ResolvedDevice]:
         """Build a list of *count* sequentially-offset ResolvedDevices."""

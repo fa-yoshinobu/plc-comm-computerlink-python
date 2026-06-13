@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -460,10 +460,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#normalize-device-text" class="md-nav__link">
+  <a href="#parse-normalize-and-format-device-text" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Normalize device text
+        Parse, normalize, and format device text
       
     </span>
   </a>
@@ -475,6 +475,17 @@
     <span class="md-ellipsis">
       
         Common device families
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-modelprofile-ranges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review model/profile ranges
       
     </span>
   </a>
@@ -874,10 +885,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#normalize-device-text" class="md-nav__link">
+  <a href="#parse-normalize-and-format-device-text" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Normalize device text
+        Parse, normalize, and format device text
       
     </span>
   </a>
@@ -889,6 +900,17 @@
     <span class="md-ellipsis">
       
         Common device families
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-modelprofile-ranges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review model/profile ranges
       
     </span>
   </a>
@@ -1135,10 +1157,19 @@ asyncio.run(main())
   decimal or hexadecimal device number</li>
 </ul>
 <p>When a profile is in use, basic families <code>P/K/V/T/C/L/X/Y/M/S/N/R/D</code> should be written as <code>P1-*</code>, <code>P2-*</code>, or <code>P3-*</code>.</p>
-<h3 id="normalize-device-text">Normalize device text</h3>
-<pre><code class="language-python">from toyopuc import normalize_address
+<h3 id="parse-normalize-and-format-device-text">Parse, normalize, and format device text</h3>
+<pre><code class="language-python">from toyopuc import format_device_address, normalize_address, parse_device_address, try_parse_device_address
 
-assert normalize_address(&quot;p1-d0000&quot;, profile=&quot;TOYOPUC-Plus:Plus Standard mode&quot;) == &quot;P1-D0000&quot;
+assert normalize_address(&quot;p1-d0000&quot;, profile=&quot;toyopuc:plus:standard&quot;) == &quot;P1-D0000&quot;
+
+parsed = parse_device_address(&quot;p1-d0100:f&quot;, profile=&quot;toyopuc:generic&quot;)
+assert parsed.text == &quot;P1-D0100:F&quot;
+assert parsed.base_device == &quot;P1-D0100&quot;
+assert parsed.dtype == &quot;F&quot;
+assert format_device_address(parsed) == &quot;P1-D0100:F&quot;
+
+maybe_address = try_parse_device_address(&quot;P1-D1000&quot;, profile=&quot;toyopuc:plus:standard&quot;)
+assert maybe_address is None
 </code></pre>
 <h3 id="common-device-families">Common device families</h3>
 <table>
@@ -1223,6 +1254,15 @@ assert normalize_address(&quot;p1-d0000&quot;, profile=&quot;TOYOPUC-Plus:Plus S
 </tbody>
 </table>
 <p>Extended areas such as <code>ES</code>, <code>EN</code>, <code>H</code>, <code>U</code>, <code>EB</code>, and <code>FR</code> do not require a program prefix.</p>
+<h3 id="review-modelprofile-ranges">Review model/profile ranges</h3>
+<p>Use <code>ToyopucDeviceCatalog.get_device_matrix(...)</code> when you need a maintained profile matrix for release checks, UI device pickers, or configuration validation.</p>
+<pre><code class="language-python">from toyopuc import ToyopucDeviceCatalog
+
+rows = ToyopucDeviceCatalog.get_device_matrix(&quot;toyopuc:pc10g:pc10&quot;)
+for row in rows:
+    print(row.area, row.access, row.unit, row.ranges, row.example_start_addresses[:3])
+</code></pre>
+<p>Each row includes the profile name, device area, direct or prefixed access mode, unit, suffixes such as <code>W</code> or <code>L/H</code>, the supported range text, and a short list of example start addresses.</p>
 <h3 id="byte-and-packed-word-suffixes">Byte and packed-word suffixes</h3>
 <p>Append <code>L</code>, <code>H</code>, or <code>W</code> to bit-area addresses for byte or packed-word access:</p>
 <pre><code class="language-python">plc.read(&quot;P1-M0010W&quot;)   # M0010 as a packed 16-bit word

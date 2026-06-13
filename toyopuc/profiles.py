@@ -1,6 +1,6 @@
-"""Device profiles and addressing options for TOYOPUC PLCs.
+"""PLC profiles and addressing options for TOYOPUC PLCs.
 
-Mirrors the .NET ``ToyopucDeviceProfile`` / ``ToyopucDeviceProfiles`` /
+Mirrors the .NET ``ToyopucPlcProfile`` / ``ToyopucPlcProfiles`` /
 ``ToyopucAddressingOptions`` types.
 """
 
@@ -32,7 +32,7 @@ class ToyopucAddressRange:
 
 @dataclass(frozen=True)
 class ToyopucAreaDescriptor:
-    """Per-area metadata for a device profile.
+    """Per-area metadata for a PLC profile.
 
     Attributes:
         area: Area name (e.g. ``"D"``, ``"EP"``, ``"FR"``).
@@ -154,7 +154,7 @@ class ToyopucAddressingOptions:
 
     @staticmethod
     def from_profile(profile: str | None) -> ToyopucAddressingOptions:
-        return ToyopucDeviceProfiles.from_name(profile).addressing_options
+        return ToyopucPlcProfiles.from_name(profile).addressing_options
 
 
 # Pre-defined instances (mirrors C# static properties)
@@ -191,12 +191,12 @@ ToyopucAddressingOptions.Pc3JgPc3Separate = ToyopucAddressingOptions.Pc3JxPc3Sep
 
 
 # ---------------------------------------------------------------------------
-# Device profile
+# PLC profile
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class ToyopucDeviceProfile:
+class ToyopucPlcProfile:
     """A named device model configuration with area descriptors and options."""
 
     name: str
@@ -705,51 +705,51 @@ def _pc3jg_pc3_areas() -> tuple[ToyopucAreaDescriptor, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Device profiles catalog
+# PLC profiles catalog
 # ---------------------------------------------------------------------------
 
 
-class ToyopucDeviceProfiles:
-    """Catalog of all known TOYOPUC device profiles."""
+class ToyopucPlcProfiles:
+    """Catalog of all known TOYOPUC PLC profiles."""
 
-    Generic: ToyopucDeviceProfile
-    ToyopucPlusStandard: ToyopucDeviceProfile
-    ToyopucPlusExtended: ToyopucDeviceProfile
-    Nano10GxMode: ToyopucDeviceProfile
-    Nano10GxCompatible: ToyopucDeviceProfile
-    Pc10GStandardPc3Jg: ToyopucDeviceProfile
-    Pc10GMode: ToyopucDeviceProfile
-    Pc3JxPc3Separate: ToyopucDeviceProfile
-    Pc3JxPlusExpansion: ToyopucDeviceProfile
-    Pc3JgMode: ToyopucDeviceProfile
-    Pc3JgPc3Separate: ToyopucDeviceProfile
+    Generic: ToyopucPlcProfile
+    ToyopucPlusStandard: ToyopucPlcProfile
+    ToyopucPlusExtended: ToyopucPlcProfile
+    Nano10GxMode: ToyopucPlcProfile
+    Nano10GxCompatible: ToyopucPlcProfile
+    Pc10GStandardPc3Jg: ToyopucPlcProfile
+    Pc10GMode: ToyopucPlcProfile
+    Pc3JxPc3Separate: ToyopucPlcProfile
+    Pc3JxPlusExpansion: ToyopucPlcProfile
+    Pc3JgMode: ToyopucPlcProfile
+    Pc3JgPc3Separate: ToyopucPlcProfile
 
     @classmethod
     def get_names(cls) -> list[str]:
         return [p.name for p in cls._all()]
 
     @classmethod
-    def from_name(cls, profile: str | None) -> ToyopucDeviceProfile:
+    def from_name(cls, profile: str | None) -> ToyopucPlcProfile:
         if not profile or not profile.strip():
             return cls.Generic
         normalized = profile.strip()
         for p in cls._all():
-            if p.name.lower() == normalized.lower():
+            if p.name == normalized:
                 return p
-        raise ValueError(f"Unknown device profile: {profile!r}")
+        raise ValueError(f"Unknown PLC profile: {profile!r}")
 
     @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
         normalized = area.strip().upper()
-        device_profile = cls.from_name(profile)
-        for descriptor in device_profile.areas:
+        plc_profile = cls.from_name(profile)
+        for descriptor in plc_profile.areas:
             if descriptor.area == normalized:
                 return descriptor
-        profile_name = device_profile.name
+        profile_name = plc_profile.name
         raise ValueError(f"Unknown area for profile {profile_name!r}: {area!r}")
 
     @classmethod
-    def _all(cls) -> tuple[ToyopucDeviceProfile, ...]:
+    def _all(cls) -> tuple[ToyopucPlcProfile, ...]:
         return (
             cls.Generic,
             cls.ToyopucPlusStandard,
@@ -772,7 +772,7 @@ class ToyopucDeviceCatalog:
 
     @classmethod
     def get_area_descriptors(cls, profile: str | None = None) -> tuple[ToyopucAreaDescriptor, ...]:
-        return ToyopucDeviceProfiles.from_name(profile).areas
+        return ToyopucPlcProfiles.from_name(profile).areas
 
     @classmethod
     def get_areas(cls, prefixed: bool, profile: str | None = None) -> list[str]:
@@ -784,7 +784,7 @@ class ToyopucDeviceCatalog:
 
     @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
-        return ToyopucDeviceProfiles.get_area_descriptor(area, profile)
+        return ToyopucPlcProfiles.get_area_descriptor(area, profile)
 
     @classmethod
     def get_supported_ranges(
@@ -827,14 +827,14 @@ class ToyopucDeviceCatalog:
         Prefixed rows use ``P1-`` as the representative program prefix.
         """
 
-        profiles = (ToyopucDeviceProfiles.from_name(profile),) if profile else ToyopucDeviceProfiles._all()
+        profiles = (ToyopucPlcProfiles.from_name(profile),) if profile else ToyopucPlcProfiles._all()
         rows: list[ToyopucDeviceMatrixRow] = []
-        for device_profile in profiles:
-            for descriptor in device_profile.areas:
+        for plc_profile in profiles:
+            for descriptor in plc_profile.areas:
                 if descriptor.supports_direct:
-                    rows.extend(cls._get_device_matrix_rows(device_profile, descriptor, prefixed=False))
+                    rows.extend(cls._get_device_matrix_rows(plc_profile, descriptor, prefixed=False))
                 if descriptor.supports_prefixed:
-                    rows.extend(cls._get_device_matrix_rows(device_profile, descriptor, prefixed=True))
+                    rows.extend(cls._get_device_matrix_rows(plc_profile, descriptor, prefixed=True))
         return tuple(rows)
 
     @classmethod
@@ -851,7 +851,7 @@ class ToyopucDeviceCatalog:
         if len(ranges) == 1:
             return ranges[0]
         raise ValueError(
-            f"Area {area} for profile {profile or 'Generic'!r} has multiple ranges; use get_supported_ranges() instead."
+            f"Area {area} for profile {profile or 'toyopuc:generic'!r} has multiple ranges; use get_supported_ranges() instead."
         )
 
     @classmethod
@@ -887,7 +887,7 @@ class ToyopucDeviceCatalog:
         prefixed = normalized_prefix is not None
         resolved_unit = cls._default_unit(descriptor, unit, packed)
         ranges = cls._get_supported_ranges(descriptor, prefixed, resolved_unit, packed)
-        resolved_options = options or ToyopucDeviceProfiles.from_name(profile).addressing_options
+        resolved_options = options or ToyopucPlcProfiles.from_name(profile).addressing_options
 
         suffix = "W" if resolved_unit == "word" and packed else "L" if resolved_unit == "byte" else ""
         device_prefix = f"{normalized_prefix}-" if normalized_prefix else ""
@@ -966,7 +966,7 @@ class ToyopucDeviceCatalog:
     @classmethod
     def _get_device_matrix_rows(
         cls,
-        profile: ToyopucDeviceProfile,
+        profile: ToyopucPlcProfile,
         descriptor: ToyopucAreaDescriptor,
         *,
         prefixed: bool,
@@ -998,7 +998,7 @@ class ToyopucDeviceCatalog:
     @classmethod
     def _build_device_matrix_row(
         cls,
-        profile: ToyopucDeviceProfile,
+        profile: ToyopucPlcProfile,
         descriptor: ToyopucAreaDescriptor,
         *,
         prefixed: bool,
@@ -1047,58 +1047,58 @@ class ToyopucDeviceCatalog:
 
 # Populate class-level profile instances
 _OPT = ToyopucAddressingOptions
-ToyopucDeviceProfiles.Generic = ToyopucDeviceProfile(
-    "Generic",
+ToyopucPlcProfiles.Generic = ToyopucPlcProfile(
+    "toyopuc:generic",
     _OPT.Generic,
     _generic_areas(),
 )
-ToyopucDeviceProfiles.ToyopucPlusStandard = ToyopucDeviceProfile(
-    "TOYOPUC-Plus:Plus Standard mode",
+ToyopucPlcProfiles.ToyopucPlusStandard = ToyopucPlcProfile(
+    "toyopuc:plus:standard",
     _OPT.ToyopucPlusStandard,
     _toyopuc_plus_standard_areas(),
 )
-ToyopucDeviceProfiles.ToyopucPlusExtended = ToyopucDeviceProfile(
-    "TOYOPUC-Plus:Plus Extended mode",
+ToyopucPlcProfiles.ToyopucPlusExtended = ToyopucPlcProfile(
+    "toyopuc:plus:extended",
     _OPT.ToyopucPlusExtended,
     _toyopuc_plus_areas(),
 )
-ToyopucDeviceProfiles.Nano10GxMode = ToyopucDeviceProfile(
-    "Nano 10GX:Nano 10GX mode",
+ToyopucPlcProfiles.Nano10GxMode = ToyopucPlcProfile(
+    "toyopuc:nano-10gx:native",
     _OPT.Nano10GxMode,
     _nano10gx_mode_areas(),
 )
-ToyopucDeviceProfiles.Nano10GxCompatible = ToyopucDeviceProfile(
-    "Nano 10GX:Compatible mode",
+ToyopucPlcProfiles.Nano10GxCompatible = ToyopucPlcProfile(
+    "toyopuc:nano-10gx:compatible",
     _OPT.Nano10GxCompatible,
     _nano10gx_mode_areas(),
 )
-ToyopucDeviceProfiles.Pc10GStandardPc3Jg = ToyopucDeviceProfile(
-    "PC10G:PC10 standard/PC3JG mode",
+ToyopucPlcProfiles.Pc10GStandardPc3Jg = ToyopucPlcProfile(
+    "toyopuc:pc10g:standard-pc3jg",
     _OPT.Pc10GStandardPc3Jg,
     _pc10_standard_pc3jg_areas(),
 )
-ToyopucDeviceProfiles.Pc10GMode = ToyopucDeviceProfile(
-    "PC10G:PC10 mode",
+ToyopucPlcProfiles.Pc10GMode = ToyopucPlcProfile(
+    "toyopuc:pc10g:pc10",
     _OPT.Pc10GMode,
     _pc10_mode_areas(),
 )
-ToyopucDeviceProfiles.Pc3JxPc3Separate = ToyopucDeviceProfile(
-    "PC3JX:PC3 separate mode",
+ToyopucPlcProfiles.Pc3JxPc3Separate = ToyopucPlcProfile(
+    "toyopuc:pc3jx:pc3-separate",
     _OPT.Pc3JxPc3Separate,
     _pc3jx_pc3_areas(),
 )
-ToyopucDeviceProfiles.Pc3JxPlusExpansion = ToyopucDeviceProfile(
-    "PC3JX:Plus expansion mode",
+ToyopucPlcProfiles.Pc3JxPlusExpansion = ToyopucPlcProfile(
+    "toyopuc:pc3jx:plus-expansion",
     _OPT.Pc3JxPlusExpansion,
     _pc3jx_plus_areas(),
 )
-ToyopucDeviceProfiles.Pc3JgMode = ToyopucDeviceProfile(
-    "PC3JG:PC3JG mode",
+ToyopucPlcProfiles.Pc3JgMode = ToyopucPlcProfile(
+    "toyopuc:pc3jg:pc3jg",
     _OPT.Pc3JgMode,
     _pc3jg_mode_areas(),
 )
-ToyopucDeviceProfiles.Pc3JgPc3Separate = ToyopucDeviceProfile(
-    "PC3JG:PC3 separate mode",
+ToyopucPlcProfiles.Pc3JgPc3Separate = ToyopucPlcProfile(
+    "toyopuc:pc3jg:pc3-separate",
     _OPT.Pc3JgPc3Separate,
     _pc3jg_pc3_areas(),
 )

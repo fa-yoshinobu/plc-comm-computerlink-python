@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -630,12 +630,17 @@
 <li>verified model groups: <code>TOYOPUC-Plus CPU</code>, <code>Nano 10GX</code>, <code>PC10G-CPU</code></li>
 <li>verified public surface: plain reads/writes, typed reads/writes, mixed snapshots, FR helpers, relay helpers</li>
 <li>recommended first public test: <code>P1-D0000</code> and <code>P1-M0000</code></li>
+<li>latest PC10G direct check: <code>2026-04-30</code>, <code>toyopuc:pc10g:pc10</code>, TCP <code>192.168.250.100:1025</code></li>
 </ul>
 <h2 id="practical-public-conclusions">Practical Public Conclusions</h2>
 <ul>
 <li><code>TOYOPUC-Plus</code> is the cleanest first-run path for prefixed word and bit access</li>
 <li><code>Nano 10GX</code> remains a supported public path, but relay and profile-specific differences matter</li>
 <li><code>PC10G</code> remains supported, but exact range limits differ from <code>TOYOPUC-Plus</code> and <code>Nano 10GX</code></li>
+<li>PC10G direct Python API smoke on <code>2026-04-30</code> confirmed:</li>
+<li>split-range formatting: <code>P1-P0000..P1-P01FF, P1-P1000..P1-P17FF</code></li>
+<li>direct reads for <code>P1-D0000</code>, <code>P1-P01F0</code>, <code>P1-P1000</code>, <code>P1-S03F0</code>, <code>P1-S1000</code>, and <code>EB00000</code></li>
+<li>scan control sequence: <code>stop_scan()</code>, <code>release_scan_stop()</code>, <code>resume_scan()</code></li>
 </ul>
 <h2 id="current-cautions">Current Cautions</h2>
 <ul>

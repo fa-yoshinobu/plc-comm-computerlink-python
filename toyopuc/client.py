@@ -291,6 +291,7 @@ class ToyopucClient:
             return
         if self.transport == "tcp":
             sock = socket.create_connection((self.host, self.port), self.timeout)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         elif self.transport == "udp":
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             if self.local_port:

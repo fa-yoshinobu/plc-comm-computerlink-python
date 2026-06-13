@@ -38,6 +38,8 @@ class ToyopucConnectionOptions:
         retries: Number of retry attempts performed by the async client.
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size used by the sync client.
+        plc_profile: Optional canonical PLC profile name such as
+            ``"toyopuc:pc10g:pc10"``.
         trace_hook: Optional callback invoked for sent and received frames.
     """
 
@@ -49,6 +51,7 @@ class ToyopucConnectionOptions:
     retries: int = 0
     retry_delay: float = 0.2
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE
+    plc_profile: str | None = None
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
 
 
@@ -362,6 +365,7 @@ async def open_and_connect(
     transport: str = "tcp",
     retry_delay: float = 0.2,
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
+    plc_profile: str | None = None,
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
@@ -376,6 +380,7 @@ async def open_and_connect(
         retries: Retry count used by the async client.
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size.
+        plc_profile: Optional canonical PLC profile name.
         trace_hook: Optional callback invoked for sent and received frames.
 
     Returns:
@@ -395,6 +400,7 @@ async def open_and_connect(
             retries=retries,
             retry_delay=retry_delay,
             recv_bufsize=recv_bufsize,
+            plc_profile=plc_profile,
             trace_hook=trace_hook,
         )
 
@@ -407,6 +413,7 @@ async def open_and_connect(
         retries=options.retries,
         retry_delay=options.retry_delay,
         recv_bufsize=options.recv_bufsize,
+        plc_profile=options.plc_profile,
         trace_hook=options.trace_hook,
     )
     await client.connect()

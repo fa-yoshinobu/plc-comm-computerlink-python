@@ -7,7 +7,7 @@ This page keeps the current public summary only. Older detailed notes are not ke
 - verified model groups: `TOYOPUC-Plus CPU`, `Nano 10GX`, `PC10G-CPU`
 - verified public surface: plain reads/writes, typed reads/writes, mixed snapshots, FR helpers, relay helpers
 - recommended first public test: `P1-D0000` and `P1-M0000`
-- latest PC10G direct check: `2026-04-30`, `PC10G:PC10 mode`, TCP `192.168.250.100:1025`
+- latest PC10G direct check: `2026-04-30`, `toyopuc:pc10g:pc10`, TCP `192.168.250.100:1025`
 
 ## Practical Public Conclusions
 

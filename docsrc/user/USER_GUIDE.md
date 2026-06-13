@@ -78,15 +78,15 @@ When a profile is in use, basic families `P/K/V/T/C/L/X/Y/M/S/N/R/D` should be w
 ```python
 from toyopuc import format_device_address, normalize_address, parse_device_address, try_parse_device_address
 
-assert normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode") == "P1-D0000"
+assert normalize_address("p1-d0000", profile="toyopuc:plus:standard") == "P1-D0000"
 
-parsed = parse_device_address("p1-d0100:f", profile="Generic")
+parsed = parse_device_address("p1-d0100:f", profile="toyopuc:generic")
 assert parsed.text == "P1-D0100:F"
 assert parsed.base_device == "P1-D0100"
 assert parsed.dtype == "F"
 assert format_device_address(parsed) == "P1-D0100:F"
 
-maybe_address = try_parse_device_address("P1-D1000", profile="TOYOPUC-Plus:Plus Standard mode")
+maybe_address = try_parse_device_address("P1-D1000", profile="toyopuc:plus:standard")
 assert maybe_address is None
 ```
 
@@ -118,7 +118,7 @@ Use `ToyopucDeviceCatalog.get_device_matrix(...)` when you need a maintained pro
 ```python
 from toyopuc import ToyopucDeviceCatalog
 
-rows = ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")
+rows = ToyopucDeviceCatalog.get_device_matrix("toyopuc:pc10g:pc10")
 for row in rows:
     print(row.area, row.access, row.unit, row.ranges, row.example_start_addresses[:3])
 ```

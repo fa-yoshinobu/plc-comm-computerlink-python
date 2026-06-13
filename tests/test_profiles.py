@@ -1,11 +1,11 @@
-"""Tests for ToyopucDeviceProfiles, ToyopucAddressingOptions, and profile-aware resolve_device()."""
+"""Tests for ToyopucPlcProfiles, ToyopucAddressingOptions, and profile-aware resolve_device()."""
 
 import pytest
 
 from toyopuc import (
     ToyopucAddressingOptions,
     ToyopucDeviceCatalog,
-    ToyopucDeviceProfiles,
+    ToyopucPlcProfiles,
 )
 from toyopuc.high_level import resolve_device
 
@@ -15,40 +15,45 @@ from toyopuc.high_level import resolve_device
 
 
 def test_get_names_returns_all_11_profiles() -> None:
-    names = ToyopucDeviceProfiles.get_names()
+    names = ToyopucPlcProfiles.get_names()
     assert len(names) == 11
-    assert "Generic" in names
-    assert "TOYOPUC-Plus:Plus Standard mode" in names
+    assert "toyopuc:generic" in names
+    assert "toyopuc:plus:standard" in names
 
 
 def test_from_name_none_returns_generic() -> None:
-    assert ToyopucDeviceProfiles.from_name(None) is ToyopucDeviceProfiles.Generic
-    assert ToyopucDeviceProfiles.from_name("") is ToyopucDeviceProfiles.Generic
-    assert ToyopucDeviceProfiles.from_name("  ") is ToyopucDeviceProfiles.Generic
+    assert ToyopucPlcProfiles.from_name(None) is ToyopucPlcProfiles.Generic
+    assert ToyopucPlcProfiles.from_name("") is ToyopucPlcProfiles.Generic
+    assert ToyopucPlcProfiles.from_name("  ") is ToyopucPlcProfiles.Generic
 
 
-def test_from_name_case_insensitive() -> None:
-    p = ToyopucDeviceProfiles.from_name("generic")
-    assert p is ToyopucDeviceProfiles.Generic
+def test_from_name_rejects_short_alias() -> None:
+    with pytest.raises(ValueError, match="Unknown PLC profile"):
+        ToyopucPlcProfiles.from_name("generic")
+
+
+def test_from_name_accepts_canonical_name() -> None:
+    p = ToyopucPlcProfiles.from_name("toyopuc:generic")
+    assert p is ToyopucPlcProfiles.Generic
 
 
 def test_from_name_unknown_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown device profile"):
-        ToyopucDeviceProfiles.from_name("NoSuchProfile")
+    with pytest.raises(ValueError, match="Unknown PLC profile"):
+        ToyopucPlcProfiles.from_name("NoSuchProfile")
 
 
 def test_profiles_have_correct_addressing_options() -> None:
-    generic = ToyopucDeviceProfiles.Generic
+    generic = ToyopucPlcProfiles.Generic
     assert generic.addressing_options.use_upper_u_pc10 is True
     assert generic.addressing_options.use_fr_pc10 is True
 
-    plus_std = ToyopucDeviceProfiles.ToyopucPlusStandard
+    plus_std = ToyopucPlcProfiles.ToyopucPlusStandard
     assert plus_std.addressing_options.use_upper_u_pc10 is False
     assert plus_std.addressing_options.use_eb_pc10 is False
     assert plus_std.addressing_options.use_fr_pc10 is False
     assert plus_std.addressing_options.use_upper_bit_pc10 is False
 
-    pc10g_std = ToyopucDeviceProfiles.Pc10GStandardPc3Jg
+    pc10g_std = ToyopucPlcProfiles.Pc10GStandardPc3Jg
     assert pc10g_std.addressing_options.use_upper_u_pc10 is False
     assert pc10g_std.addressing_options.use_eb_pc10 is True
     assert pc10g_std.addressing_options.use_fr_pc10 is False
@@ -60,7 +65,7 @@ def test_profiles_have_correct_addressing_options() -> None:
 
 
 def test_get_area_descriptor_generic_d() -> None:
-    desc = ToyopucDeviceProfiles.get_area_descriptor("D", "Generic")
+    desc = ToyopucPlcProfiles.get_area_descriptor("D", "toyopuc:generic")
     assert desc.area == "D"
     assert not desc.supports_direct  # D is prefixed-only in Generic
     assert desc.supports_prefixed
@@ -70,13 +75,13 @@ def test_get_area_descriptor_generic_d() -> None:
 
 def test_get_area_descriptor_unknown_area_raises() -> None:
     with pytest.raises(ValueError, match="Unknown area"):
-        ToyopucDeviceProfiles.get_area_descriptor("ZZ", "Generic")
+        ToyopucPlcProfiles.get_area_descriptor("ZZ", "toyopuc:generic")
 
 
 def test_get_area_descriptor_area_absent_from_profile_raises() -> None:
     # FR is not in ToyopucPlus Standard
     with pytest.raises(ValueError):
-        ToyopucDeviceProfiles.get_area_descriptor("FR", "TOYOPUC-Plus:Plus Standard mode")
+        ToyopucPlcProfiles.get_area_descriptor("FR", "toyopuc:plus:standard")
 
 
 def test_device_catalog_returns_area_metadata() -> None:
@@ -92,12 +97,12 @@ def test_device_catalog_returns_area_metadata() -> None:
 
 
 def test_device_catalog_supported_ranges_and_start_addresses() -> None:
-    generic_prefixed_p = ToyopucDeviceCatalog.get_supported_ranges("P", prefixed=True, profile="Generic")
-    generic_direct_areas = ToyopucDeviceCatalog.get_areas(prefixed=False, profile="Generic")
+    generic_prefixed_p = ToyopucDeviceCatalog.get_supported_ranges("P", prefixed=True, profile="toyopuc:generic")
+    generic_direct_areas = ToyopucDeviceCatalog.get_areas(prefixed=False, profile="toyopuc:generic")
     prefixed_m_starts = ToyopucDeviceCatalog.get_suggested_start_addresses(
         "M",
         prefix="P1",
-        profile="Generic",
+        profile="toyopuc:generic",
         unit="word",
         packed=True,
     )
@@ -110,7 +115,7 @@ def test_device_catalog_supported_ranges_and_start_addresses() -> None:
 
 
 def test_device_catalog_format_address_ranges_uses_explicit_separator() -> None:
-    ranges = ToyopucDeviceCatalog.get_supported_ranges("P", prefixed=True, profile="Generic")
+    ranges = ToyopucDeviceCatalog.get_supported_ranges("P", prefixed=True, profile="toyopuc:generic")
 
     text = ToyopucDeviceCatalog.format_address_ranges("P1-P", ranges, width=4)
 
@@ -118,14 +123,14 @@ def test_device_catalog_format_address_ranges_uses_explicit_separator() -> None:
 
 
 def test_device_catalog_matrix_returns_review_rows_for_profile() -> None:
-    matrix = ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")
+    matrix = ToyopucDeviceCatalog.get_device_matrix("toyopuc:pc10g:pc10")
     d_row = next(row for row in matrix if row.area == "D" and row.access == "prefixed" and row.unit == "word")
     m_word_row = next(
         row for row in matrix if row.area == "M" and row.access == "prefixed" and row.unit == "word" and row.packed_word
     )
     m_byte_row = next(row for row in matrix if row.area == "M" and row.access == "prefixed" and row.unit == "byte")
 
-    assert d_row.profile == "PC10G:PC10 mode"
+    assert d_row.profile == "toyopuc:pc10g:pc10"
     assert d_row.ranges == "P1-D0000..P1-D2FFF"
     assert d_row.example_start_addresses[0] == "P1-D0000"
     assert m_word_row.address_suffixes == ("W",)
@@ -138,7 +143,7 @@ def test_device_catalog_matrix_returns_review_rows_for_profile() -> None:
 def test_device_catalog_matrix_without_profile_includes_all_profiles() -> None:
     profiles = {row.profile for row in ToyopucDeviceCatalog.get_device_matrix()}
 
-    assert set(ToyopucDeviceProfiles.get_names()).issubset(profiles)
+    assert set(ToyopucPlcProfiles.get_names()).issubset(profiles)
 
 
 def test_device_catalog_rejects_direct_basic_start_addresses() -> None:
@@ -151,7 +156,7 @@ def test_device_catalog_rejects_direct_basic_start_addresses() -> None:
 
 def test_area_descriptor_get_ranges_packed() -> None:
     # EP supports packed word; packed ranges are direct_ranges >> 4
-    ep = ToyopucDeviceProfiles.get_area_descriptor("EP", "Generic")
+    ep = ToyopucPlcProfiles.get_area_descriptor("EP", "toyopuc:generic")
     assert ep.supports_packed_word
     normal = ep.get_ranges(prefixed=False, packed=False)
     packed = ep.get_ranges(prefixed=False, packed=True)
@@ -161,7 +166,7 @@ def test_area_descriptor_get_ranges_packed() -> None:
 
 def test_area_descriptor_get_ranges_packed_override() -> None:
     # PC10G mode: GM has packedDirectEnd=0x0FFF override
-    gm = ToyopucDeviceProfiles.get_area_descriptor("GM", "PC10G:PC10 mode")
+    gm = ToyopucPlcProfiles.get_area_descriptor("GM", "toyopuc:pc10g:pc10")
     packed = gm.get_ranges(prefixed=False, packed=True)
     assert len(packed) == 1
     assert packed[0].end == 0x0FFF  # override, not 0xFFFF >> 4 = 0x0FFF (same here, but explicit)
@@ -182,7 +187,7 @@ def test_addressing_options_default() -> None:
 
 
 def test_addressing_options_from_profile() -> None:
-    opts = ToyopucAddressingOptions.from_profile("TOYOPUC-Plus:Plus Standard mode")
+    opts = ToyopucAddressingOptions.from_profile("toyopuc:plus:standard")
     assert opts.use_upper_u_pc10 is False
     assert opts.use_fr_pc10 is False
 
@@ -264,7 +269,7 @@ def test_resolve_fr_area_pc10_disabled_falls_through_to_ext_word() -> None:
 
 def test_resolve_with_profile_valid_address() -> None:
     # D0FFF is within Generic D range (0x2FFF) — must pass
-    r = resolve_device("P1-D0FFF", profile="Generic")
+    r = resolve_device("P1-D0FFF", profile="toyopuc:generic")
     assert r.scheme == "program-word"
     assert r.area == "D"
 
@@ -272,30 +277,30 @@ def test_resolve_with_profile_valid_address() -> None:
 def test_resolve_with_profile_address_out_of_range() -> None:
     # D1000 exceeds Plus Standard D range (0x0FFF)
     with pytest.raises(ValueError, match="out of range"):
-        resolve_device("P1-D1000", profile="TOYOPUC-Plus:Plus Standard mode")
+        resolve_device("P1-D1000", profile="toyopuc:plus:standard")
 
 
 def test_resolve_with_profile_area_absent() -> None:
     # FR not in ToyopucPlus Standard profile
     with pytest.raises(ValueError):
-        resolve_device("FR000000", profile="TOYOPUC-Plus:Plus Standard mode")
+        resolve_device("FR000000", profile="toyopuc:plus:standard")
 
 
 def test_resolve_with_profile_derives_options() -> None:
     # Generic profile has use_upper_u_pc10=True; U08000 (valid in Generic range 0x1FFFF)
     # should be routed to pc10-word via the profile's derived options.
-    r = resolve_device("U08000", profile="Generic")
+    r = resolve_device("U08000", profile="toyopuc:generic")
     assert r.scheme == "pc10-word"
 
 
 def test_resolve_profile_and_options_together_options_take_precedence() -> None:
-    # Profile "Generic" has use_upper_u_pc10=True, but explicitly passed options override it.
+    # Profile "toyopuc:generic" has use_upper_u_pc10=True, but explicitly passed options override it.
     # U08000 is within Generic's U range (0x1FFFF), so profile validation passes.
     opts = ToyopucAddressingOptions(use_upper_u_pc10=False)
-    r = resolve_device("U08000", options=opts, profile="Generic")
+    r = resolve_device("U08000", options=opts, profile="toyopuc:generic")
     assert r.scheme == "ext-word"
 
 
 def test_resolve_with_unknown_profile_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown device profile"):
+    with pytest.raises(ValueError, match="Unknown PLC profile"):
         resolve_device("P1-D0100", profile="NoSuchProfile")

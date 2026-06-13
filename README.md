@@ -98,7 +98,7 @@ High-level address syntax is shared across the PLC helper libraries:
   `P1-D0100:D`, `P1-D0100:L`, `P1-D0100:F`
 - use `.` only for bit-in-word access: `P1-D0100.0` through `P1-D0100.F`
 - `P1-D0100.D` is bit `0xD` / bit 13, not a 32-bit data type request
-- low-level Computer Link frames still encode the selected word/dword/float
+- Computer Link protocol frames still encode the selected word/dword/float
   route internally; the `:D` / `:F` spelling is the public helper-layer form
 
 See the full public table in [Supported PLC Registers](docsrc/user/SUPPORTED_REGISTERS.md).
@@ -124,10 +124,10 @@ Maintainer-only notes and retained evidence live under `internal_docs/`.
 
 ## Common User Tasks
 
-- normalize one address string: `normalize_address("p1-d0000", profile="TOYOPUC-Plus:Plus Standard mode")`
-- parse one typed address string: `parse_device_address("p1-d0100:f", profile="Generic")`
+- normalize one address string: `normalize_address("p1-d0000", profile="toyopuc:plus:standard")`
+- parse one typed address string: `parse_device_address("p1-d0100:f", profile="toyopuc:generic")`
 - format stored address metadata: `format_device_address(parsed_address)`
-- review model/profile ranges: `ToyopucDeviceCatalog.get_device_matrix("PC10G:PC10 mode")`
+- review model/profile ranges: `ToyopucDeviceCatalog.get_device_matrix("toyopuc:pc10g:pc10")`
 - read or write one device: `client.read("P1-D0000")`, `client.write("P1-M0000", 1)`
 - read a mixed snapshot: `client.read_many([...])` or `await read_named(plc, [...])`
 - read 32-bit or float values: `client.read_dword(...)`, `client.read_float32(...)`, `await read_typed(..., "D" / "L" / "F")`

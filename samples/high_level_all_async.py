@@ -100,8 +100,8 @@ async def demo_open_and_connect(host: str, port: int) -> None:
 
 
 def demo_normalize_address() -> None:
-    parsed = parse_device_address("p1-d0100:f", profile="TOYOPUC-Plus:Plus Standard mode")
-    print(f"[normalize_address] p1-d0100 -> {normalize_address('p1-d0100', profile='TOYOPUC-Plus:Plus Standard mode')}")
+    parsed = parse_device_address("p1-d0100:f", profile="toyopuc:plus:standard")
+    print(f"[normalize_address] p1-d0100 -> {normalize_address('p1-d0100', profile='toyopuc:plus:standard')}")
     print(f"[parse_device_address] p1-d0100:f -> {parsed}")
     print(f"[format_device_address] parsed -> {format_device_address(parsed)}")
 

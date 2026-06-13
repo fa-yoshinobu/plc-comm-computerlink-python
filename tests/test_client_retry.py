@@ -1,3 +1,5 @@
+import socket
+
 import pytest
 
 from toyopuc import ToyopucClient, ToyopucError, ToyopucProtocolError
@@ -10,6 +12,7 @@ class _FakeSocket:
         self._current = b""
         self._offset = 0
         self.sent: list[bytes] = []
+        self.options: list[tuple[int, int, int]] = []
 
     def sendall(self, payload: bytes) -> None:
         self.sent.append(payload)
@@ -25,6 +28,9 @@ class _FakeSocket:
 
     def close(self) -> None:
         return None
+
+    def setsockopt(self, level: int, optname: int, value: int) -> None:
+        self.options.append((level, optname, value))
 
 
 class _FakeUdpSocket:
@@ -47,6 +53,22 @@ class _FakeUdpSocket:
 def _response(cmd: int, data: bytes = b"", *, rc: int = 0x00) -> bytes:
     length = 1 + len(data)
     return bytes([0x80, rc, length & 0xFF, (length >> 8) & 0xFF, cmd & 0xFF]) + data
+
+
+def test_tcp_connect_enables_tcp_nodelay(monkeypatch: pytest.MonkeyPatch) -> None:
+    sock = _FakeSocket([])
+
+    def fake_create_connection(address: tuple[str, int], timeout: float) -> _FakeSocket:
+        assert address == ("127.0.0.1", 1025)
+        assert timeout == 3.0
+        return sock
+
+    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+    client = ToyopucClient("127.0.0.1", 1025)
+
+    client.connect()
+
+    assert sock.options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
 
 
 def test_udp_send_and_recv_accepts_large_datagram_response() -> None:

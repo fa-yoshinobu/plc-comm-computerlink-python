@@ -62,10 +62,10 @@ def test_gxy_is_not_supported_area() -> None:
 
 def test_single_letter_area_can_be_followed_by_hex_digit_f() -> None:
     parsed = parse_prefixed_address("P1-DFFFF", "word")[1]
-    upper_u = resolve_device("U0FFFF", profile="Nano 10GX:Compatible mode")
+    upper_u = resolve_device("U0FFFF", profile="toyopuc:nano-10gx:compatible")
 
     with pytest.raises(ValueError, match="out of range") as error:
-        resolve_device("P1-DFFFF", profile="Nano 10GX:Compatible mode")
+        resolve_device("P1-DFFFF", profile="toyopuc:nano-10gx:compatible")
 
     assert parsed.area == "D"
     assert parsed.index == 0xFFFF
