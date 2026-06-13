@@ -11,9 +11,9 @@ What this sample shows:
 - relay FR read / write / commit
 
 Examples:
-    python samples/relay_basic.py --host 192.168.250.100 --port 1027 \
+    python samples/relay_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode cpu-status
-    python samples/relay_basic.py --host 192.168.250.100 --port 1027 \
+    python samples/relay_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4" \
         --mode word-read --device P1-D0000 --count 4
 """
@@ -45,12 +45,12 @@ def main() -> int:
         description="Simple relay example",
         epilog=(
             "Examples:\n"
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
             '--protocol udp --local-port 12000 --hops "P1-L2:N2" --mode cpu-status\n'
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
             '--protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4" '
             "--mode word-read --device P1-D0000 --count 4\n"
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
             '--protocol udp --local-port 12000 --hops "P1-L2:N2" '
             "--mode fr-write --device FR000000 --value 0x1234 --commit --wait"
         ),
@@ -89,21 +89,26 @@ def main() -> int:
     )
     p.add_argument("--commit", action="store_true", help="commit FR write after RAM update")
     p.add_argument("--wait", action="store_true", help="wait for FR commit completion")
+    p.add_argument("--plc-profile", default="toyopuc:pc10g:pc10")
     args = p.parse_args()
 
+    # Open the directly connected PLC before wrapping individual calls in relay hops.
     with ToyopucDeviceClient(
         args.host,
         args.port,
-        protocol=args.protocol,
+        transport=args.protocol,
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.plc_profile,
     ) as plc:
+        # Profile selection: --plc-profile validates target device strings before relay access.
         print("scenario: relay high-level operations")
         print("hops =", args.hops)
         print("mode =", args.mode)
 
         if args.mode == "cpu-status":
+            # Read decoded CPU status through explicit hops; relay hops are never auto-discovered.
             status = plc.relay_read_cpu_status(args.hops)
             print("cpu status raw =", status.raw_bytes_hex)
             print("RUN =", status.run)
@@ -112,6 +117,7 @@ def main() -> int:
             return 0
 
         if args.mode == "cpu-status-a0":
+            # Read decoded A0 CPU status through explicit hops.
             status = plc.relay_read_cpu_status_a0(args.hops)
             print("cpu status a0 raw =", status.raw_bytes_hex)
             print("RUN =", status.run)
@@ -120,6 +126,7 @@ def main() -> int:
             return 0
 
         if args.mode == "clock-read":
+            # Read the remote PLC clock through the relay chain.
             clock = plc.relay_read_clock(args.hops)
             print("clock raw =", clock)
             try:
@@ -131,6 +138,7 @@ def main() -> int:
         if args.mode == "clock-write":
             if args.clock_value is None:
                 raise SystemExit("--mode clock-write requires --clock-value 2026-03-10T12:34:56")
+            # Write the remote PLC clock, then read it back for confirmation.
             plc.relay_write_clock(args.hops, args.clock_value)
             readback = plc.relay_read_clock(args.hops)
             print("clock write value =", args.clock_value.isoformat(sep=" "))
@@ -144,6 +152,7 @@ def main() -> int:
         if args.mode == "word-write":
             if args.count != 1:
                 raise SystemExit("--mode word-write currently requires --count 1")
+            # Write one remote word, then read it back; see GOTCHAS.md for address prefixes.
             plc.relay_write_words(args.hops, args.device, args.value)
             readback = plc.relay_read_words(args.hops, args.device, count=1)
             readback_word = readback[0] if isinstance(readback, list) else int(readback)
@@ -153,6 +162,7 @@ def main() -> int:
             return 0
 
         if args.mode == "fr-read":
+            # Read one or more remote FR words through the relay chain.
             value = plc.relay_read_fr(args.hops, args.device, count=args.count)
             if isinstance(value, list):
                 print("fr values =", ", ".join(f"0x{item:04X}" for item in value))
@@ -163,6 +173,7 @@ def main() -> int:
         if args.mode == "fr-write":
             if args.count != 1:
                 raise SystemExit("--mode fr-write currently requires --count 1")
+            # FR writes are staged unless committed; see GOTCHAS.md for the commit requirement.
             plc.relay_write_fr(
                 args.hops,
                 args.device,
@@ -178,12 +189,14 @@ def main() -> int:
             return 0
 
         if args.mode == "fr-commit":
+            # Commit the touched remote FR block so staged values can survive a power cycle.
             plc.relay_commit_fr(args.hops, args.device, count=args.count, wait=args.wait)
             print("fr commit device =", args.device)
             print("fr commit count =", args.count)
             print("fr commit wait =", args.wait)
             return 0
 
+        # Default mode reads remote words through the explicit relay chain.
         values = plc.relay_read_words(args.hops, args.device, count=args.count)
         if isinstance(values, list):
             if args.count == 1:

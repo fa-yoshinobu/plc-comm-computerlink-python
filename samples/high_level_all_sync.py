@@ -9,9 +9,9 @@ write_dword/float32, and FR file register access.
 Usage
 -----
     python samples/high_level_all_sync.py --host 192.168.250.100 [--port 1025]
-    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1027 --transport udp
+    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1035 --transport udp
 
-Default port: 1025 TCP / 1027 UDP  (TOYOPUC Computer Link default)
+Default port: 1025 TCP / 1035 UDP  (TOYOPUC Computer Link default)
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025\n"
-            "  python samples/high_level_all_sync.py --host 192.168.250.100 --transport udp --port 1027\n"
+            "  python samples/high_level_all_sync.py --host 192.168.250.100 --transport udp --port 1035\n"
             "  python samples/high_level_all_sync.py --host 192.168.250.100 --timeout 5 --retries 2 --retry-delay 0.5\n"
         ),
     )

@@ -10,9 +10,9 @@ What this sample shows:
 - optionally commit the touched FR block to flash
 
 Examples:
-    python samples/fr_basic.py --host 192.168.250.100 --port 1027 \
+    python samples/fr_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000 --target FR000000 --value 0x1234
-    python samples/fr_basic.py --host 192.168.250.100 --port 1027 \
+    python samples/fr_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000 --target FR000000 --value 0x1234 --commit
 """
 
@@ -35,9 +35,9 @@ def main() -> int:
         description="FR read/write example",
         epilog=(
             "Examples:\n"
-            "  python samples/fr_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/fr_basic.py --host 192.168.250.100 --port 1035 "
             "--protocol udp --local-port 12000 --target FR000000 --value 0x1234\n"
-            "  python samples/fr_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/fr_basic.py --host 192.168.250.100 --port 1035 "
             "--protocol udp --local-port 12000 --target FR000000 --value 0x1234 --commit"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
@@ -51,23 +51,30 @@ def main() -> int:
     p.add_argument("--target", default="FR000000", help="FR word device such as FR000000")
     p.add_argument("--value", type=parse_int_auto, default=0x1234, help="word value to write")
     p.add_argument("--commit", action="store_true", help="persist the written FR block to flash")
+    p.add_argument("--plc-profile", default="toyopuc:nano-10gx:native")
     args = p.parse_args()
 
+    # Open a high-level client; FR availability depends on the selected profile and PLC configuration.
     with ToyopucDeviceClient(
         args.host,
         args.port,
-        protocol=args.protocol,
+        transport=args.protocol,
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.plc_profile,
     ) as plc:
+        # Profile selection: --plc-profile must name a catalog that exposes FR.
         print("scenario: FR read / write with optional flash commit")
+        # Read the current FR word before touching it.
         before = plc.read_fr(args.target)
         print("target =", args.target)
         print("before =", hex(before))
         print("write  =", hex(args.value & 0xFFFF))
         print("commit =", args.commit)
+        # FR writes are staged unless committed; see GOTCHAS.md for power-cycle persistence.
         plc.write_fr(args.target, args.value, commit=args.commit)
+        # Read back the staged or committed value.
         after = plc.read_fr(args.target)
         print("after  =", hex(after))
 

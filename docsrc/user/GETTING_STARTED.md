@@ -1,71 +1,90 @@
-# Getting Started
+# Start here
 
-## Start Here
+Use this page when you want to connect to your PLC, read one word, and make one controlled test write. You need Python, network access to the PLC, and a safe test address that you are allowed to write.
 
-Use this package when you want the shortest Python path to TOYOPUC Computer Link communication through the public high-level API.
+## Prerequisites
 
-Recommended first path:
+| Requirement | Value |
+| --- | --- |
+| Python | 3.10 or newer |
+| PLC host | `192.168.250.100` |
+| TCP port | `1025` |
+| Network | Your computer must be able to reach the PLC Computer Link port. |
 
-1. Install `toyopuc-computerlink`.
-2. Choose the correct profile for your target.
-3. Open one client and read `P1-D0000`.
-4. Write only to a known-safe test word or bit after the first read is stable.
+## Install
 
-## First PLC Registers To Try
-
-Start with these first:
-
-- `P1-D0000`
-- `P1-D0001`
-- `P1-M0000`
-- `P1-D0100:F`
-
-Do not start with these:
-
-- relay hops
-- `FR` writes
-- large chunked reads
-
-## Minimal Synchronous Pattern
-
-```python
-from toyopuc import ToyopucDeviceClient
-
-with ToyopucDeviceClient("192.168.250.100", 1025) as client:
-    value = client.read("P1-D0000")
-    print(value)
+```bash
+pip install toyopuc-computerlink
 ```
 
-## Minimal Async Pattern
+## Choose your PLC profile
+
+`plc_profile` in `ToyopucConnectionOptions` is the only required connection-time selector for the address catalog. The profile string must match one of the canonical values in [PROFILES.md](PROFILES.md).
 
 ```python
-from toyopuc import ToyopucConnectionOptions, open_and_connect
+from toyopuc import ToyopucConnectionOptions
 
-options = ToyopucConnectionOptions(host="192.168.250.100", port=1025)
+options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, plc_profile="toyopuc:plus:extended")
 ```
 
-If a profile is in use, basic area families should use the correct `P1-`, `P2-`, or `P3-` prefix.
+## First read (step by step)
 
-## First Successful Run
+```python
+import asyncio
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
 
-Recommended order:
+async def main() -> None:
+    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, plc_profile="toyopuc:plus:extended")
+    async with await open_and_connect(options) as client:
+        value = await read_typed(client, "P1-D0000", "U")
+        print(f"P1-D0000 = {value}")
 
-1. `client.read("P1-D0000")`
-2. `client.write("P1-D0001", 1234)` only on a safe test word
-3. `client.write("P1-M0000", 1)` only on a safe test bit
-4. `read_named(plc, ["P1-D0000", "P1-D0100:F", "P1-D0000.0"])`
+asyncio.run(main())
+```
 
-## Common Beginner Checks
+Expected output:
 
-If the first read fails, check these in order:
+```text
+P1-D0000 = 0
+```
 
-- correct host and port
-- correct profile
-- correct `P1-`, `P2-`, or `P3-` prefix
-- start with `P1-D0000` instead of `FR` or relay addresses
+Your value may be different because it comes from your PLC.
 
-## Next Pages
+## First write
 
-- [Supported PLC Registers](./SUPPORTED_REGISTERS.md)
-- [Latest Communication Verification](./LATEST_COMMUNICATION_VERIFICATION.md)
-- [User Guide](./USER_GUIDE.md)
+Only write to a test address you control. This example uses a word register, not a bit, timer, counter, or flash-backed `FR` address.
+
+```python
+import asyncio
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed, write_typed
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, plc_profile="toyopuc:plus:extended")
+    async with await open_and_connect(options) as client:
+        await write_typed(client, "P1-D0001", "U", 1234)
+        value = await read_typed(client, "P1-D0001", "U")
+        print(f"P1-D0001 = {value}")
+
+asyncio.run(main())
+```
+
+## Confirm success
+
+1. The program connects without a timeout.
+2. The first read prints a numeric value for `P1-D0000`.
+3. The test write returns without a PLC error.
+4. The readback from `P1-D0001` matches the value you wrote.
+
+## If it does not work
+
+| Check | What to do |
+| --- | --- |
+| Wrong host or port | Confirm the PLC address and use TCP port `1025` for the first test. |
+| Wrong profile string | Profile strings must match exactly; see [PROFILES.md](PROFILES.md). |
+| Too much syntax at once | Start with plain word reads before typed reads or bit-in-word syntax. |
+| Missing address prefix | Basic area families such as `D`, `M`, `X`, `Y`, `T`, and `C` require `P1-`, `P2-`, or `P3-`. |
+
+## Next pages
+
+- [USAGE_GUIDE.md](USAGE_GUIDE.md)
+- [SUPPORTED_REGISTERS.md](SUPPORTED_REGISTERS.md)

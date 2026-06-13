@@ -72,6 +72,11 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="Number of poll snapshots to capture (default 3)",
     )
+    p.add_argument(
+        "--plc-profile",
+        default="toyopuc:plus:extended",
+        help="PLC profile string for address validation",
+    )
     return p.parse_args()
 
 
@@ -80,7 +85,7 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-async def demo_open_and_connect(host: str, port: int) -> None:
+async def demo_open_and_connect(host: str, port: int, plc_profile: str) -> None:
     """
     open_and_connect - create an AsyncToyopucDeviceClient and connect.
 
@@ -93,8 +98,11 @@ async def demo_open_and_connect(host: str, port: int) -> None:
     Use case: the simplest way to start an async session without manually
               constructing AsyncToyopucDeviceClient and calling connect().
     """
-    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port)) as plc:
+    # Connect with an explicit profile so address ranges match the target PLC catalog.
+    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port, plc_profile=plc_profile)) as plc:
+        # Profile selection: plc_profile is the connection-time selector for address validation.
         print(f"[open_and_connect] Connected to {host}:{port}")
+        # Read a prefixed basic word; see GOTCHAS.md for the required P1-/P2-/P3- prefix.
         val = await plc.read("P1-D0100")
         print(f"[open_and_connect] P1-D0100 = {val}")
 
@@ -120,11 +128,13 @@ async def demo_typed_rw(plc) -> None:
     Use case: writing a float32 temperature setpoint to P1-D0300-D0301
               from an asyncio-based recipe manager.
     """
+    # Read individual values with explicit type codes.
     val_u = await read_typed(plc, "P1-D0100", "U")
     val_f = await read_typed(plc, "P1-D0300", "F")
     val_l = await read_typed(plc, "P1-D0200", "L")
     print(f"[read_typed] P1-D0100(U)={val_u}  P1-D0300(F)={val_f}  P1-D0200(L)={val_l}")
 
+    # Write matching typed values to test addresses you control.
     await write_typed(plc, "P1-D0100", "U", 42)
     await write_typed(plc, "P1-D0300", "F", 3.14)
     await write_typed(plc, "P1-D0200", "L", -500)
@@ -141,12 +151,15 @@ async def demo_array_reads(plc) -> None:
     Use case: reading a block of 10 consecutive data registers in one
               Computer Link request for a periodic data logger.
     """
+    # Read contiguous words in one logical request.
     words = await read_words_single_request(plc, "P1-D0000", 10)
     print(f"[read_words_single_request]  P1-D0000-D0009 = {words}")
 
+    # Read contiguous dwords in one logical request.
     dwords = await read_dwords_single_request(plc, "P1-D0000", 4)
     print(f"[read_dwords_single_request] P1-D0000-D0007 (as 4 x uint32) = {dwords}")
 
+    # Use chunked helpers only when multi-request reads are acceptable.
     large_words = await read_words_chunked(plc, "P1-D1000", 1000)
     large_dwords = await read_dwords_chunked(plc, "P1-D2000", 120)
     print(f"[read_words_chunked] P1-D1000 block = {len(large_words)} words")
@@ -163,6 +176,7 @@ async def demo_bit_in_word(plc) -> None:
     Use case: toggling a single command flag in a shared control word without
               disturbing the other flag bits (e.g., start/stop bit 0).
     """
+    # Change one bit inside a word; see GOTCHAS.md for dot notation versus :D.
     await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=True)
     print("[write_bit_in_word] Set   bit 0 of P1-D0100")
     await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=False)
@@ -184,6 +198,7 @@ async def demo_read_named(plc) -> None:
     Use case: reading a heterogeneous process snapshot (float32 speed,
               signed error code, alarm bit) in a single asyncio step.
     """
+    # Read a mixed snapshot using typed suffixes and bit-in-word notation.
     snapshot = await read_named(
         plc,
         [
@@ -206,6 +221,7 @@ async def demo_poll(plc, count: int) -> None:
     """
     print(f"\nPolling {count} snapshots:")
     i = 0
+    # Poll repeatedly until the requested number of snapshots has been printed.
     async for snap in poll(plc, ["P1-D0100", "P1-D0300:F", "P1-D0100.3"], interval=1.0):
         print(f"  [{i + 1}] {snap}")
         i += 1
@@ -223,10 +239,13 @@ async def run(args: argparse.Namespace) -> None:
     demo_normalize_address()
 
     # 1. open_and_connect shortcut
-    await demo_open_and_connect(args.host, args.port)
+    await demo_open_and_connect(args.host, args.port, args.plc_profile)
 
     # 2-6. connect once, run all remaining demos
-    async with await open_and_connect(ToyopucConnectionOptions(host=args.host, port=args.port)) as plc:
+    async with await open_and_connect(
+        ToyopucConnectionOptions(host=args.host, port=args.port, plc_profile=args.plc_profile)
+    ) as plc:
+        # Profile selection: this shared connection uses --plc-profile for all address resolution.
         await demo_typed_rw(plc)
         await demo_array_reads(plc)
         await demo_bit_in_word(plc)

@@ -13,7 +13,7 @@ What this sample shows:
 
 Examples:
     python samples/high_level_basic.py --host 192.168.250.100 --port 1025
-    python samples/high_level_basic.py --host 192.168.250.100 --port 1027 \
+    python samples/high_level_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000
 """
 
@@ -33,7 +33,7 @@ def main() -> int:
         epilog=(
             "Examples:\n"
             "  python samples/high_level_basic.py --host 192.168.250.100 --port 1025\n"
-            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1027 "
+            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1035 "
             "--protocol udp --local-port 12000"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
@@ -49,7 +49,7 @@ def main() -> int:
     with ToyopucDeviceClient(
         args.host,
         args.port,
-        protocol=args.protocol,
+        transport=args.protocol,
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
