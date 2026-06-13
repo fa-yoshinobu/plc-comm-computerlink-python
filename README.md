@@ -34,6 +34,24 @@ For asyncio code, prefer:
 - `read_words_chunked`
 - `read_dwords_chunked`
 
+## Supported PLC profiles
+
+Choose one canonical profile string for your PLC model when you need profile-aware addressing or range checks.
+
+| Canonical profile | Model | Notes |
+| --- | --- | --- |
+| `toyopuc:generic` | Any TOYOPUC Computer Link target | Generic source-defined area set with broad U, EB, FR, and upper-range PC10 addressing enabled. |
+| `toyopuc:plus:standard` | TOYOPUC-Plus | Standard prefixed P/K/V/T/C/L/X/Y/M/S/N/R/D areas plus ES, EN, H, and extension bit areas. |
+| `toyopuc:plus:extended` | TOYOPUC-Plus | Adds GM/GX/GY and U areas to the standard TOYOPUC-Plus profile. |
+| `toyopuc:nano-10gx:native` | Nano 10GX | Native Nano 10GX profile with upper split ranges, U, EB, and FR. |
+| `toyopuc:nano-10gx:compatible` | Nano 10GX | Compatibility profile using the same source-defined area set as native Nano 10GX mode. |
+| `toyopuc:pc10g:standard-pc3jg` | PC10G | PC3JG-compatible standard profile with B, EB, U, GM/GX/GY, ES, EN, and H areas. |
+| `toyopuc:pc10g:pc10` | PC10G | PC10 profile with upper split ranges, U, EB, FR, and PC10 addressing enabled. |
+| `toyopuc:pc3jx:pc3-separate` | PC3JX | PC3 separate profile with prefixed basic areas, B, ES, EN, H, and U. |
+| `toyopuc:pc3jx:plus-expansion` | PC3JX | Plus expansion profile with GM/GX/GY and U. |
+| `toyopuc:pc3jg:pc3jg` | PC3JG | PC3JG profile with B, GM/GX/GY, U, and EB. |
+| `toyopuc:pc3jg:pc3-separate` | PC3JG | PC3 separate profile with B, GM/GX/GY, U, and EB. |
+
 ## Quick Start
 
 ### Installation
