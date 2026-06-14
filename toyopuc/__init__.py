@@ -14,7 +14,7 @@ but the helpers above are the preferred surface for normal application code
 and generated user documentation.
 """
 
-__version__ = "0.1.8"
+__version__ = "0.8.0"
 
 from .address import (
     encode_bit_address,
