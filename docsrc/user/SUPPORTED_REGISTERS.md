@@ -1,57 +1,68 @@
-# Supported PLC Registers
+# Supported registers
 
-This page is the canonical public register table for the Python high-level API.
+This page lists the public high-level device forms verified from the source catalog. Exact ranges are profile-dependent; use [profiles](./PROFILES.md) to choose the model first.
 
-Exact writable spans depend on the selected profile and hardware. Use this page for the public high-level families, then use the model-ranges and verification pages for model-specific cautions.
+## Bit devices
 
-## Common Prefixed Families
-
-| Family | Kind | Example | Notes |
+| Family | Access | Example | Notes |
 | --- | --- | --- | --- |
-| `D` | word | `P1-D0100` | data register |
-| `S` | word | `P1-S0000` | special register |
-| `N` | word | `P1-N0100` | file register |
-| `R` | word | `P1-R0000` | register area |
-| `M` | bit | `P1-M0000` | internal relay |
-| `X` | bit | `P1-X0000` | input |
-| `Y` | bit | `P1-Y0000` | output |
-| `T` | family | `P1-T0000` | timer-related area |
-| `C` | family | `P1-C0000` | counter-related area |
-| `L` | family | `P1-L0000` | link/relay-related area |
-| `P`, `K`, `V` | profile families | `P1-V0000` | availability depends on profile |
+| `P` | Prefixed | `P1-P0000` | Shared relay family. |
+| `K` | Prefixed | `P1-K0000` | Keep relay family. |
+| `V` | Prefixed | `P1-V0000` | Profile-dependent split ranges. |
+| `T` | Prefixed | `P1-T0000` | Timer bit family. |
+| `C` | Prefixed | `P1-C0000` | Counter bit family. |
+| `L` | Prefixed | `P1-L0000` | Link relay family. |
+| `X` | Prefixed | `P1-X0000` | Input relay family. |
+| `Y` | Prefixed | `P1-Y0000` | Output relay family. |
+| `M` | Prefixed | `P1-M0000` | Internal relay family. |
+| `EP` | Direct | `EP0000` | Extension bit family. |
+| `EK` | Direct | `EK0000` | Extension bit family. |
+| `EV` | Direct | `EV0000` | Extension bit family. |
+| `ET` | Direct | `ET0000` | Extension timer bit family. |
+| `EC` | Direct | `EC0000` | Extension counter bit family. |
+| `EL` | Direct | `EL0000` | Extension link relay family. |
+| `EX` | Direct | `EX0000` | Extension input family. |
+| `EY` | Direct | `EY0000` | Extension output family. |
+| `EM` | Direct | `EM0000` | Extension internal relay family. |
+| `GM` | Direct | `GM0000` | Profile-dependent extended bit family. |
+| `GX` | Direct | `GX0000` | Profile-dependent extended input family. |
+| `GY` | Direct | `GY0000` | Profile-dependent extended output family. |
 
-## Extension and Storage Families
+## Word devices
 
-| Family | Kind | Example | Notes |
+| Family | Access | Example | Notes |
 | --- | --- | --- | --- |
-| `ES` | word | `ES0000` | extended special register |
-| `EN` | word | `EN0000` | extended file register |
-| `FR` | storage | `FR000000` | file-register flash area |
+| `S` | Prefixed | `P1-S0000` | Special register family. |
+| `N` | Prefixed | `P1-N0000` | File register family. |
+| `R` | Prefixed | `P1-R0000` | Register family. |
+| `D` | Prefixed | `P1-D0000` | Recommended first smoke-test word. |
+| `B` | Direct | `B0000` | Direct word family in selected profiles. |
+| `ES` | Direct | `ES0000` | Extension special register. |
+| `EN` | Direct | `EN0000` | Extension file register. |
+| `H` | Direct | `H0000` | Extension word family. |
+| `U` | Direct | `U00000` | Profile-dependent upper word area. |
+| `EB` | Direct | `EB00000` | Profile-dependent EB word area. |
+| `FR` | Direct | `FR000000` | FR storage; use dedicated FR helpers. |
 
-## High-Level Views
+## Type suffixes
 
-| Form | Example | Meaning |
-| --- | --- | --- |
-| plain word | `P1-D0100` | unsigned 16-bit word |
-| signed view | `P1-D0100:S` | signed 16-bit value |
-| dword view | `P1-D0100:D` | unsigned 32-bit value |
-| long view | `P1-D0100:L` | signed 32-bit value |
-| float view | `P1-D0100:F` | float32 value |
-| bit in word | `P1-D0100.3` | one bit inside a word |
+| Form | Size | Meaning | Example |
+| --- | --- | --- | --- |
+| No suffix or `:U` | 1 word | Unsigned 16-bit integer | `P1-D0100` |
+| `:S` | 1 word | Signed 16-bit integer | `P1-D0100:S` |
+| `:D` | 2 words | Unsigned 32-bit integer | `P1-D0100:D` |
+| `:L` | 2 words | Signed 32-bit integer | `P1-D0100:L` |
+| `:F` | 2 words | IEEE-754 float32 | `P1-D0100:F` |
+| `.0` through `.F` | 1 bit | Bit inside one word | `P1-D0100.3` |
+| `W` | Packed word | 16-bit packed view of a bit family | `P1-M0010W` |
+| `L` / `H` | Packed byte | Low or high byte view of a bit family | `P1-M0010L` |
 
-## Addressing Notes
+## Addressing rules
 
-- Start with `P1-D0000` and `P1-M0000`.
-- A canonical profile is required; basic area families should use `P1-`, `P2-`, or `P3-`.
-- `FR` is a separate storage area and should not be the first beginner test.
-- Profile-specific range limits remain model-dependent.
-
-## Model-Specific Reminder
-
-Current retained verification covers:
-
-- `TOYOPUC-Plus`
-- `Nano 10GX`
-- `PC10G`
-
-Use [Model Ranges](./MODEL_RANGES.md) when you need tested model-specific write acceptance information.
+| Rule | Correct form |
+| --- | --- |
+| Basic families require a program prefix. | `P1-D0000`, `P2-M0000`, `P3-S0000` |
+| Extension families are direct. | `ES0000`, `EP0000`, `U00000`, `FR000000` |
+| Data type views use a colon. | `P1-D0100:D` |
+| Bit-in-word views use a dot. | `P1-D0100.D` means bit 13. |
+| FR writes are explicit. | `write_fr(..., commit=False)` then `commit_fr()` when persistence is intended. |

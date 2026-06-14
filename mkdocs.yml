@@ -18,9 +18,12 @@ exclude_docs: |
 nav:
   - Overview: index.md
   - Getting Started: user/GETTING_STARTED.md
+  - Usage Guide: user/USAGE_GUIDE.md
   - Supported PLC Registers: user/SUPPORTED_REGISTERS.md
+  - Profiles: user/PROFILES.md
+  - Gotchas: user/GOTCHAS.md
+  - User Guide compatibility: user/USER_GUIDE.md
   - Latest Communication Verification: user/LATEST_COMMUNICATION_VERIFICATION.md
-  - User Guide: user/USER_GUIDE.md
   - Model Ranges: user/MODEL_RANGES.md
   - API Reference:
       - Client: api/client.md

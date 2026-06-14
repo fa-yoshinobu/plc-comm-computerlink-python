@@ -1,0 +1,293 @@
+# Usage guide
+
+## Recommended entry points
+
+| Entry point | When to use it |
+| --- | --- |
+| `ToyopucConnectionOptions` | Store one explicit connection profile for async code. |
+| `open_and_connect(options)` | Create and connect an async high-level client. |
+| `read_typed` / `write_typed` | Read or write one typed value. |
+| `read_named` | Read a mixed named snapshot. |
+| `read_words_single_request` / `read_dwords_single_request` | Keep a contiguous read as one logical request. |
+| `read_words_chunked` / `read_dwords_chunked` | Split a large contiguous read deliberately. |
+| `write_bit_in_word` | Change one bit inside a word with read-modify-write. |
+| `poll` | Repeatedly yield named snapshots. |
+| `ToyopucDeviceClient` | Use the synchronous high-level API. |
+
+## Connection
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        transport="tcp",
+        timeout=3.0,
+        retries=0,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        print(client.plc_profile)
+
+
+asyncio.run(main())
+```
+
+For UDP, keep the same profile rule and use port `1035`.
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1035,
+        local_port=12000,
+        transport="udp",
+        retries=2,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        print(await read_typed(client, "P1-D0000", "U"))
+
+
+asyncio.run(main())
+```
+
+## Read single
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        unsigned_word = await read_typed(client, "P1-D0000", "U")
+        signed_word = await read_typed(client, "P1-D0002", "S")
+        dword = await read_typed(client, "P1-D0100", "D")
+        print(unsigned_word, signed_word, dword)
+
+
+asyncio.run(main())
+```
+
+## Write single
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, write_typed
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        await write_typed(client, "P1-D0001", "U", 1234)
+        await write_typed(client, "P1-D0200", "L", -500)
+
+
+asyncio.run(main())
+```
+
+## Named snapshot
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        snapshot = await read_named(
+            client,
+            ["P1-D0000", "P1-D0100:F", "P1-D0102:S", "P1-D0000.3"],
+        )
+        print(snapshot)
+
+
+asyncio.run(main())
+```
+
+## Block reads
+
+```python
+import asyncio
+
+from toyopuc import (
+    ToyopucConnectionOptions,
+    open_and_connect,
+    read_dwords_chunked,
+    read_dwords_single_request,
+    read_words_chunked,
+    read_words_single_request,
+)
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        words = await read_words_single_request(client, "P1-D0000", 10)
+        dwords = await read_dwords_single_request(client, "P1-D0100", 4)
+        large_words = await read_words_chunked(client, "P1-D1000", 128)
+        large_dwords = await read_dwords_chunked(client, "P1-D1200", 32)
+        print(words, dwords, large_words[:4], large_dwords[:4])
+
+
+asyncio.run(main())
+```
+
+## Bit-in-word
+
+Use `.` for one bit inside a word. Use `:` for data type suffixes.
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, write_bit_in_word
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        await write_bit_in_word(client, "P1-D0100", bit_index=3, value=True)
+        snapshot = await read_named(client, ["P1-D0100.3"])
+        print(snapshot)
+
+
+asyncio.run(main())
+```
+
+## Polling
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, poll
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        count = 0
+        async for snapshot in poll(client, ["P1-D0000", "P1-D0100:F"], interval=1.0):
+            print(snapshot)
+            count += 1
+            if count >= 3:
+                break
+
+
+asyncio.run(main())
+```
+
+## FR two-phase write
+
+FR writes update RAM first. Persist the touched FR block only when you intentionally call the commit phase.
+
+```python
+from toyopuc import ToyopucDeviceClient
+
+
+def main() -> None:
+    with ToyopucDeviceClient(
+        "192.168.250.100",
+        1025,
+        plc_profile="toyopuc:pc10g:pc10",
+    ) as client:
+        before = client.read_fr("FR000000")
+        client.write_fr("FR000000", 0x1234, commit=False)
+        client.commit_fr("FR000000", wait=True)
+        after = client.read_fr("FR000000")
+        print(before, after)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Relay helpers
+
+Relay hops are not probed automatically. Pass the hops you intend to use.
+
+```python
+from toyopuc import ToyopucDeviceClient
+
+
+def main() -> None:
+    with ToyopucDeviceClient(
+        "192.168.250.100",
+        1025,
+        plc_profile="toyopuc:nano-10gx:compatible",
+    ) as client:
+        hops = "P1-L2:N2"
+        status = client.relay_read_cpu_status(hops)
+        words = client.relay_read_words(hops, "P1-D0000", count=4)
+        print(status.run, words)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Address reference table
+
+| Form | Meaning | Example |
+| --- | --- | --- |
+| `P1-D0000` | Prefixed basic word address | `P1-D0000` |
+| `P1-M0000` | Prefixed basic bit address | `P1-M0000` |
+| `ES0000` | Direct extension word address | `ES0000` |
+| `EP0000` | Direct extension bit address | `EP0000` |
+| `U00000` | Direct U word address | `U00000` |
+| `EB00000` | Direct EB word address | `EB00000` |
+| `FR000000` | FR storage word address | `FR000000` |
+| `P1-M0010W` | Packed 16-bit word view of a bit area | `P1-M0010W` |
+| `P1-M0010L` / `P1-M0010H` | Low or high byte view of a packed bit area | `P1-M0010L` |
+| `P1-D0100:S` | Signed 16-bit typed view | `P1-D0100:S` |
+| `P1-D0100:D` | Unsigned 32-bit typed view | `P1-D0100:D` |
+| `P1-D0100:L` | Signed 32-bit typed view | `P1-D0100:L` |
+| `P1-D0100:F` | Float32 typed view | `P1-D0100:F` |
+| `P1-D0100.3` | Bit 3 inside one word | `P1-D0100.3` |

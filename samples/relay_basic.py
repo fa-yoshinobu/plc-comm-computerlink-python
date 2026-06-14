@@ -11,10 +11,12 @@ What this sample shows:
 - relay FR read / write / commit
 
 Examples:
-    python samples/relay_basic.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000 --hops "P1-L2:N2" --mode cpu-status
-    python samples/relay_basic.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4" \
+    python samples/relay_basic.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible \
+        --hops "P1-L2:N2" --mode cpu-status
+    python samples/relay_basic.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible \
+        --hops "P1-L2:N2,P1-L2:N4" \
         --mode word-read --device P1-D0000 --count 4
 """
 
@@ -45,13 +47,15 @@ def main() -> int:
         description="Simple relay example",
         epilog=(
             "Examples:\n"
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
-            '--protocol udp --local-port 12000 --hops "P1-L2:N2" --mode cpu-status\n'
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
-            '--protocol udp --local-port 12000 --hops "P1-L2:N2,P1-L2:N4" '
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
+            '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible '
+            '--hops "P1-L2:N2" --mode cpu-status\n'
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
+            '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible '
+            '--hops "P1-L2:N2,P1-L2:N4" '
             "--mode word-read --device P1-D0000 --count 4\n"
-            "  python samples/relay_basic.py --host 192.168.250.100 --port 1027 "
-            '--protocol udp --local-port 12000 --hops "P1-L2:N2" '
+            "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
+            '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible --hops "P1-L2:N2" '
             "--mode fr-write --device FR000000 --value 0x1234 --commit --wait"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
@@ -101,6 +105,7 @@ def main() -> int:
         retries=args.retries,
         plc_profile=args.profile,
     ) as plc:
+        # Relay routes are explicit; this sample never probes hops automatically.
         print("scenario: relay high-level operations")
         print("hops =", args.hops)
         print("mode =", args.mode)

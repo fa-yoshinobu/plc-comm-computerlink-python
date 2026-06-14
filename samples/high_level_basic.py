@@ -12,9 +12,10 @@ What this sample shows:
 - extended-area access such as `ES0000`
 
 Examples:
-    python samples/high_level_basic.py --host 192.168.250.100 --port 1025
-    python samples/high_level_basic.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000
+    python samples/high_level_basic.py --host 192.168.250.100 --port 1025 \
+        --profile toyopuc:plus:extended
+    python samples/high_level_basic.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:plus:extended
 """
 
 import argparse
@@ -32,9 +33,10 @@ def main() -> int:
         description="Basic high-level Toyopuc client example",
         epilog=(
             "Examples:\n"
-            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1025\n"
-            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1027 "
-            "--protocol udp --local-port 12000"
+            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1025 "
+            "--profile toyopuc:plus:extended\n"
+            "  python samples/high_level_basic.py --host 192.168.250.100 --port 1035 "
+            "--protocol udp --local-port 12000 --profile toyopuc:plus:extended"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -56,6 +58,7 @@ def main() -> int:
         retries=args.retries,
         plc_profile=args.profile,
     ) as plc:
+        # The sample uses high-level device strings instead of raw protocol addresses.
         print("scenario: daily high-level tasks")
         plc.write("P1-D0000", 0x1234)
         print("P1-D0000 =", hex(plc.read("P1-D0000")))

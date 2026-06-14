@@ -6,10 +6,14 @@
 
 High-level Python library for JTEKT TOYOPUC Computer Link communication.
 
-## Start Here
+## Start here
 
-- [Getting Started](user/GETTING_STARTED.md)
-- [Supported PLC Registers](user/SUPPORTED_REGISTERS.md)
-- [Latest Communication Verification](user/LATEST_COMMUNICATION_VERIFICATION.md)
-- [User Guide](user/USER_GUIDE.md)
-- [Model Ranges](user/MODEL_RANGES.md)
+| Page | Use it for |
+| --- | --- |
+| [Getting started](user/GETTING_STARTED.md) | First connection, read, and write. |
+| [Usage guide](user/USAGE_GUIDE.md) | Common high-level workflows. |
+| [Supported registers](user/SUPPORTED_REGISTERS.md) | Device families and type suffixes. |
+| [Profiles](user/PROFILES.md) | Exact canonical PLC profile strings. |
+| [Gotchas](user/GOTCHAS.md) | Symptom-driven fixes. |
+| [Latest communication verification](user/LATEST_COMMUNICATION_VERIFICATION.md) | Retained hardware verification notes. |
+| [Model ranges](user/MODEL_RANGES.md) | Model-specific writable range notes. |

@@ -11,7 +11,7 @@ read_words_chunked, read_dwords_chunked, write_bit_in_word, and poll.
 
 Usage
 -----
-    python samples/high_level_all_async.py --host 192.168.250.100 [--port 1025]
+    python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
 """
 
 from __future__ import annotations
@@ -54,9 +54,12 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 5\n"
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 "
+            "--profile toyopuc:plus:extended\n"
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 "
+            "--profile toyopuc:plus:extended\n"
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 5 "
+            "--profile toyopuc:plus:extended\n"
         ),
     )
     p.add_argument("--host", required=True, help="PLC IP address or hostname")

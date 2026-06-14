@@ -1,11 +1,10 @@
-# Model-specific writable ranges
+# Model-Specific Writable Ranges
 
 Related documents:
 
-- [USAGE_GUIDE.md](USAGE_GUIDE.md)
-- [PROFILES.md](PROFILES.md)
-- [SUPPORTED_REGISTERS.md](SUPPORTED_REGISTERS.md)
+- [USER_GUIDE.md](USER_GUIDE.md)
 - [Project README](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/README.md)
+- Maintainer-only validation notes are kept under `internal_docs/maintainer/`.
 
 This document records writable device ranges confirmed per hardware model.
 
@@ -193,13 +192,13 @@ python -m scripts.whl_addressing_test --host 192.168.250.100 --port 1025 --proto
 python -m scripts.high_level_api_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0 --log high_level_nano10gx_tcp.log
 python -m scripts.clock_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0
 python -m scripts.cpu_status_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0
-scripts\run_full_test.bat 192.168.250.100 1035 udp 4 5 2 12000
-python -m scripts.whl_addressing_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log whl_nano10gx.log
-python -m scripts.high_level_api_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log high_level_nano10gx.log
-python -m scripts.clock_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2
-python -m scripts.clock_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --set "2026-03-09 20:00:10"
-python -m scripts.cpu_status_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2
-scripts\run_device_range_scan.bat 192.168.250.100 1035 udp 12000 16 32
+scripts\run_full_test.bat 192.168.250.100 1027 udp 4 5 2 12000
+python -m scripts.whl_addressing_test --host 192.168.250.100 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log whl_nano10gx.log
+python -m scripts.high_level_api_test --host 192.168.250.100 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log high_level_nano10gx.log
+python -m scripts.clock_test --host 192.168.250.100 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2
+python -m scripts.clock_test --host 192.168.250.100 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2 --set "2026-03-09 20:00:10"
+python -m scripts.cpu_status_test --host 192.168.250.100 --port 1027 --protocol udp --local-port 12000 --timeout 5 --retries 2
+scripts\run_device_range_scan.bat 192.168.250.100 1027 udp 12000 16 32
 ```
 
 Evidence:
@@ -299,13 +298,13 @@ Upper prefixed ranges (`1000` series) are not implemented in either PC3 mode or 
 Source commands (UDP unless noted):
 
 ```text
-scripts\run_device_full_scan.bat 192.168.250.100 1035 udp 12000 5 2 512 device_full
-scripts\run_device_read_scan.bat 192.168.250.100 1035 udp 12000 5 2 S,N,R,D,P,K,V,T,C,L,X,Y,M,EP,EX,GX,GY,GM,U,EB,FR 512 device_read.log
-scripts\run_fr_read_scan.bat 192.168.250.100 1035 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read.log
-scripts\run_fr_write_scan.bat 192.168.250.100 1035 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write.log
-scripts\run_program_no_probe.bat 192.168.250.100 1035 udp 12000 5 2 ext00,gx07,p1,p2,p3 0x00,0x01,0x02,0x03,0x07 program_no_probe.log
-scripts\run_c4c5_range_probe.bat 192.168.250.100 1035 udp 12000 5 2 l1000,m1000,u00000,u08000,eb00000 c4c5_range.log
-scripts\run_sim_tests.bat 192.168.250.100 1035 udp 12000 5 2
+scripts\run_device_full_scan.bat 192.168.250.100 1027 udp 12000 5 2 512 device_full
+scripts\run_device_read_scan.bat 192.168.250.100 1027 udp 12000 5 2 S,N,R,D,P,K,V,T,C,L,X,Y,M,EP,EX,GX,GY,GM,U,EB,FR 512 device_read.log
+scripts\run_fr_read_scan.bat 192.168.250.100 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read.log
+scripts\run_fr_write_scan.bat 192.168.250.100 1027 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write.log
+scripts\run_program_no_probe.bat 192.168.250.100 1027 udp 12000 5 2 ext00,gx07,p1,p2,p3 0x00,0x01,0x02,0x03,0x07 program_no_probe.log
+scripts\run_c4c5_range_probe.bat 192.168.250.100 1027 udp 12000 5 2 l1000,m1000,u00000,u08000,eb00000 c4c5_range.log
+scripts\run_sim_tests.bat 192.168.250.100 1027 udp 12000 5 2
 python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --ext-multi-test --skip-errors --log auto_ext_multi.log
 python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --boundary-test --skip-errors --log auto_boundary.log
 python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --max-block-test --pc10-block-words 0x200 --skip-errors --log auto_block.log

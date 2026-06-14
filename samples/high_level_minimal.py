@@ -11,9 +11,10 @@ What this sample shows:
 - read the changed word again
 
 Examples:
-    python samples/high_level_minimal.py --host 192.168.250.100 --port 1025
-    python samples/high_level_minimal.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000
+    python samples/high_level_minimal.py --host 192.168.250.100 --port 1025 \
+        --profile toyopuc:plus:extended
+    python samples/high_level_minimal.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:plus:extended
 """
 
 import argparse
@@ -31,9 +32,10 @@ def main() -> int:
         description="Minimal high-level Toyopuc client example",
         epilog=(
             "Examples:\n"
-            "  python samples/high_level_minimal.py --host 192.168.250.100 --port 1025\n"
-            "  python samples/high_level_minimal.py --host 192.168.250.100 --port 1027 "
-            "--protocol udp --local-port 12000"
+            "  python samples/high_level_minimal.py --host 192.168.250.100 --port 1025 "
+            "--profile toyopuc:plus:extended\n"
+            "  python samples/high_level_minimal.py --host 192.168.250.100 --port 1035 "
+            "--protocol udp --local-port 12000 --profile toyopuc:plus:extended"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -55,6 +57,7 @@ def main() -> int:
         retries=args.retries,
         plc_profile=args.profile,
     ) as plc:
+        # Basic areas such as D require an explicit P1-/P2-/P3- prefix.
         print("scenario: read one word, write one word, read it back")
         print("before:", hex(plc.read("P1-D0000")))
         plc.write("P1-D0000", 0x1234)

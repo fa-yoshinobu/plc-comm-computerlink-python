@@ -10,10 +10,12 @@ What this sample shows:
 - optionally commit the touched FR block to flash
 
 Examples:
-    python samples/fr_basic.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000 --target FR000000 --value 0x1234
-    python samples/fr_basic.py --host 192.168.250.100 --port 1027 \
-        --protocol udp --local-port 12000 --target FR000000 --value 0x1234 --commit
+    python samples/fr_basic.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 \
+        --target FR000000 --value 0x1234
+    python samples/fr_basic.py --host 192.168.250.100 --port 1035 \
+        --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 \
+        --target FR000000 --value 0x1234 --commit
 """
 
 import argparse
@@ -35,10 +37,12 @@ def main() -> int:
         description="FR read/write example",
         epilog=(
             "Examples:\n"
-            "  python samples/fr_basic.py --host 192.168.250.100 --port 1027 "
-            "--protocol udp --local-port 12000 --target FR000000 --value 0x1234\n"
-            "  python samples/fr_basic.py --host 192.168.250.100 --port 1027 "
-            "--protocol udp --local-port 12000 --target FR000000 --value 0x1234 --commit"
+            "  python samples/fr_basic.py --host 192.168.250.100 --port 1035 "
+            "--protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 "
+            "--target FR000000 --value 0x1234\n"
+            "  python samples/fr_basic.py --host 192.168.250.100 --port 1035 "
+            "--protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 "
+            "--target FR000000 --value 0x1234 --commit"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -63,6 +67,7 @@ def main() -> int:
         retries=args.retries,
         plc_profile=args.profile,
     ) as plc:
+        # FR writes are RAM-only unless commit=True or commit_fr() is used.
         print("scenario: FR read / write with optional flash commit")
         before = plc.read_fr(args.target)
         print("target =", args.target)

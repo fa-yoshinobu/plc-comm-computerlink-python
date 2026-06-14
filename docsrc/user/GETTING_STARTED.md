@@ -1,75 +1,124 @@
-# Getting Started
+# Getting started
 
-## Start Here
+## Start here
 
-Use this package when you want the shortest Python path to TOYOPUC Computer Link communication through the public high-level API.
+Use this page for your first TOYOPUC Computer Link read and write from Python.
 
-Recommended first path:
+| Step | What you do |
+| --- | --- |
+| 1 | Install `toyopuc-computerlink`. |
+| 2 | Choose one exact canonical profile string. |
+| 3 | Connect to `192.168.250.100:1025` over TCP. |
+| 4 | Read `P1-D0000`. |
+| 5 | Write only to a known-safe test word or bit. |
 
-1. Install `toyopuc-computerlink`.
-2. Choose the correct profile for your target.
-3. Open one client and read `P1-D0000`.
-4. Write only to a known-safe test word or bit after the first read is stable.
+## Prerequisites
 
-## First PLC Registers To Try
+| Item | Requirement |
+| --- | --- |
+| Python | Python 3.10 or later. |
+| PLC network | Your PLC is reachable at `192.168.250.100`. |
+| TCP port | Computer Link TCP examples use `1025`. |
+| UDP port | Computer Link UDP examples use `1035`. |
+| Profile | A canonical profile such as `toyopuc:plus:extended`. |
 
-Start with these first:
+## Install
 
-- `P1-D0000`
-- `P1-D0001`
-- `P1-M0000`
-- `P1-D0100:F`
-
-Do not start with these:
-
-- relay hops
-- `FR` writes
-- large chunked reads
-
-## Minimal Synchronous Pattern
-
-```python
-from toyopuc import ToyopucDeviceClient
-
-with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as client:
-    value = client.read("P1-D0000")
-    print(value)
+```bash
+pip install toyopuc-computerlink
 ```
 
-## Minimal Async Pattern
+## Choose profile
+
+Start with `toyopuc:plus:extended` only when your PLC is a TOYOPUC-Plus target. Use [profiles](./PROFILES.md) for the exact list.
 
 ```python
-from toyopuc import ToyopucConnectionOptions, open_and_connect
+from toyopuc import ToyopucPlcProfiles
 
-options = ToyopucConnectionOptions(
-    host="192.168.250.100",
-    port=1025,
-    plc_profile="toyopuc:plus:extended",
-)
+
+def main() -> None:
+    profile = ToyopucPlcProfiles.from_name("toyopuc:plus:extended")
+    print(profile.name)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
-The profile is required. Basic area families should use the correct `P1-`, `P2-`, or `P3-` prefix.
+## First read
 
-## First Successful Run
+```python
+import asyncio
 
-Recommended order:
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
 
-1. `client.read("P1-D0000")`
-2. `client.write("P1-D0001", 1234)` only on a safe test word
-3. `client.write("P1-M0000", 1)` only on a safe test bit
-4. `read_named(plc, ["P1-D0000", "P1-D0100:F", "P1-D0000.0"])`
 
-## Common Beginner Checks
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
 
-If the first read fails, check these in order:
+    async with await open_and_connect(options) as client:
+        value = await read_typed(client, "P1-D0000", "U")
+        print(f"P1-D0000 = {value}")
 
-- correct host and port
-- correct profile
-- correct `P1-`, `P2-`, or `P3-` prefix
-- start with `P1-D0000` instead of `FR` or relay addresses
 
-## Next Pages
+asyncio.run(main())
+```
 
-- [Supported PLC Registers](./SUPPORTED_REGISTERS.md)
-- [Latest Communication Verification](./LATEST_COMMUNICATION_VERIFICATION.md)
-- [User Guide](./USER_GUIDE.md)
+## First write
+
+Use a known-safe test word. Do not write to production outputs or motion-related registers while testing.
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed, write_typed
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+
+    async with await open_and_connect(options) as client:
+        await write_typed(client, "P1-D0001", "U", 1234)
+        value = await read_typed(client, "P1-D0001", "U")
+        print(f"P1-D0001 = {value}")
+
+
+asyncio.run(main())
+```
+
+## Confirm success
+
+| Check | Expected result |
+| --- | --- |
+| Connection | No timeout from `open_and_connect`. |
+| Read | `P1-D0000` returns one integer value. |
+| Write | The readback from `P1-D0001` matches your test value. |
+| Address text | Basic families use `P1-`, `P2-`, or `P3-` prefixes. |
+
+## If it does not work
+
+| Symptom | Check |
+| --- | --- |
+| Timeout | Confirm host `192.168.250.100`, TCP port `1025`, and PLC network settings. |
+| Profile error | Use only exact canonical strings from [profiles](./PROFILES.md). |
+| Address error | Use `P1-D0000`, not `D0000`, for basic area families. |
+| Dword reads look wrong | Use `P1-D0100:D` or dtype `"D"`; `P1-D0100.D` means bit 13. |
+| FR write does not persist | Use `write_fr(..., commit=True)` or call `commit_fr()`. |
+
+## Next pages
+
+| Page | What you read next |
+| --- | --- |
+| [Usage guide](./USAGE_GUIDE.md) | Common read, write, block, polling, FR, and relay workflows. |
+| [Supported registers](./SUPPORTED_REGISTERS.md) | Device families and address forms. |
+| [Profiles](./PROFILES.md) | Canonical profile strings and profile-specific notes. |
+| [Gotchas](./GOTCHAS.md) | Symptom-driven troubleshooting. |
+| [Samples](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/samples/README.md) | Complete runnable sample commands. |
