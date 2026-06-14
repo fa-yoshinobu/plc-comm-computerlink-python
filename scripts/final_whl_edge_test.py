@@ -162,6 +162,7 @@ def main() -> int:
         help="do not restore original 16-point bit values",
     )
     parser.add_argument("--skip-errors", action="store_true")
+    parser.add_argument("--profile", required=True, help="Canonical PLC profile for the target")
     parser.add_argument("--log", default="")
     args = parser.parse_args()
 
@@ -183,6 +184,7 @@ def main() -> int:
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.profile,
     ) as plc:
         for idx, case in enumerate(cases):
             case_name = _format_case_name(case, args.program_prefix)

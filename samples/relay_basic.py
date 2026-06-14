@@ -62,6 +62,7 @@ def main() -> int:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile, e.g. toyopuc:nano-10gx:compatible")
     p.add_argument("--hops", required=True, help='relay hops, for example "P1-L2:N2,P1-L2:N4"')
     p.add_argument(
         "--mode",
@@ -98,6 +99,7 @@ def main() -> int:
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.profile,
     ) as plc:
         print("scenario: relay high-level operations")
         print("hops =", args.hops)

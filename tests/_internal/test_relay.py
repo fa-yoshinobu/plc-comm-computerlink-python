@@ -270,7 +270,7 @@ def test_high_level_relay_read_words_accepts_string_device():
     value = client.relay_read_words("P1-L2:N2", "P1-D0000")
     assert client.last_hops == [(0x12, 0x0002)]
     assert value == [0x1234]
-    resolved = resolve_device("P1-D0000")
+    resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
     assert client.last_inner == build_ext_word_read(resolved.no, resolved.addr, 1)
 
 
@@ -287,7 +287,7 @@ def test_high_level_relay_write_words_accepts_string_device():
     client = _DummyRelayHighLevelClient(outer)
     client.relay_write_words("P1-L2:N2", "P1-D0000", 0x1234)
     assert client.last_hops == [(0x12, 0x0002)]
-    resolved = resolve_device("P1-D0000")
+    resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
     assert client.last_inner == build_ext_word_write(resolved.no, resolved.addr, [0x1234])
 
 
@@ -297,7 +297,7 @@ def test_high_level_relay_read_accepts_basic_bit_device():
     value = client.relay_read("P1-L2:N2", "P1-M0000")
     assert value is True
     assert client.last_hops == [(0x12, 0x0002)]
-    resolved = resolve_device("P1-M0000")
+    resolved = resolve_device("P1-M0000", profile="toyopuc:generic")
     assert client.last_inner == build_ext_multi_read([(resolved.no, resolved.bit_no, resolved.addr)], [], [])
 
 
@@ -313,7 +313,7 @@ def test_high_level_relay_write_accepts_ext_byte_device():
 def test_high_level_relay_read_accepts_pc10_word_device():
     outer = parse_response(bytes.fromhex("80000a0060120200060300c23412"))
     client = _DummyRelayHighLevelClient(outer)
-    resolved = resolve_device("U08000")
+    resolved = resolve_device("U08000", profile="toyopuc:generic")
     value = client.relay_read("P1-L2:N2", resolved)
     assert value == 0x1234
     assert client.last_hops == [(0x12, 0x0002)]
@@ -323,7 +323,7 @@ def test_high_level_relay_read_accepts_pc10_word_device():
 def test_high_level_relay_read_accepts_fr_word_device():
     outer = parse_response(bytes.fromhex("80000a0060120200060300c23412"))
     client = _DummyRelayHighLevelClient(outer)
-    resolved = resolve_device("FR000000")
+    resolved = resolve_device("FR000000", profile="toyopuc:generic")
     value = client.relay_read("P1-L2:N2", resolved)
     assert value == 0x1234
     assert client.last_inner == build_pc10_block_read(resolved.addr32, 2)
@@ -332,7 +332,7 @@ def test_high_level_relay_read_accepts_fr_word_device():
 def test_high_level_relay_write_allows_fr_ram_update():
     outer = parse_response(bytes.fromhex("8000080060120200060100c3"))
     client = _DummyRelayHighLevelClient(outer)
-    resolved = resolve_device("FR000000")
+    resolved = resolve_device("FR000000", profile="toyopuc:generic")
     client.relay_write("P1-L2:N2", resolved, 0x1234)
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_pc10_block_write(resolved.addr32, bytes.fromhex("3412"))
@@ -351,7 +351,7 @@ def test_high_level_relay_read_many_preserves_input_order():
     client = _DummyRelayHighLevelClient(outer)
     values = client.relay_read_many("P1-L2:N2", ["P1-D0000", "P1-D0001"])
     assert values == [0x1234, 0x5678]
-    resolved = resolve_device("P1-D0000")
+    resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
     assert client.inner_calls == [build_ext_word_read(resolved.no, resolved.addr, 2)]
     assert client.last_inner == build_ext_word_read(resolved.no, resolved.addr, 2)
 
@@ -360,7 +360,7 @@ def test_high_level_read_many_ext_word_sparse_uses_ext_multi_read():
     client = _DummyAdvancedBatchDirectClient()
     devices = ["U0000", "U0002"]
     values = client.read_many(devices)
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
 
     assert values == [0x1234, 0x5678]
     # CMD=98 word points carry monitor byte addresses (manual: "byte address N").
@@ -382,7 +382,7 @@ def test_high_level_read_many_program_packed_word_sparse_uses_byte_addresses():
 def test_high_level_read_many_ext_bit_sparse_unpacks_packed_multi_read():
     client = _DummyAdvancedBatchDirectClient()
     devices = [f"EM{i:04X}" for i in range(10)]
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
 
     values = client.read_many(devices)
 
@@ -393,7 +393,7 @@ def test_high_level_read_many_ext_bit_sparse_unpacks_packed_multi_read():
 def test_high_level_read_many_pc10_word_sparse_uses_multi_read():
     client = _DummyAdvancedBatchDirectClient()
     devices = ["U08000", "U08100"]
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
     values = client.read_many(devices)
 
     assert values == [0x1234, 0x5678]
@@ -437,7 +437,7 @@ def test_high_level_write_many_basic_words_batches_sparse_multi_writes():
 def test_high_level_write_many_basic_bytes_uses_multi_write():
     client = _DummyAdvancedBatchDirectClient()
     devices = {"B0000L": 0x12, "B0001H": 0x34}
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
 
     client.write_many(devices)
 
@@ -447,7 +447,7 @@ def test_high_level_write_many_basic_bytes_uses_multi_write():
 def test_high_level_write_many_ext_word_sparse_uses_ext_multi_write():
     client = _DummyAdvancedBatchDirectClient()
     items = {"U0000": 0x1234, "U0002": 0x5678}
-    resolved = [resolve_device(d) for d in items]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in items]
 
     client.write_many(items)
 
@@ -466,7 +466,7 @@ def test_high_level_write_many_program_packed_word_sparse_uses_byte_addresses():
 def test_high_level_write_many_pc10_word_sparse_uses_multi_write():
     client = _DummyAdvancedBatchDirectClient()
     items = {"U08000": 0x1234, "U08100": 0x5678}
-    resolved = [resolve_device(d) for d in items]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in items]
 
     client.write_many(items)
 
@@ -477,7 +477,7 @@ def test_high_level_write_many_pc10_word_sparse_uses_multi_write():
 
 def test_high_level_relay_read_many_ext_bit_sparse_unpacks_packed_multi_read():
     devices = [f"EM{i:04X}" for i in range(10)]
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
     outer = _relay_success_response(0x98, bytes([0b01010101, 0b00000011]))
     client = _DummyRelayHighLevelClient(outer)
     values = client.relay_read_many("P1-L2:N2", devices)
@@ -497,7 +497,7 @@ def test_high_level_relay_read_many_program_packed_word_sparse_uses_byte_address
 
 def test_high_level_relay_read_many_pc10_word_sparse_uses_multi_read():
     devices = ["U08000", "U08100"]
-    resolved = [resolve_device(d) for d in devices]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
     payload = _pc10_multi_word_read_payload([_r.addr32 for _r in resolved])
     outer = _relay_success_response(0xC4, b"\x00\x00\x00\x00\x34\x12\x78\x56")
     client = _DummyRelayHighLevelClient(outer)
@@ -513,14 +513,14 @@ def test_high_level_relay_write_many_batches_ext_word_writes():
     client = _DummyRelayHighLevelClient(outer)
     client.relay_write_many("P1-L2:N2", {"P1-D0000": 0x1234, "P1-D0001": 0x5678})
     assert client.last_hops == [(0x12, 0x0002)]
-    resolved = resolve_device("P1-D0000")
+    resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
     assert client.inner_calls == [build_ext_word_write(resolved.no, resolved.addr, [0x1234, 0x5678])]
     assert client.last_inner == build_ext_word_write(resolved.no, resolved.addr, [0x1234, 0x5678])
 
 
 def test_high_level_relay_write_many_pc10_word_sparse_uses_multi_write():
     items = {"U08000": 0x1234, "U08100": 0x5678}
-    resolved = [resolve_device(d) for d in items]
+    resolved = [resolve_device(d, profile="toyopuc:generic") for d in items]
     payload = _pc10_multi_word_write_payload([(_r.addr32, v) for _r, v in zip(resolved, items.values(), strict=False)])
     outer = _relay_success_response(0xC5, b"")
     client = _DummyRelayHighLevelClient(outer)

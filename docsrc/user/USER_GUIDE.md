@@ -25,7 +25,7 @@ Use one of these two styles:
 ```python
 from toyopuc import ToyopucDeviceClient
 
-with ToyopucDeviceClient("192.168.250.100", 1025) as plc:
+with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as plc:
     word_value = plc.read("P1-D0000")
     print(f"P1-D0000 = {word_value}")
 
@@ -43,7 +43,13 @@ import asyncio
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -> None:
-    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        timeout=3.0,
+        retries=0,
+        plc_profile="toyopuc:plus:extended",
+    )
     async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, "P1-D0100", "F")
         print(f"speed = {speed}")
@@ -71,7 +77,7 @@ asyncio.run(main())
 - `Address`
   decimal or hexadecimal device number
 
-When a profile is in use, basic families `P/K/V/T/C/L/X/Y/M/S/N/R/D` should be written as `P1-*`, `P2-*`, or `P3-*`.
+A canonical profile is required. Basic families `P/K/V/T/C/L/X/Y/M/S/N/R/D` should be written as `P1-*`, `P2-*`, or `P3-*`.
 
 ### Parse, normalize, and format device text
 
@@ -247,7 +253,13 @@ import asyncio
 from toyopuc import ToyopucConnectionOptions, open_and_connect, poll
 
 async def main() -> None:
-    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        timeout=3.0,
+        retries=0,
+        plc_profile="toyopuc:plus:extended",
+    )
     async with await open_and_connect(options) as plc:
         count = 0
         async for snapshot in poll(plc, ["P1-D0100", "P1-D0101:F"], interval=1.0):

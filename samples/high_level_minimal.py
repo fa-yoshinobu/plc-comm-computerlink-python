@@ -43,6 +43,7 @@ def main() -> int:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=3.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile, e.g. toyopuc:plus:extended")
     args = p.parse_args()
 
     with ToyopucDeviceClient(
@@ -52,6 +53,7 @@ def main() -> int:
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.profile,
     ) as plc:
         print("scenario: read one word, write one word, read it back")
         print("before:", hex(plc.read("P1-D0000")))

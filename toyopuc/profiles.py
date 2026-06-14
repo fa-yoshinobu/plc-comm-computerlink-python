@@ -731,7 +731,9 @@ class ToyopucPlcProfiles:
     @classmethod
     def from_name(cls, profile: str | None) -> ToyopucPlcProfile:
         if not profile or not profile.strip():
-            raise ValueError("PLC profile is required. Use an explicit canonical profile name.")
+            raise ValueError(
+                f"PLC profile is required. Use an explicit canonical profile name such as {cls.Generic.name!r}."
+            )
         normalized = profile.strip()
         for p in cls._all():
             if p.name == normalized:
@@ -827,7 +829,7 @@ class ToyopucDeviceCatalog:
         Prefixed rows use ``P1-`` as the representative program prefix.
         """
 
-        profiles = (ToyopucPlcProfiles.from_name(profile),) if profile else ToyopucPlcProfiles._all()
+        profiles = ToyopucPlcProfiles._all() if profile is None else (ToyopucPlcProfiles.from_name(profile),)
         rows: list[ToyopucDeviceMatrixRow] = []
         for plc_profile in profiles:
             for descriptor in plc_profile.areas:
@@ -847,11 +849,12 @@ class ToyopucDeviceCatalog:
         unit: str | None = None,
         packed: bool = False,
     ) -> ToyopucAddressRange:
-        ranges = cls.get_supported_ranges(area, prefixed, profile, unit=unit, packed=packed)
+        plc_profile = ToyopucPlcProfiles.from_name(profile)
+        ranges = cls.get_supported_ranges(area, prefixed, plc_profile.name, unit=unit, packed=packed)
         if len(ranges) == 1:
             return ranges[0]
         raise ValueError(
-            f"Area {area} for profile {ToyopucPlcProfiles.from_name(profile).name!r} has multiple ranges; "
+            f"Area {area} for profile {plc_profile.name!r} has multiple ranges; "
             "use get_supported_ranges() instead."
         )
 

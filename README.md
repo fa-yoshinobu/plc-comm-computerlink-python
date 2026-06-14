@@ -36,7 +36,7 @@ For asyncio code, prefer:
 
 ## Supported PLC profiles
 
-Choose one canonical profile string for your PLC model when you need profile-aware addressing or range checks.
+Choose one explicit canonical profile string for your PLC model. High-level clients and address resolution reject missing or blank PLC profiles.
 
 | Canonical profile | Model | Notes |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ Latest release metadata and downloads are available at <https://pypi.org/project
 ```python
 from toyopuc import ToyopucDeviceClient
 
-with ToyopucDeviceClient("192.168.250.100", 1025) as client:
+with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as client:
     value = client.read("P1-D0000")
     print(f"P1-D0000 = {value}")
 
@@ -85,7 +85,13 @@ import asyncio
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, read_typed, write_typed
 
 async def main() -> None:
-    options = ToyopucConnectionOptions(host="192.168.250.100", port=1025, timeout=3.0, retries=0)
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        timeout=3.0,
+        retries=0,
+        plc_profile="toyopuc:plus:extended",
+    )
     async with await open_and_connect(options) as plc:
         speed = await read_typed(plc, "P1-D0100", "F")
         print(f"speed = {speed}")

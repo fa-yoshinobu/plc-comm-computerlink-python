@@ -195,6 +195,7 @@ def main() -> int:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=3.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile for the target")
     p.add_argument("--seed", type=int, default=1234)
     p.add_argument("--include-pc10-word", action="store_true")
     p.add_argument("--skip-errors", action="store_true")
@@ -273,6 +274,7 @@ def main() -> int:
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.profile,
     ) as plc:
         for name, fn in single_cases:
             try:

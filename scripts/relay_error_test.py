@@ -105,6 +105,7 @@ def main() -> int:
     parser.add_argument("--local-port", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--retries", type=int, default=0)
+    parser.add_argument("--profile", required=True, help="Canonical PLC profile for the target")
     parser.add_argument("--hops", required=True)
     parser.add_argument("--missing-hops", default="")
     parser.add_argument("--broken-hops", default="")
@@ -138,6 +139,7 @@ def main() -> int:
             local_port=args.local_port,
             timeout=args.timeout,
             retries=args.retries,
+            plc_profile=args.profile,
         ) as plc:
             total = 0
             ok = 0

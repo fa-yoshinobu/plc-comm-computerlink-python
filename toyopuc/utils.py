@@ -39,7 +39,8 @@ class ToyopucConnectionOptions:
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size used by the sync client.
         plc_profile: Canonical PLC profile name such as
-            ``"toyopuc:pc10g:pc10"``.
+            ``"toyopuc:pc10g:pc10"``. Required when creating a high-level
+            device client.
         trace_hook: Optional callback invoked for sent and received frames.
     """
 
@@ -55,8 +56,9 @@ class ToyopucConnectionOptions:
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
 
     def __post_init__(self) -> None:
-        if self.plc_profile is None or not self.plc_profile.strip():
-            raise ValueError("plc_profile is required. Use an explicit canonical PLC profile name.")
+        from .profiles import ToyopucPlcProfiles
+
+        object.__setattr__(self, "plc_profile", ToyopucPlcProfiles.from_name(self.plc_profile).name)
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,8 @@ def normalize_address(device: str, *, profile: str | None = None) -> str:
 
     Args:
         device: User-facing device text such as ``"p1-d0100"``.
-        profile: Required canonical addressing profile used by :func:`resolve_device`.
+        profile: Required canonical addressing profile used by
+            :func:`resolve_device`.
 
     Returns:
         Canonical uppercase address text suitable for logs and configuration
@@ -384,7 +387,8 @@ async def open_and_connect(
         retries: Retry count used by the async client.
         retry_delay: Delay between retry attempts, in seconds.
         recv_bufsize: Socket receive buffer size.
-        plc_profile: Required canonical PLC profile name.
+        plc_profile: Canonical PLC profile name required by the high-level
+            device client.
         trace_hook: Optional callback invoked for sent and received frames.
 
     Returns:
@@ -554,9 +558,7 @@ def _parse_address(address: str) -> tuple[str, str, int | None]:
         bit_text = bit_str.strip()
         if len(bit_text) == 1 and bit_text.upper() in "0123456789ABCDEF":
             return base.strip(), "BIT_IN_WORD", int(bit_text, 16)
-        raise ValueError(
-            f"Invalid bit-in-word index {bit_str!r}; use one hex digit 0-F or ':' for dtype."
-        )
+        raise ValueError(f"Invalid bit-in-word index {bit_str!r}; use one hex digit 0-F or ':' for dtype.")
     return address.strip(), "U", None
 
 

@@ -69,6 +69,11 @@ def parse_args() -> argparse.Namespace:
         help="Number of automatic retries on timeout (default 0)",
     )
     p.add_argument(
+        "--profile",
+        required=True,
+        help="Canonical PLC profile, e.g. toyopuc:plus:extended",
+    )
+    p.add_argument(
         "--retry-delay",
         type=float,
         default=0.2,
@@ -103,6 +108,7 @@ def main() -> None:
         timeout=args.timeout,
         retries=args.retries,
         retry_delay=args.retry_delay,
+        plc_profile=args.profile,
     ) as plc:
         print(f"Connected to {args.host}:{args.port} via {args.transport}")
         print("scenario: full synchronous high-level cookbook")

@@ -25,7 +25,7 @@ def resolve_device(device: str, **kwargs):
     ],
 )
 def test_derived_width_accept_cases(device: str) -> None:
-    resolved = resolve_device(device)
+    resolved = resolve_device(device, profile="toyopuc:generic")
     assert resolved.text == device
 
 
@@ -49,12 +49,12 @@ def test_derived_width_accept_cases(device: str) -> None:
 )
 def test_derived_width_reject_cases(device: str) -> None:
     with pytest.raises(ValueError):
-        resolve_device(device)
+        resolve_device(device, profile="toyopuc:generic")
 
 
 def test_gx_gy_keep_explicit_names() -> None:
-    gx = resolve_device("GX000W")
-    gy = resolve_device("GY000W")
+    gx = resolve_device("GX000W", profile="toyopuc:generic")
+    gy = resolve_device("GY000W", profile="toyopuc:generic")
 
     assert gx.area == "GX"
     assert gy.area == "GY"
@@ -64,7 +64,7 @@ def test_gx_gy_keep_explicit_names() -> None:
 
 def test_gxy_is_not_supported_area() -> None:
     with pytest.raises(ValueError):
-        resolve_device("GXY000W")
+        resolve_device("GXY000W", profile="toyopuc:generic")
 
 
 def test_single_letter_area_can_be_followed_by_hex_digit_f() -> None:
@@ -88,9 +88,9 @@ def test_unknown_area_is_rejected_without_fallback() -> None:
 
 
 def test_gm_word_and_byte_address_spaces_are_consistent() -> None:
-    gm_word = resolve_device("GM000W")
-    gm_low = resolve_device("GM000L")
-    gm_high = resolve_device("GM000H")
+    gm_word = resolve_device("GM000W", profile="toyopuc:generic")
+    gm_low = resolve_device("GM000L", profile="toyopuc:generic")
+    gm_high = resolve_device("GM000H", profile="toyopuc:generic")
 
     assert gm_word.scheme == "ext-word"
     assert gm_word.no == 0x07
@@ -121,7 +121,7 @@ def test_gm_word_and_byte_address_spaces_are_consistent() -> None:
 )
 def test_prefix_required_areas_reject_unprefixed(device: str) -> None:
     with pytest.raises(ValueError, match="requires P1-/P2-/P3- prefix"):
-        resolve_device(device)
+        resolve_device(device, profile="toyopuc:generic")
 
 
 @pytest.mark.parametrize(
@@ -143,5 +143,5 @@ def test_prefix_required_areas_reject_unprefixed(device: str) -> None:
     ],
 )
 def test_prefix_required_areas_accept_prefixed(device: str) -> None:
-    resolved = resolve_device(device)
+    resolved = resolve_device(device, profile="toyopuc:generic")
     assert resolved.text == device

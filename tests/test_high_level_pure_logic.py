@@ -31,7 +31,7 @@ def resolve_device(device: str, **kwargs):
 
 
 def _devices(names: list[str]) -> list[ResolvedDevice]:
-    return [resolve_device(name) for name in names]
+    return [resolve_device(name, profile="toyopuc:generic") for name in names]
 
 
 def test_pc10_multi_bit_payload_packs_addresses_and_bit_values() -> None:

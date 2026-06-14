@@ -256,6 +256,7 @@ def main() -> int:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile for the target")
     p.add_argument(
         "--cases",
         default="l1000,m1000,u00000,u08000,eb00000",
@@ -287,6 +288,7 @@ def main() -> int:
             local_port=args.local_port,
             timeout=args.timeout,
             retries=args.retries,
+            plc_profile=args.profile,
         ) as plc:
             for case in selected_cases:
                 total += 1

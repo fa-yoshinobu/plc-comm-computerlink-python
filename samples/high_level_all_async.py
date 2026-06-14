@@ -72,6 +72,11 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="Number of poll snapshots to capture (default 3)",
     )
+    p.add_argument(
+        "--profile",
+        required=True,
+        help="Canonical PLC profile, e.g. toyopuc:plus:extended",
+    )
     return p.parse_args()
 
 
@@ -80,7 +85,7 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-async def demo_open_and_connect(host: str, port: int) -> None:
+async def demo_open_and_connect(host: str, port: int, profile: str) -> None:
     """
     open_and_connect - create an AsyncToyopucDeviceClient and connect.
 
@@ -93,7 +98,7 @@ async def demo_open_and_connect(host: str, port: int) -> None:
     Use case: the simplest way to start an async session without manually
               constructing AsyncToyopucDeviceClient and calling connect().
     """
-    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port)) as plc:
+    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port, plc_profile=profile)) as plc:
         print(f"[open_and_connect] Connected to {host}:{port}")
         val = await plc.read("P1-D0100")
         print(f"[open_and_connect] P1-D0100 = {val}")
@@ -223,10 +228,12 @@ async def run(args: argparse.Namespace) -> None:
     demo_normalize_address()
 
     # 1. open_and_connect shortcut
-    await demo_open_and_connect(args.host, args.port)
+    await demo_open_and_connect(args.host, args.port, args.profile)
 
     # 2-6. connect once, run all remaining demos
-    async with await open_and_connect(ToyopucConnectionOptions(host=args.host, port=args.port)) as plc:
+    async with await open_and_connect(
+        ToyopucConnectionOptions(host=args.host, port=args.port, plc_profile=args.profile)
+    ) as plc:
         await demo_typed_rw(plc)
         await demo_array_reads(plc)
         await demo_bit_in_word(plc)

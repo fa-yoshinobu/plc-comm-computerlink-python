@@ -31,7 +31,7 @@ Do not start with these:
 ```python
 from toyopuc import ToyopucDeviceClient
 
-with ToyopucDeviceClient("192.168.250.100", 1025) as client:
+with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as client:
     value = client.read("P1-D0000")
     print(value)
 ```
@@ -41,10 +41,14 @@ with ToyopucDeviceClient("192.168.250.100", 1025) as client:
 ```python
 from toyopuc import ToyopucConnectionOptions, open_and_connect
 
-options = ToyopucConnectionOptions(host="192.168.250.100", port=1025)
+options = ToyopucConnectionOptions(
+    host="192.168.250.100",
+    port=1025,
+    plc_profile="toyopuc:plus:extended",
+)
 ```
 
-If a profile is in use, basic area families should use the correct `P1-`, `P2-`, or `P3-` prefix.
+The profile is required. Basic area families should use the correct `P1-`, `P2-`, or `P3-` prefix.
 
 ## First Successful Run
 

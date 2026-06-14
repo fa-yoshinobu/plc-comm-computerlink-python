@@ -212,11 +212,11 @@ def test_addressing_options_from_profile_requires_explicit_profile() -> None:
 def test_resolve_upper_bit_pc10_enabled_by_default() -> None:
     # P/V/T/C with index >= 0x1000 should use pc10-bit with Generic options
     for area in ("P", "V", "T", "C"):
-        r = resolve_device(f"P1-{area}1000")
+        r = resolve_device(f"P1-{area}1000", profile="toyopuc:generic")
         # prefixed → program-bit, not pc10-bit (pc10 only for direct access)
         # Use direct notation that hits the upper range — but P/V/T/C are prefixed-only
         # so test via L and M which support both direct and pc10 routing
-    r = resolve_device("P1-L1000")
+    r = resolve_device("P1-L1000", profile="toyopuc:generic")
     # prefixed → program-bit (upper bit pc10 is for direct, not prefixed)
     assert r.scheme == "program-bit"
 
@@ -229,43 +229,43 @@ def test_resolve_l_direct_upper_bit_pc10_generic() -> None:
 
 
 def test_resolve_u_area_pc10_enabled() -> None:
-    r = resolve_device("U08000")
+    r = resolve_device("U08000", profile="toyopuc:generic")
     assert r.scheme == "pc10-word"
 
 
 def test_resolve_u_area_pc10_disabled_falls_through_to_ext_word() -> None:
     opts = ToyopucAddressingOptions(use_upper_u_pc10=False)
-    r = resolve_device("U08000", options=opts)
+    r = resolve_device("U08000", options=opts, profile="toyopuc:generic")
     assert r.scheme == "ext-word"
 
 
 def test_resolve_eb_area_pc10_enabled() -> None:
-    r = resolve_device("EB00000")
+    r = resolve_device("EB00000", profile="toyopuc:generic")
     assert r.scheme == "pc10-word"
 
 
 def test_resolve_eb_area_pc10_disabled_falls_through_to_ext_word() -> None:
     opts = ToyopucAddressingOptions(use_eb_pc10=False)
-    r = resolve_device("EB00000", options=opts)
+    r = resolve_device("EB00000", options=opts, profile="toyopuc:generic")
     assert r.scheme == "ext-word"
 
 
 def test_resolve_eb_extended_no_stops_at_manual_range_when_pc10_disabled() -> None:
-    assert resolve_device("EB20000").scheme == "pc10-word"
+    assert resolve_device("EB20000", profile="toyopuc:generic").scheme == "pc10-word"
 
     opts = ToyopucAddressingOptions(use_eb_pc10=False)
     with pytest.raises(ValueError, match="EB extended-No index out of range"):
-        resolve_device("EB20000", options=opts)
+        resolve_device("EB20000", options=opts, profile="toyopuc:generic")
 
 
 def test_resolve_fr_area_pc10_enabled() -> None:
-    r = resolve_device("FR000000")
+    r = resolve_device("FR000000", profile="toyopuc:generic")
     assert r.scheme == "pc10-word"
 
 
 def test_resolve_fr_area_pc10_disabled_falls_through_to_ext_word() -> None:
     opts = ToyopucAddressingOptions(use_fr_pc10=False)
-    r = resolve_device("FR000000", options=opts)
+    r = resolve_device("FR000000", options=opts, profile="toyopuc:generic")
     assert r.scheme == "ext-word"
 
 

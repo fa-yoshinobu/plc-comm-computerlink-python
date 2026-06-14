@@ -15,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile with FR support")
     p.add_argument("--mode", choices=("read", "write"), default="read")
     p.add_argument("--target", default="FR000000", help="FR word device such as FR000000")
     p.add_argument("--value", type=parse_int_auto, default=0x1234, help="word value for write mode")
@@ -40,6 +41,7 @@ def main() -> int:
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,
+        plc_profile=args.profile,
     ) as plc:
         try:
             if args.mode == "read":

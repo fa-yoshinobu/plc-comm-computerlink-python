@@ -347,15 +347,16 @@ def resolve_device(
 
     Args:
         device: Device address string (e.g. ``"P1-D0100"``, ``"P1-M1000"``).
-        options: Addressing option flags that control PC10 routing. When
-            *None*, the explicit profile's options are used.
+        options: Optional addressing option flags that control PC10 routing.
+            When omitted, the selected profile's options are used.
         profile: Required canonical PLC profile name (e.g.
             ``"toyopuc:plus:standard"``). The address index is validated
             against the profile's supported ranges.
     """
-    normalized_profile = ToyopucPlcProfiles.from_name(profile).name
+    plc_profile = ToyopucPlcProfiles.from_name(profile)
+    normalized_profile = plc_profile.name
     if options is None:
-        options = ToyopucAddressingOptions.from_profile(normalized_profile)
+        options = plc_profile.addressing_options
 
     prefix, area, unit = _infer_unit_and_area(device)
     text = device.strip().upper()
