@@ -17,7 +17,7 @@ def _require_pc10_multi_read_count(count: int) -> None:
         )
 
 
-def _require_pc10_multi_write_payload(payload: bytes) -> None:
+def _require_pc10_multi_write_payload(payload: bytes | bytearray) -> None:
     if len(payload) < 1 or len(payload) > _PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES:
         raise ValueError(
             f"CMD=C5 PC10 multi-write payload must be 1..0x{_PC10_MULTI_WRITE_MAX_PAYLOAD_BYTES:X} "

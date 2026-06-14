@@ -577,6 +577,10 @@ class ToyopucDeviceClient(ToyopucClient):
         self._resolved_device_cache: dict[str, ResolvedDevice] = {}
         self._run_plan_cache: dict[tuple[bool, tuple[ResolvedDevice, ...]], tuple[int, ...]] = {}
 
+    def __enter__(self) -> ToyopucDeviceClient:
+        super().__enter__()
+        return self
+
     def _get_run_plan(self, devices: list[ResolvedDevice], split_pc10: bool) -> tuple[int, ...]:
         key = (split_pc10, tuple(devices))
         plan = self._run_plan_cache.get(key)

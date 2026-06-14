@@ -152,8 +152,8 @@ def main() -> int:
             if args.count != 1:
                 raise SystemExit("--mode word-write currently requires --count 1")
             plc.relay_write_words(args.hops, args.device, args.value)
-            readback = plc.relay_read_words(args.hops, args.device, count=1)
-            readback_word = readback[0] if isinstance(readback, list) else int(readback)
+            word_readback = plc.relay_read_words(args.hops, args.device, count=1)
+            readback_word = word_readback[0] if isinstance(word_readback, list) else int(word_readback)
             print("word write device =", args.device)
             print("word write value =", f"0x{args.value & 0xFFFF:04X}")
             print("word readback =", f"0x{readback_word:04X}")
@@ -177,11 +177,11 @@ def main() -> int:
                 commit=args.commit,
                 wait=args.wait or args.commit,
             )
-            readback = plc.relay_read_fr(args.hops, args.device, count=1)
+            fr_readback = plc.relay_read_fr(args.hops, args.device, count=1)
             print("fr write device =", args.device)
             print("fr write value =", f"0x{args.value & 0xFFFF:04X}")
             print("fr commit =", args.commit)
-            print("fr readback =", f"0x{readback:04X}")
+            print("fr readback =", f"0x{fr_readback:04X}")
             return 0
 
         if args.mode == "fr-commit":
