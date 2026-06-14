@@ -21,18 +21,16 @@ def test_samples_readme_uses_current_paths() -> None:
 def test_user_docs_focus_on_high_level_api_only() -> None:
     readme = _read("README.md")
     index = _read("docsrc/index.md")
-    user_guide = _read("docsrc/user/USER_GUIDE.md")
-    api_ref = _read("docsrc/api/client.md")
+    user_guide = _read("docsrc/user/USAGE_GUIDE.md")
+    api_ref = REPO_ROOT / "docsrc" / "api" / "client.md"
     combined = "\n".join([readme, index, user_guide])
 
     assert "ToyopucDeviceClient" in combined
     assert "open_and_connect" in combined
     assert "ToyopucClient" not in combined
     assert "low-level" not in combined.lower()
-    assert "::: toyopuc.high_level.ToyopucDeviceClient" in api_ref
-    assert "::: toyopuc.async_client.AsyncToyopucDeviceClient" in api_ref
-    assert "::: toyopuc.utils" in api_ref
-    assert "::: toyopuc.client" not in api_ref
+    assert not api_ref.exists()
+    assert ":::" not in combined
 
 
 def test_scripts_readme_uses_current_paths() -> None:
@@ -55,11 +53,12 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
     assert "call scripts\\run_sim_tests.bat" in text
 
 
-def test_release_check_runs_ci_without_local_docs_build() -> None:
+def test_release_check_delegates_to_ci_only() -> None:
     text = _read("release_check.bat")
 
+    assert "[2/2] Running CI" in text
     assert "call run_ci.bat" in text
-    assert "call build_docs.bat" not in text
+    assert text.count("call ") == 1
 
 
 def test_historical_release_notes_use_current_repo_paths() -> None:
@@ -69,4 +68,3 @@ def test_historical_release_notes_use_current_repo_paths() -> None:
         assert "docsrc/RELEASE.md" not in text
         assert "examples/README.md" not in text
         assert "tools/README.md" not in text
-        assert "tools\\build_api_docs.bat" not in text

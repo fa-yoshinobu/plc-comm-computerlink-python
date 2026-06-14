@@ -1,6 +1,6 @@
 """High-level utility helpers for the TOYOPUC client.
 
-These helpers provide the user-facing surface that samples and generated API
+These helpers provide the user-facing surface that samples and maintained
 documentation should point to first. They wrap the lower-level async client
 with typed reads and writes, named snapshots, polling, and explicit
 single-request or chunked contiguous access helpers.

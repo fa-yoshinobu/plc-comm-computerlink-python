@@ -1,6 +1,6 @@
 site_dir: _site
 docs_dir: docsrc
-site_name: Toyopuc Computer Link Python API
+site_name: Toyopuc Computer Link Python
 site_url: https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/
 theme:
   name: material
@@ -9,8 +9,6 @@ theme:
     primary: indigo
 plugins:
   - search
-  - mkdocstrings:
-      default_handler: python
 exclude_docs: |
   internal_docs/**
   maintainer/**
@@ -25,5 +23,3 @@ nav:
   - User Guide compatibility: user/USER_GUIDE.md
   - Latest Communication Verification: user/LATEST_COMMUNICATION_VERIFICATION.md
   - Model Ranges: user/MODEL_RANGES.md
-  - API Reference:
-      - Client: api/client.md

@@ -32,13 +32,11 @@ classifiers = [
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.7",
-    "mkdocstrings[python]>=1.0",
 ]
 dev = [
     "build>=1.2",
     "mkdocs>=1.6",
     "mkdocs-material>=9.7",
-    "mkdocstrings[python]>=1.0",
     "mypy>=1.10",
     "pre-commit>=3.7",
     "pyinstaller>=6.20",
