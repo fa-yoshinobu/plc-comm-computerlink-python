@@ -49,7 +49,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
 Repository = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
-Documentation = "https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/"
+Documentation = "https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/GETTING_STARTED/"
 
 [tool.setuptools.packages.find]
 include = ["toyopuc"]
@@ -87,7 +87,6 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-
 
 
 
