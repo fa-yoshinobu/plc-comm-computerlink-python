@@ -20,7 +20,7 @@ Use this page for your first TOYOPUC Computer Link read and write from Python.
 | PLC network | Your PLC is reachable at `192.168.250.100`. |
 | TCP port | Computer Link TCP examples use `1025`. |
 | UDP port | Computer Link UDP examples use `1035`. |
-| Profile | A canonical profile such as `toyopuc:plus:extended`. |
+| Canonical profile | A profile such as `toyopuc:plus:extended`. |
 
 ## Install
 
@@ -119,6 +119,6 @@ asyncio.run(main())
 | --- | --- |
 | [Usage guide](./USAGE_GUIDE.md) | Common read, write, block, polling, FR, and relay workflows. |
 | [Supported registers](./SUPPORTED_REGISTERS.md) | Device families and address forms. |
-| [Profiles](./PROFILES.md) | Canonical profile strings and profile-specific notes. |
+| [Profiles](./PROFILES.md) | Canonical profiles and profile-specific notes. |
 | [Gotchas](./GOTCHAS.md) | Symptom-driven troubleshooting. |
 | [Samples](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/samples/README.md) | Complete runnable sample commands. |
