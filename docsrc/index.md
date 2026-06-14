@@ -1,10 +1,10 @@
-# Toyopuc Computer Link Python
+# Toyopuc Computerlink Python
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/LICENSE)
 [![Static Analysis: Ruff](https://img.shields.io/badge/Lint-Ruff-black.svg)](https://github.com/astral-sh/ruff)
 
-High-level Python library for JTEKT TOYOPUC Computer Link communication.
+High-level Python library for JTEKT TOYOPUC Computerlink communication.
 
 ## Start here
 

@@ -2,7 +2,7 @@
 
 ## What is here
 
-This directory contains runnable high-level Python examples for TOYOPUC Computer Link.
+This directory contains runnable high-level Python examples for TOYOPUC Computerlink.
 
 | Sample | What it shows |
 | --- | --- |

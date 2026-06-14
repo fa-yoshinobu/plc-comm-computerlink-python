@@ -1,6 +1,6 @@
 # ruff: noqa: E402
 """
-TOYOPUC Computer Link - High-Level Synchronous API Sample
+TOYOPUC Computerlink - High-Level Synchronous API Sample
 =========================================================
 Demonstrates all high-level methods of ToyopucDeviceClient (synchronous):
 read, write, read_many, write_many, read_dword/dwords, read_float32/float32s,
@@ -36,7 +36,7 @@ from toyopuc.errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutErr
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="TOYOPUC Computer Link synchronous high-level API sample",
+        description="TOYOPUC Computerlink synchronous high-level API sample",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
         "--port",
         type=int,
         default=1025,
-        help="Computer Link TCP port (default 1025)",
+        help="Computerlink TCP port (default 1025)",
     )
     p.add_argument(
         "--transport",
@@ -97,7 +97,7 @@ def main() -> None:
 
     # ToyopucDeviceClient constructor options:
     #   host        - TOYOPUC PLC IP / hostname
-    #   port        - Computer Link port (set in TOYOPUC network parameters;
+    #   port        - Computerlink port (set in TOYOPUC network parameters;
     #                 default is 1025)
     #   transport   - "tcp" (default) or "udp"
     #   timeout     - socket timeout in seconds

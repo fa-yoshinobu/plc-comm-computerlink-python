@@ -3,9 +3,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# TOYOPUC Computer Link for Python
+# TOYOPUC Computerlink for Python
 
-Python library for TOYOPUC Computer Link PLC communication over TCP or UDP.
+Python library for TOYOPUC Computerlink PLC communication over TCP or UDP.
 
 ## Supported PLC profiles
 

@@ -1,6 +1,6 @@
 site_dir: _site
 docs_dir: docsrc
-site_name: Toyopuc Computer Link Python
+site_name: Toyopuc Computerlink Python
 site_url: https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/
 theme:
   name: material

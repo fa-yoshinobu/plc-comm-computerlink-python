@@ -2,7 +2,7 @@
 
 ## Start here
 
-Use this page for your first TOYOPUC Computer Link read and write from Python.
+Use this page for your first TOYOPUC Computerlink read and write from Python.
 
 | Step | What you do |
 | --- | --- |
@@ -18,8 +18,8 @@ Use this page for your first TOYOPUC Computer Link read and write from Python.
 | --- | --- |
 | Python | Python 3.10 or later. |
 | PLC network | Your PLC is reachable at `192.168.250.100`. |
-| TCP port | Computer Link TCP examples use `1025`. |
-| UDP port | Computer Link UDP examples use `1035`. |
+| TCP port | Computerlink TCP examples use `1025`. |
+| UDP port | Computerlink UDP examples use `1035`. |
 | Canonical profile | A profile such as `toyopuc:plus:extended`. |
 
 ## Install

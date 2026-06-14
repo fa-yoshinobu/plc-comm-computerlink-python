@@ -264,7 +264,7 @@ def main() -> int:
             log(f"LAST_RX {plc.last_rx.hex(' ').upper()}")
             if len(plc.last_rx) < 5:
                 log(
-                    "LAST_RX_NOTE short response: not a valid Computer Link frame "
+                    "LAST_RX_NOTE short response: not a valid Computerlink frame "
                     "(expected at least 5 bytes: FT RC LL LH CMD)"
                 )
         return 1

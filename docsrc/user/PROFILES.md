@@ -6,7 +6,7 @@ Canonical profile names are part of the public configuration contract. The libra
 
 | Canonical profile | Hardware | Profile-specific cautions |
 | --- | --- | --- |
-| `toyopuc:generic` | Any TOYOPUC Computer Link | Broad range set; prefer a hardware-specific profile when the model is known. |
+| `toyopuc:generic` | Any TOYOPUC Computerlink | Broad range set; prefer a hardware-specific profile when the model is known. |
 | `toyopuc:plus:standard` | TOYOPUC-Plus | U, EB, FR, GM, GX, and GY are not in the standard range. |
 | `toyopuc:plus:extended` | TOYOPUC-Plus | Recommended for first examples; U, GM, GX, and GY are available. |
 | `toyopuc:nano-10gx:native` | Nano 10GX | Native addressing; relay hops are still explicit. |

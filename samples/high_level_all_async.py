@@ -1,6 +1,6 @@
 # ruff: noqa: E402
 """
-TOYOPUC Computer Link - High-Level Asynchronous API Sample
+TOYOPUC Computerlink - High-Level Asynchronous API Sample
 ==========================================================
 Demonstrates all high-level *async* utility helpers shipped with the
 toyopuc package: ToyopucConnectionOptions, open_and_connect,
@@ -50,7 +50,7 @@ from toyopuc.errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutErr
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="TOYOPUC Computer Link asynchronous high-level API sample",
+        description="TOYOPUC Computerlink asynchronous high-level API sample",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         "--port",
         type=int,
         default=1025,
-        help="Computer Link TCP port (default 1025)",
+        help="Computerlink TCP port (default 1025)",
     )
     p.add_argument(
         "--poll-count",
@@ -94,7 +94,7 @@ async def demo_open_and_connect(host: str, port: int, profile: str) -> None:
 
     Parameters:
         host  - TOYOPUC PLC IP / hostname
-        port  - Computer Link port (default 1025 inside open_and_connect)
+        port  - Computerlink port (default 1025 inside open_and_connect)
 
     Returns a connected AsyncToyopucDeviceClient used as async context manager.
 
@@ -147,7 +147,7 @@ async def demo_array_reads(plc) -> None:
     `*_chunked` is the explicit opt-in surface for large multi-request reads.
 
     Use case: reading a block of 10 consecutive data registers in one
-              Computer Link request for a periodic data logger.
+              Computerlink request for a periodic data logger.
     """
     words = await read_words_single_request(plc, "P1-D0000", 10)
     print(f"[read_words_single_request]  P1-D0000-D0009 = {words}")
