@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Async helper wrappers now use per-client dedicated workers instead of the shared default executor.
 - Transport and high-level layers cache relay hops, resolved devices, and compiled run plans to reduce repeated parsing and dispatch overhead.
 - TCP receive and trace hot paths now allocate less during repeated polling.
-- `run_ci.bat` now lint-checks `toyopuc/tests/scripts/samples`, compile-checks all `scripts/` and `samples/` entry points, and runs simulator-backed smoke tests through `scripts/run_sim_tests.bat`.
+- `run_ci.bat` now lint-checks `toyopuc/tests/scripts/samples`, compile-checks all `scripts/` and `samples/` entry points, runs the pytest suite, and builds the CLI executable without per-scenario batch wrappers.
 - Added `release_check.bat` to run CI and docs generation as one pre-release entry point.
 - Added file-level regression tests that keep `samples/`, `scripts/`, and historical release templates aligned with the current repository layout.
 - Documentation now consistently uses the current `scripts/` and `samples/` directories and points open-item references at `TODO.md`.
