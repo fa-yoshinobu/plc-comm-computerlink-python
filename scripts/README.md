@@ -1,5 +1,5 @@
 
-[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/GETTING_STARTED/)
 
 Use this file as a short index for the `scripts/` directory.
 
