@@ -2,9 +2,9 @@
 
 Related documents:
 
-- [../README.md](../README.md)
+- [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [../user/MODEL_RANGES.md](../user/MODEL_RANGES.md)
+- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 - [RELEASE_PROCESS.md](RELEASE_PROCESS.md)
 
@@ -105,10 +105,10 @@ Verified feature groups:
 
 ### Included Documents
 
-- [../README.md](../README.md)
+- [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
-- [MODEL_RANGES.md](MODEL_RANGES.md)
+- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
 - [TODO.md](../../TODO.md)
 - [RELEASE_PROCESS.md](RELEASE_PROCESS.md)
 - [../../samples/README.md](../../samples/README.md)
@@ -209,7 +209,7 @@ python samples/relay_basic.py --mode word-read --device P1-D0000
 
 ### Related Documents
 
-- [VER_1.0.1_FIX_NOTES.md](VER_1.0.1_FIX_NOTES.md)
+- [VER_1.0.1_FIX_NOTES.md](../validation/incidents/VER_1.0.1_FIX_NOTES.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 

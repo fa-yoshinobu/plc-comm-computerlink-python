@@ -2,9 +2,9 @@
 
 Related documents:
 
-- [../README.md](../README.md)
+- [README.md](../../README.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
-- [../user/MODEL_RANGES.md](../user/MODEL_RANGES.md)
+- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
 - [../../scripts/README.md](../../scripts/README.md)
 - [TODO.md](../../TODO.md)
 
@@ -23,7 +23,7 @@ This document covers:
 - batch files under `scripts/`
 
 Protocol details and address tables are kept in [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md).
-Model-specific writable ranges are kept in [../user/MODEL_RANGES.md](../user/MODEL_RANGES.md).
+Model-specific writable ranges are kept in [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md).
 
 Remaining open items are tracked in [TODO.md](../../TODO.md).
 

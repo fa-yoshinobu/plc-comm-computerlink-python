@@ -2,9 +2,9 @@
 
 Related documents:
 
-- [../README.md](../README.md)
+- [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [../user/MODEL_RANGES.md](../user/MODEL_RANGES.md)
+- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
 - [../../scripts/README.md](../../scripts/README.md)
 
 This document is a working protocol summary for the 2ET Ethernet module.
