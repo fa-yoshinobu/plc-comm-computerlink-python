@@ -33,7 +33,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest
+          python -m pip install -e ".[dev]"
+
+      - name: Run Ruff lint
+        run: python -m ruff check toyopuc tests scripts samples
+
+      - name: Run Ruff format check
+        run: python -m ruff format --check toyopuc tests scripts samples
+
+      - name: Run mypy
+        run: python -m mypy toyopuc
 
       - name: Run tests
         run: python -m pytest -q

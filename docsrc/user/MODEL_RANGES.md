@@ -28,7 +28,7 @@ These ranges are based primarily on `scripts/exhaustive_writable_scan.py`.
 Source command:
 
 ```bash
-python -m tools.exhaustive_writable_scan --host <HOST> --port <PORT> --protocol tcp --targets all --log exhaustive.log
+python scripts\exhaustive_writable_scan.py --host <HOST> --port <PORT> --protocol tcp --targets all --log exhaustive.log
 ```
 
 Evidence:
@@ -184,23 +184,10 @@ Does not exist on this model:
 
 ## Nano 10GX (TUC-1157)
 
-Source commands:
-
-```bash
-scripts\run_quick_test.bat 192.168.250.100 1025 tcp 4 5 0
-scripts\run_full_test.bat 192.168.250.100 1025 tcp 4 5 0
-python -m scripts.whl_addressing_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0 --log whl_nano10gx_tcp.log
-python -m scripts.high_level_api_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0 --log high_level_nano10gx_tcp.log
-python -m scripts.clock_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0
-python -m scripts.cpu_status_test --host 192.168.250.100 --port 1025 --protocol tcp --timeout 5 --retries 0
-scripts\run_full_test.bat 192.168.250.100 1035 udp 4 5 2 12000
-python -m scripts.whl_addressing_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log whl_nano10gx.log
-python -m scripts.high_level_api_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --skip-errors --log high_level_nano10gx.log
-python -m scripts.clock_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2
-python -m scripts.clock_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2 --set "2026-03-09 20:00:10"
-python -m scripts.cpu_status_test --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --timeout 5 --retries 2
-scripts\run_device_range_scan.bat 192.168.250.100 1035 udp 12000 16 32
-```
+Evidence source: historical hardware validation. The one-off batch wrappers
+used during bring-up have been removed; current validation should use
+repository-level CI/release gates plus explicit Python helpers only when a new
+field issue needs investigation.
 
 Evidence:
 
@@ -296,21 +283,10 @@ Upper prefixed ranges (`1000` series) are not implemented in either PC3 mode or 
 
 ## PC10G-CPU (TCC-6353)
 
-Source commands (UDP unless noted):
-
-```text
-scripts\run_device_full_scan.bat 192.168.250.100 1035 udp 12000 5 2 512 device_full
-scripts\run_device_read_scan.bat 192.168.250.100 1035 udp 12000 5 2 S,N,R,D,P,K,V,T,C,L,X,Y,M,EP,EX,GX,GY,GM,U,EB,FR 512 device_read.log
-scripts\run_fr_read_scan.bat 192.168.250.100 1035 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0 fr_read.log
-scripts\run_fr_write_scan.bat 192.168.250.100 1035 udp 12000 5 2 0x200 64 0x000000 0x1FFFFF 0xA500 fr_write.log
-scripts\run_program_no_probe.bat 192.168.250.100 1035 udp 12000 5 2 ext00,gx07,p1,p2,p3 0x00,0x01,0x02,0x03,0x07 program_no_probe.log
-scripts\run_c4c5_range_probe.bat 192.168.250.100 1035 udp 12000 5 2 l1000,m1000,u00000,u08000,eb00000 c4c5_range.log
-scripts\run_sim_tests.bat 192.168.250.100 1035 udp 12000 5 2
-python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --ext-multi-test --skip-errors --log auto_ext_multi.log
-python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --boundary-test --skip-errors --log auto_boundary.log
-python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --max-block-test --pc10-block-words 0x200 --skip-errors --log auto_block.log
-python -m tools.auto_rw_test --host 192.168.250.100 --port 1025 --protocol tcp --count 4 --pc10g-full --include-p123 --skip-errors --log auto_pc10g_p123.log
-```
+Evidence source: historical hardware validation. The one-off batch wrappers
+used during bring-up have been removed; current validation should use
+repository-level CI/release gates plus explicit Python helpers only when a new
+field issue needs investigation.
 
 Evidence:
 
@@ -397,8 +373,8 @@ Note: Prefixed addresses starting at `1000` (`P1-M1000` etc.) are valid on this 
 
 ### Notes
 
-- `scripts\run_device_full_scan.bat` + `scripts\run_device_read_scan.bat` cover the full scan in less than a minute when using 512-word chunks; the combined output is stored in `device_full*` / `device_read.log`.
-- `scripts\run_device_full_scan.bat` already chains the FR scan and the prefixed program-number probe, so re-running that single batch file is enough for future regressions.
+- The historical full scan and read scan covered the full range in less than a minute when using 512-word chunks.
+- Future regressions should use explicit Python helpers only when a new field issue needs investigation.
 - `B` area is not implemented on the tested PC10G unit, so block/byte tests mark `B0000-B1FFF` as `SKIP (unsupported)`.
 - PC10 multi (`CMD=C4/C5`) is still required for `L1000+`, `M1000+`, `U`, and `EB`; direct basic bit/word commands stay on `CMD=20/21` or `CMD=94/95`.
 - EB access uses Ex No. `0x10-0x17` consistently; the helper rejects anything higher to avoid undefined ranges.

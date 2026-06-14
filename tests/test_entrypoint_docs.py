@@ -36,8 +36,9 @@ def test_user_docs_focus_on_high_level_api_only() -> None:
 def test_scripts_readme_uses_current_paths() -> None:
     text = _read("scripts/README.md")
 
-    assert "Use this file as a short index for the `scripts/` directory." in text
-    assert "scripts/run_sim_tests.bat" in text
+    assert "This directory contains Python helper programs only." in text
+    assert "scripts/run_" not in text
+    assert "run_sim_tests.bat" not in text
     assert "scripts/sim_server.py" in text
     assert "tools/" not in text
     assert "tools\\" not in text
@@ -50,7 +51,7 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
     assert "python -m ruff format --check toyopuc tests scripts samples" in text
     assert "python -m mypy toyopuc" in text
     assert "for %%F in (scripts\\*.py samples\\*.py)" in text
-    assert "call scripts\\run_sim_tests.bat" in text
+    assert "run_sim_tests.bat" not in text
 
 
 def test_release_check_delegates_to_ci_only() -> None:
