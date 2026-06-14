@@ -122,5 +122,3 @@ asyncio.run(main())
 | [Profiles](./PROFILES.md) | Canonical profile strings and profile-specific notes. |
 | [Gotchas](./GOTCHAS.md) | Symptom-driven troubleshooting. |
 | [Samples](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/samples/README.md) | Complete runnable sample commands. |
-
-<!-- docs-site dispatch verification: 2026-06-14 -->
