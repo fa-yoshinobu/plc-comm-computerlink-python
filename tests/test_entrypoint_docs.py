@@ -20,10 +20,9 @@ def test_samples_readme_uses_current_paths() -> None:
 
 def test_user_docs_focus_on_high_level_api_only() -> None:
     readme = _read("README.md")
-    index = _read("docsrc/index.md")
     user_guide = _read("docsrc/user/USAGE_GUIDE.md")
     api_ref = REPO_ROOT / "docsrc" / "api" / "client.md"
-    combined = "\n".join([readme, index, user_guide])
+    combined = "\n".join([readme, user_guide])
 
     assert "ToyopucDeviceClient" in combined
     assert "open_and_connect" in combined
