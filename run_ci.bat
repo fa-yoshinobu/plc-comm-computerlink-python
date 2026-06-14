@@ -50,12 +50,12 @@ echo [6/7] Running simulator smoke tests...
 set "SIM_PID="
 set "SIM_PID_FILE=%TEMP%\\toyopuc_computerlink_sim.pid"
 if exist "%SIM_PID_FILE%" del /q "%SIM_PID_FILE%"
-powershell -NoProfile -Command "$p = Start-Process python -ArgumentList 'scripts\\sim_server.py','--host','%SIM_HOST%','--port','%SIM_PORT%' -PassThru -WindowStyle Hidden; [System.IO.File]::WriteAllText('%SIM_PID_FILE%', $p.Id.ToString())"
+powershell -NoProfile -Command "$p = Start-Process python -WorkingDirectory '%CD%' -ArgumentList 'scripts\\sim_server.py','--host','%SIM_HOST%','--port','%SIM_PORT%' -PassThru -WindowStyle Hidden; [System.IO.File]::WriteAllText('%SIM_PID_FILE%', $p.Id.ToString())"
 if exist "%SIM_PID_FILE%" (
     set /p SIM_PID=<"%SIM_PID_FILE%"
     del /q "%SIM_PID_FILE%"
 )
-timeout /t 1 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 1"
 call scripts\run_sim_tests.bat %SIM_HOST% %SIM_PORT% tcp
 set "SIM_RC=%errorlevel%"
 if defined SIM_PID powershell -NoProfile -Command "Stop-Process -Id %SIM_PID% -ErrorAction SilentlyContinue"

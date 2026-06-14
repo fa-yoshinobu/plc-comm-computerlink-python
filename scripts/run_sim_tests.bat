@@ -13,6 +13,9 @@ if "%PORT%"=="" set PORT=15000
 set PROTOCOL=%3
 if "%PROTOCOL%"=="" set PROTOCOL=tcp
 
+set PROFILE=%4
+if "%PROFILE%"=="" set PROFILE=toyopuc:plus:extended
+
 set LOGDIR=logs\sim_tests
 
 pushd "%ROOT_DIR%" >nul
@@ -22,16 +25,17 @@ if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 echo Host      : %HOST%
 echo Port      : %PORT%
 echo Protocol  : %PROTOCOL%
+echo Profile   : %PROFILE%
 echo Log Dir   : %LOGDIR%
 echo.
 
 echo [1/4] High-level API
-python "%SCRIPT_DIR%high_level_api_test.py" --host %HOST% --port %PORT% --protocol %PROTOCOL% --skip-errors --log "%LOGDIR%\high_level_api.log"
+python "%SCRIPT_DIR%high_level_api_test.py" --host %HOST% --port %PORT% --protocol %PROTOCOL% --profile %PROFILE% --skip-errors --log "%LOGDIR%\high_level_api.log"
 if errorlevel 1 goto :fail
 echo.
 
 echo [2/4] W/H/L addressing
-python "%SCRIPT_DIR%whl_addressing_test.py" --host %HOST% --port %PORT% --protocol %PROTOCOL% --skip-errors --log "%LOGDIR%\whl_addressing.log"
+python "%SCRIPT_DIR%whl_addressing_test.py" --host %HOST% --port %PORT% --protocol %PROTOCOL% --profile %PROFILE% --skip-errors --log "%LOGDIR%\whl_addressing.log"
 if errorlevel 1 goto :fail
 echo.
 

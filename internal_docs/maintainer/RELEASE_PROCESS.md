@@ -14,7 +14,7 @@ Naming used by this project:
 
 - GitHub repository: `plc-comm-computerlink-python`
 - GitHub URL: `https://github.com/fa-yoshinobu/plc-comm-computerlink-python`
-- GitHub Pages: `https://fa-yoshinobu.github.io/plc-comm-computerlink-python/`
+- Docs site: `https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/`
 - package name: `toyopuc-computerlink`
 - import name: `toyopuc`
 
@@ -161,8 +161,8 @@ release_check.bat
 
 This runs:
 
-1. `run_ci.bat`
-2. `build_docs.bat`
+1. PyPI registry duplicate check
+2. `run_ci.bat`
 
 Build the package locally before publishing.
 
@@ -176,13 +176,6 @@ If using Twine:
 python -m twine check dist/*
 ```
 
-If generating API docs:
-
-```bash
-pip install .[docs]
-scripts\\build_api_docs.bat
-```
-
 Current status:
 
 - `release_check.bat`: completed for `toyopuc-computerlink` `0.1.9`
@@ -193,11 +186,6 @@ Recommended release order:
 
 1. `python -m build`
 2. `python -m twine check dist/*`
-3. `pip install -e .[docs]`
-4. `build_docs.bat`
-
-Treat `build_docs.bat` as part of the normal release flow when docstrings or
-public API have changed.
 
 ## 10. Final Git Check
 

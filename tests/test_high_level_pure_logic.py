@@ -19,6 +19,8 @@ from toyopuc.high_level import (
     _pc10_block,
     _pc10_word_segment_length,
     _raise_generic_fr_write_error,
+)
+from toyopuc.high_level import (
     resolve_device as _resolve_device,
 )
 

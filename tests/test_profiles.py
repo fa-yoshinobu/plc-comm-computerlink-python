@@ -16,6 +16,7 @@ def resolve_device(device: str, **kwargs):
     kwargs.setdefault("profile", GENERIC_PROFILE)
     return _resolve_device(device, **kwargs)
 
+
 # ---------------------------------------------------------------------------
 # Profile catalog
 # ---------------------------------------------------------------------------

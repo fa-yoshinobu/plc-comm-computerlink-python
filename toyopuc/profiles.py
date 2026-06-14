@@ -854,8 +854,7 @@ class ToyopucDeviceCatalog:
         if len(ranges) == 1:
             return ranges[0]
         raise ValueError(
-            f"Area {area} for profile {plc_profile.name!r} has multiple ranges; "
-            "use get_supported_ranges() instead."
+            f"Area {area} for profile {plc_profile.name!r} has multiple ranges; use get_supported_ranges() instead."
         )
 
     @classmethod

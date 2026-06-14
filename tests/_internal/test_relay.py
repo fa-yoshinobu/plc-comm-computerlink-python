@@ -5,6 +5,8 @@ from toyopuc import (
     ToyopucDeviceClient,
     encode_word_address,
     parse_address,
+)
+from toyopuc import (
     resolve_device as _resolve_device,
 )
 from toyopuc.client import _extract_relay_nak_error_code

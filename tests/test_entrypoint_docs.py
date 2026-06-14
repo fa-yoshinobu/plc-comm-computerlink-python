@@ -55,11 +55,11 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
     assert "call scripts\\run_sim_tests.bat" in text
 
 
-def test_release_check_runs_ci_then_docs() -> None:
+def test_release_check_runs_ci_without_local_docs_build() -> None:
     text = _read("release_check.bat")
 
     assert "call run_ci.bat" in text
-    assert "call build_docs.bat" in text
+    assert "call build_docs.bat" not in text
 
 
 def test_historical_release_notes_use_current_repo_paths() -> None:

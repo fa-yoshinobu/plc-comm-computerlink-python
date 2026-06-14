@@ -8,8 +8,10 @@ write_dword/float32, and FR file register access.
 
 Usage
 -----
-    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
-    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1035 --transport udp --profile toyopuc:plus:extended
+    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025
+        --profile toyopuc:plus:extended
+    python samples/high_level_all_sync.py --host 192.168.250.100 --port 1035
+        --transport udp --profile toyopuc:plus:extended
 
 Example ports: 1025 TCP / 1035 UDP
 """

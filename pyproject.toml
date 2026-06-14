@@ -51,7 +51,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
 Repository = "https://github.com/fa-yoshinobu/plc-comm-computerlink-python"
-Documentation = "https://fa-yoshinobu.github.io/plc-comm-computerlink-python/"
+Documentation = "https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/"
 
 [tool.setuptools.packages.find]
 include = ["toyopuc"]

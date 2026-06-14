@@ -70,7 +70,7 @@ def _write_many(plc: ToyopucDeviceClient, hops: str, items: dict[str, int]) -> N
 def _single_bit_case(plc: ToyopucDeviceClient, hops: str, addr: str, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
-    scheme = resolve_device(addr).scheme
+    scheme = resolve_device(addr, profile=plc.plc_profile).scheme
     for value in (0, 1):
         _write(plc, hops, addr, value)
         read_back = 1 if _read(plc, hops, addr) else 0
@@ -86,7 +86,7 @@ def _single_bit_case(plc: ToyopucDeviceClient, hops: str, addr: str, log_f) -> t
 def _single_word_case(plc: ToyopucDeviceClient, hops: str, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
-    scheme = resolve_device(addr).scheme
+    scheme = resolve_device(addr, profile=plc.plc_profile).scheme
     values = [rng.randint(0, 0xFFFF)]
     values.append(values[0] ^ 0xFFFF)
     for value in values:
@@ -104,7 +104,7 @@ def _single_word_case(plc: ToyopucDeviceClient, hops: str, addr: str, rng: rando
 def _single_byte_case(plc: ToyopucDeviceClient, hops: str, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
-    scheme = resolve_device(addr).scheme
+    scheme = resolve_device(addr, profile=plc.plc_profile).scheme
     values = [rng.randint(0, 0xFF), rng.randint(0, 0xFF)]
     for value in values:
         _write(plc, hops, addr, value)
@@ -121,7 +121,7 @@ def _single_byte_case(plc: ToyopucDeviceClient, hops: str, addr: str, rng: rando
 def _sequence_case(
     plc: ToyopucDeviceClient, hops: str, base_addr: str, values: Sequence[int], log_f
 ) -> tuple[int, int]:
-    scheme = resolve_device(base_addr).scheme
+    scheme = resolve_device(base_addr, profile=plc.plc_profile).scheme
     _write(plc, hops, base_addr, list(values))
     read_back = list(_read(plc, hops, base_addr, count=len(values)))
     line = f"{base_addr} [{scheme}] write={list(map(_format_value, values))} read={list(map(_format_value, read_back))}"

@@ -1,5 +1,5 @@
 
-[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://fa-yoshinobu.github.io/scripts/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/)
 
 Use this file as a short index for the `scripts/` directory.
 
@@ -85,8 +85,6 @@ Related documents:
   Runs full + mixed + block + boundary + recovery write/read + last-writable probe in one batch.
 - `scripts/run_sim_tests.bat`
   Runs a small simulator-oriented smoke test set against `scripts/sim_server.py`.
-- `scripts/build_api_docs.bat`
-  Generates API HTML documentation with `pdoc` into `docsrc/api`.
 - `scripts/sim_server.py`
   Local simulator for protocol testing without hardware.
 

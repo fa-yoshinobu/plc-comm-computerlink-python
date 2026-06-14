@@ -48,10 +48,10 @@ def main() -> int:
         epilog=(
             "Examples:\n"
             "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
-            '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible '
+            "--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible "
             '--hops "P1-L2:N2" --mode cpu-status\n'
             "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
-            '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible '
+            "--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible "
             '--hops "P1-L2:N2,P1-L2:N4" '
             "--mode word-read --device P1-D0000 --count 4\n"
             "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "

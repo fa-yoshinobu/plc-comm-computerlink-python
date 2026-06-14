@@ -37,7 +37,7 @@ def _report_case_error(name: str, exc: Exception, log_f) -> tuple[int, int]:
 def _single_word_case(plc: ToyopucDeviceClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
-    scheme = resolve_device(addr).scheme
+    scheme = resolve_device(addr, profile=plc.plc_profile).scheme
     values = [rng.randint(0, 0xFFFF)]
     values.append(values[0] ^ 0xFFFF)
     for value in values:
@@ -55,7 +55,7 @@ def _single_word_case(plc: ToyopucDeviceClient, addr: str, rng: random.Random, l
 def _single_byte_case(plc: ToyopucDeviceClient, addr: str, rng: random.Random, log_f) -> tuple[int, int]:
     ok = 0
     total = 0
-    scheme = resolve_device(addr).scheme
+    scheme = resolve_device(addr, profile=plc.plc_profile).scheme
     values = [rng.randint(0, 0xFF), rng.randint(0, 0xFF)]
     for value in values:
         plc.write(addr, value)
@@ -157,11 +157,11 @@ def main() -> int:
         ("W/H/L word/profile-bound P1", lambda plc: _single_word_case(plc, "P1-M010W", rng, log_f)),
         (
             "W/H/L byte/profile-bound P1 low",
-            lambda plc: _single_byte_case(plc, "P1-X0010L", rng, log_f),
+            lambda plc: _single_byte_case(plc, "P1-X010L", rng, log_f),
         ),
         (
             "W/H/L byte/profile-bound P1 high",
-            lambda plc: _single_byte_case(plc, "P1-X0010H", rng, log_f),
+            lambda plc: _single_byte_case(plc, "P1-X010H", rng, log_f),
         ),
         (
             "W/H/L word/profile-bound P2",
@@ -169,32 +169,32 @@ def main() -> int:
         ),
         (
             "W/H/L byte/profile-bound P2 low",
-            lambda plc: _single_byte_case(plc, "P2-X0010L", rng, log_f),
+            lambda plc: _single_byte_case(plc, "P2-X010L", rng, log_f),
         ),
         (
             "W/H/L byte/profile-bound P2 high",
-            lambda plc: _single_byte_case(plc, "P2-X0010H", rng, log_f),
+            lambda plc: _single_byte_case(plc, "P2-X010H", rng, log_f),
         ),
         (
             "W/H/L word/extended",
-            lambda plc: _single_word_case(plc, "EX0010W", rng, log_f),
+            lambda plc: _single_word_case(plc, "EX010W", rng, log_f),
         ),
         (
             "W/H/L byte/extended low",
-            lambda plc: _single_byte_case(plc, "EX0010L", rng, log_f),
+            lambda plc: _single_byte_case(plc, "EX010L", rng, log_f),
         ),
         (
             "W/H/L byte/extended high",
-            lambda plc: _single_byte_case(plc, "EX0010H", rng, log_f),
+            lambda plc: _single_byte_case(plc, "EX010H", rng, log_f),
         ),
-        ("W/H/L word/gx", lambda plc: _single_word_case(plc, "GX0010W", rng, log_f)),
+        ("W/H/L word/gx", lambda plc: _single_word_case(plc, "GX010W", rng, log_f)),
         (
             "W/H/L byte/gx low",
-            lambda plc: _single_byte_case(plc, "GX0010L", rng, log_f),
+            lambda plc: _single_byte_case(plc, "GX010L", rng, log_f),
         ),
         (
             "W/H/L byte/gx high",
-            lambda plc: _single_byte_case(plc, "GX0010H", rng, log_f),
+            lambda plc: _single_byte_case(plc, "GX010H", rng, log_f),
         ),
         (
             "W/H/L word-byte relation profile-bound P1",
@@ -206,7 +206,7 @@ def main() -> int:
         ),
         (
             "W/H/L word-byte relation extended",
-            lambda plc: _paired_word_byte_case(plc, "EX0010W", "EX0010L", "EX0010H", rng, log_f),
+            lambda plc: _paired_word_byte_case(plc, "EX010W", "EX010L", "EX010H", rng, log_f),
         ),
         (
             "W/H/L byte->bits profile-bound P1 low",
@@ -226,19 +226,19 @@ def main() -> int:
         ),
         (
             "W/H/L byte->bits extended low",
-            lambda plc: _byte_to_bits_case(plc, "EX0010L", rng, log_f),
+            lambda plc: _byte_to_bits_case(plc, "EX010L", rng, log_f),
         ),
         (
             "W/H/L byte->bits extended high",
-            lambda plc: _byte_to_bits_case(plc, "EX0010H", rng, log_f),
+            lambda plc: _byte_to_bits_case(plc, "EX010H", rng, log_f),
         ),
         (
             "W/H/L byte->bits gx low",
-            lambda plc: _byte_to_bits_case(plc, "GX0010L", rng, log_f),
+            lambda plc: _byte_to_bits_case(plc, "GX010L", rng, log_f),
         ),
         (
             "W/H/L byte->bits gx high",
-            lambda plc: _byte_to_bits_case(plc, "GX0010H", rng, log_f),
+            lambda plc: _byte_to_bits_case(plc, "GX010H", rng, log_f),
         ),
     ]
 
