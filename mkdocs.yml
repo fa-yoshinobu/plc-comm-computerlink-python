@@ -14,7 +14,6 @@ exclude_docs: |
   maintainer/**
   validation/**
 nav:
-  - Overview: index.md
   - Getting Started: user/GETTING_STARTED.md
   - Usage Guide: user/USAGE_GUIDE.md
   - Supported PLC Registers: user/SUPPORTED_REGISTERS.md
