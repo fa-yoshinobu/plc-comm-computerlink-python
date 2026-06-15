@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, TypeVar
+from typing import Protocol
 
-T = TypeVar("T")
+from ._shared import _require
 
 
 class _BatchDevice(Protocol):
@@ -27,12 +27,6 @@ class _BatchDevice(Protocol):
 
     @property
     def addr32(self) -> int | None: ...
-
-
-def _require(value: T | None, label: str) -> T:
-    if value is None:
-        raise ValueError(f"Resolved device missing {label}")
-    return value
 
 
 _SCHEME_BATCH_KEY: dict[str, str] = {

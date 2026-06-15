@@ -2,22 +2,26 @@ from dataclasses import replace
 
 import pytest
 
-from toyopuc.errors import ToyopucProtocolError
-from toyopuc.high_level import (
-    ResolvedDevice,
+from toyopuc._batching import (
     _batch_key,
     _batch_run_length,
-    _build_pc10_multi_word_read_payload,
     _contains_packed_pc10_word_device,
     _is_consecutive_basic,
     _is_consecutive_ext_word,
     _is_consecutive_pc10_word,
+    _pc10_block,
+    _pc10_word_segment_length,
+)
+from toyopuc._pc10 import (
+    _build_pc10_multi_word_read_payload,
     _pack_pc10_multi_bit_payload,
     _pack_pc10_multi_word_payload,
     _parse_ext_multi_bit_data,
     _parse_pc10_multi_word_data,
-    _pc10_block,
-    _pc10_word_segment_length,
+)
+from toyopuc.errors import ToyopucProtocolError
+from toyopuc.high_level import (
+    ResolvedDevice,
     _raise_generic_fr_write_error,
 )
 from toyopuc.high_level import (

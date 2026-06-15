@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 from ._batching import (
     _batch_key,
@@ -27,6 +27,7 @@ from ._pc10 import (
     _read_pc10_multi_words,
     _write_pc10_block_word,
 )
+from ._shared import _require
 from .address import (
     ParsedAddress,
     encode_bit_address,
@@ -122,15 +123,8 @@ _EXT_BIT_SPECS = {
     "GM": (0x07, 0x2000),
 }
 
-T = TypeVar("T")
 _DEVICE_CACHE_MAX = 512
 _RUN_PLAN_CACHE_MAX = 256
-
-
-def _require(value: T | None, label: str) -> T:
-    if value is None:
-        raise ValueError(f"Resolved device missing {label}")
-    return value
 
 
 def _ext_word_monitor_addr(word_addr: int) -> int:
