@@ -1,16 +1,7 @@
 # TODO: Toyopuc Computerlink Python
 
-This file tracks the remaining tasks and known issues for the Toyopuc Computerlink Python library.
+This file tracks active follow-up items for the Toyopuc Computerlink Python library.
 
 ## 1. Protocol and Model Coverage
+
 - [ ] **Extended Device Validation**: Expand verified coverage for newer Toyopuc model ranges and unresolved extended-device edge cases.
-- [x] **Addressing Matrix**: Convert the current probe knowledge into a maintained device/profile matrix that is easy to review before releases.
-
-## 2. Cross-Stack API Alignment
-
-- [x] **Keep helper naming aligned with the managed stacks**: Preserve the shared high-level contract around `open_and_connect`, `read_typed`, `write_typed`, `write_bit_in_word`, `read_named`, and `poll`.
-- [x] **Review public address helper exposure**: Decide whether Toyopuc address parse/normalize/format helpers should be promoted into a documented utility API so applications do not need private copies.
-- [x] **Keep protocol-specific options explicit**: Preserve Toyopuc-specific settings such as profile selection, relay hops, local port, retries, and retry delay as first-class options instead of hiding them behind ambiguous defaults.
-- [x] **Preserve semantic atomicity by default**: Allow segmentation only on protocol-defined boundaries such as FR or PC10 block limits. Do not silently split one logical value or one user-visible logical block into different semantics.
-- [x] **Unify PLC profile naming across libraries**: Public Computerlink profile selectors now use canonical `toyopuc:<model>:<mode>` names through `ToyopucPlcProfile(s)` and `plc_profile` where a connection-level selector exists. Legacy display names and short aliases are intentionally rejected.
-

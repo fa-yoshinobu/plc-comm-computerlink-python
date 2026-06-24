@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-24
+
+### Changed
+- Bumped package metadata to `1.0.0` for the first stable release line.
+
+### Fixed
+- Added factory-level validation for `ToyopucConnectionOptions` host, port, local port, and receive-buffer size so Python rejects invalid connection settings at the same layer as the .NET factory.
+
 ## [0.8.0] - 2026-06-14
 
 ### Changed
@@ -25,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added fail-fast protocol guards for oversized single-frame requests instead of silently producing out-of-range or count-wrapped frames. This covers continuous read/write, basic multi-point, extended multi-point, PC10 block, and PC10 multi-point commands.
 - Restricted `CMD=94-99` EB extended-No addressing to `EB00000-EB1FFFF`; wider EB access remains on the PC10 route when enabled.
 
-## 0.1.8 - 2026-05-02
+## [0.1.8] - 2026-05-02
 
 ### Added
 - Added public device-address parse/try-parse/format helpers for typed and bit-in-word address notation.
@@ -35,21 +43,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `ToyopucDeviceCatalog.format_address_range()` and `format_address_ranges()` using `..` as the explicit endpoint separator for split ranges.
 - Verified the Python PC10G direct API smoke on hardware for split-range formatting, split-range reads, and scan stop/release/resume.
 
-## 0.1.7 - 2026-04-27
+## [0.1.7] - 2026-04-27
 
 ### Fixed
 - Fixed TOYOPUC address parsing so single-letter areas such as `D` and `U` are not misread as unknown two-letter areas when the address starts with a hexadecimal `A-F` digit.
 - Kept unsupported areas as hard errors instead of falling back to another device interpretation.
 
-## 0.1.6 - 2026-04-14
+## [0.1.6] - 2026-04-14
 
 ### Changed
 - Reorganized the public docs around beginner-first getting-started and supported-register guides while keeping maintainer notes under `internal_docs`.
 - Separated local and publish docs builds so publication settings no longer affect local MkDocs verification.
 
-## 0.1.5 - 2026-04-01
+## [0.1.5] - 2026-04-01
 
-## 0.1.4 - 2026-03-29
+## [0.1.4] - 2026-03-29
 
 ### Changed
 - `read_many()` / `write_many()` and `relay_read_many()` / `relay_write_many()` now route through the high-level batching path where grouped relay/direct commands are available, while preserving input order.
