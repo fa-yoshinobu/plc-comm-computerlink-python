@@ -32,16 +32,28 @@ def main() -> int:
         retries=args.retries,
     ) as plc:
         # D0000 word
-        plc.write_words(0x0000, [0x1234])
-        print("D0000 =", [hex(v) for v in plc.read_words(0x0000, 1)])
+        original_words = plc.read_words(0x0000, 1)
+        try:
+            plc.write_words(0x0000, [0x1234])
+            print("D0000 =", [hex(v) for v in plc.read_words(0x0000, 1)])
+        finally:
+            plc.write_words(0x0000, original_words)
 
         # D0000L / D0000H bytes
-        plc.write_bytes(0x2000, [0x12, 0x34])
-        print("D0000L/H =", [hex(v) for v in plc.read_bytes(0x2000, 2)])
+        original_bytes = plc.read_bytes(0x2000, 2)
+        try:
+            plc.write_bytes(0x2000, [0x12, 0x34])
+            print("D0000L/H =", [hex(v) for v in plc.read_bytes(0x2000, 2)])
+        finally:
+            plc.write_bytes(0x2000, original_bytes)
 
         # M0000 bit
-        plc.write_bit(0x1800, True)
-        print("M0000 =", plc.read_bit(0x1800))
+        original_bit = plc.read_bit(0x1800)
+        try:
+            plc.write_bit(0x1800, True)
+            print("M0000 =", plc.read_bit(0x1800))
+        finally:
+            plc.write_bit(0x1800, original_bit)
 
     return 0
 

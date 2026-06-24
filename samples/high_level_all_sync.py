@@ -137,14 +137,20 @@ def main() -> None:
         val = plc.read("P1-D0100")
         print(f"[read]  P1-D0100 = {val}")
 
-        plc.write("P1-D0100", 1234)
-        print("[write] Wrote 1234 -> P1-D0100")
+        try:
+            plc.write("P1-D0100", 1234)
+            print("[write] Wrote 1234 -> P1-D0100")
+        finally:
+            plc.write("P1-D0100", val)
 
         bit = plc.read("P1-M0010")
         print(f"[read]  P1-M0010 (bit) = {bit}")
 
-        plc.write("P1-M0010", 1)
-        print("[write] Set P1-M0010 = 1")
+        try:
+            plc.write("P1-M0010", 1)
+            print("[write] Set P1-M0010 = 1")
+        finally:
+            plc.write("P1-M0010", bit)
 
         # ---------------------------------------------------------------
         # 2. read / write with byte/word suffixes on bit areas
@@ -174,14 +180,23 @@ def main() -> None:
         values = plc.read_many(["P1-D0100", "P1-D0101", "P1-M0000"])
         print(f"[read_many]  P1-D0100={values[0]}  P1-D0101={values[1]}  P1-M0000={values[2]}")
 
-        plc.write_many(
-            {
-                "P1-D0100": 10,
-                "P1-D0101": 20,
-                "P1-M0000": 0,
-            }
-        )
-        print("[write_many] Wrote {P1-D0100: 10, P1-D0101: 20, P1-M0000: 0}")
+        try:
+            plc.write_many(
+                {
+                    "P1-D0100": 10,
+                    "P1-D0101": 20,
+                    "P1-M0000": 0,
+                }
+            )
+            print("[write_many] Wrote {P1-D0100: 10, P1-D0101: 20, P1-M0000: 0}")
+        finally:
+            plc.write_many(
+                {
+                    "P1-D0100": values[0],
+                    "P1-D0101": values[1],
+                    "P1-M0000": values[2],
+                }
+            )
 
         # ---------------------------------------------------------------
         # 4. read_dword / write_dword - 32-bit unsigned integer access
@@ -194,8 +209,11 @@ def main() -> None:
         dword = plc.read_dword("P1-D0200")
         print(f"[read_dword]  P1-D0200 = {dword}")
 
-        plc.write_dword("P1-D0200", 0x12345678)
-        print("[write_dword] Wrote 0x12345678 -> P1-D0200-D0201")
+        try:
+            plc.write_dword("P1-D0200", 0x12345678)
+            print("[write_dword] Wrote 0x12345678 -> P1-D0200-D0201")
+        finally:
+            plc.write_dword("P1-D0200", dword)
 
         # ---------------------------------------------------------------
         # 5. read_dwords - read multiple 32-bit values
@@ -217,8 +235,11 @@ def main() -> None:
         f32 = plc.read_float32("P1-D0300")
         print(f"[read_float32]  P1-D0300 = {f32}")
 
-        plc.write_float32("P1-D0300", 3.14)
-        print("[write_float32] Wrote 3.14 -> P1-D0300-D0301")
+        try:
+            plc.write_float32("P1-D0300", 3.14)
+            print("[write_float32] Wrote 3.14 -> P1-D0300-D0301")
+        finally:
+            plc.write_float32("P1-D0300", f32)
 
         # ---------------------------------------------------------------
         # 7. read_float32s - read multiple float32 values
@@ -251,12 +272,18 @@ def main() -> None:
         print(f"[read_fr]  FR000000 = {fr_val}")
 
         # Write to FR RAM without committing to flash (fast, temporary).
-        plc.write_fr("FR000000", 999, commit=False)
-        print("[write_fr] Wrote 999 -> FR000000 (RAM only, not committed)")
+        # Restore the previous value before leaving this sample.
+        try:
+            plc.write_fr("FR000000", 999, commit=False)
+            print("[write_fr] Wrote 999 -> FR000000 (RAM only, not committed)")
+        finally:
+            plc.write_fr("FR000000", fr_val, commit=False)
+            print("[write_fr] Restored original FR000000 value (RAM only)")
 
         # commit_fr explicitly flushes the modified block to flash.
-        plc.commit_fr("FR000000", wait=False)
-        print("[commit_fr] Committed FR000000 block (async, not waiting)")
+        # Uncomment only when the staged FR value is intentionally persistent.
+        # plc.commit_fr("FR000000", wait=False)
+        # print("[commit_fr] Committed FR000000 block (async, not waiting)")
 
     print("Done.")
 

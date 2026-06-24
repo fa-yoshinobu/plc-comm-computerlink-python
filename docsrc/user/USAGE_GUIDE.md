@@ -94,7 +94,7 @@ asyncio.run(main())
 ```python
 import asyncio
 
-from toyopuc import ToyopucConnectionOptions, open_and_connect, write_typed
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed, write_typed
 
 
 async def main() -> None:
@@ -105,8 +105,14 @@ async def main() -> None:
     )
 
     async with await open_and_connect(options) as client:
-        await write_typed(client, "P1-D0001", "U", 1234)
-        await write_typed(client, "P1-D0200", "L", -500)
+        original_d0001 = await read_typed(client, "P1-D0001", "U")
+        original_d0200 = await read_typed(client, "P1-D0200", "L")
+        try:
+            await write_typed(client, "P1-D0001", "U", 1234)
+            await write_typed(client, "P1-D0200", "L", -500)
+        finally:
+            await write_typed(client, "P1-D0200", "L", original_d0200)
+            await write_typed(client, "P1-D0001", "U", original_d0001)
 
 
 asyncio.run(main())
@@ -189,9 +195,14 @@ async def main() -> None:
     )
 
     async with await open_and_connect(options) as client:
-        await write_bit_in_word(client, "P1-D0100", bit_index=3, value=True)
-        snapshot = await read_named(client, ["P1-D0100.3"])
-        print(snapshot)
+        before = await read_named(client, ["P1-D0100.3"])
+        original_bit = bool(before["P1-D0100.3"])
+        try:
+            await write_bit_in_word(client, "P1-D0100", bit_index=3, value=True)
+            snapshot = await read_named(client, ["P1-D0100.3"])
+            print(snapshot)
+        finally:
+            await write_bit_in_word(client, "P1-D0100", bit_index=3, value=original_bit)
 
 
 asyncio.run(main())
@@ -239,10 +250,16 @@ def main() -> None:
         plc_profile="toyopuc:pc10g:pc10",
     ) as client:
         before = client.read_fr("FR000000")
-        client.write_fr("FR000000", 0x1234, commit=False)
-        client.commit_fr("FR000000", wait=True)
-        after = client.read_fr("FR000000")
-        print(before, after)
+        try:
+            client.write_fr("FR000000", 0x1234, commit=False)
+            after = client.read_fr("FR000000")
+            print(before, after)
+        finally:
+            client.write_fr("FR000000", before, commit=False)
+
+        # Call commit_fr only when the staged FR value is intentionally
+        # persistent. Committed FR writes survive PLC power cycles.
+        # client.commit_fr("FR000000", wait=True)
 
 
 if __name__ == "__main__":

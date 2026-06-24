@@ -133,10 +133,18 @@ async def demo_typed_rw(plc) -> None:
     val_l = await read_typed(plc, "P1-D0200", "L")
     print(f"[read_typed] P1-D0100(U)={val_u}  P1-D0300(F)={val_f}  P1-D0200(L)={val_l}")
 
-    await write_typed(plc, "P1-D0100", "U", 42)
-    await write_typed(plc, "P1-D0300", "F", 3.14)
-    await write_typed(plc, "P1-D0200", "L", -500)
-    print("[write_typed] Wrote 42->P1-D0100, 3.14->P1-D0300, -500->P1-D0200")
+    original_u = await read_typed(plc, "P1-D0100", "U")
+    original_f = await read_typed(plc, "P1-D0300", "F")
+    original_l = await read_typed(plc, "P1-D0200", "L")
+    try:
+        await write_typed(plc, "P1-D0100", "U", 42)
+        await write_typed(plc, "P1-D0300", "F", 3.14)
+        await write_typed(plc, "P1-D0200", "L", -500)
+        print("[write_typed] Wrote 42->P1-D0100, 3.14->P1-D0300, -500->P1-D0200")
+    finally:
+        await write_typed(plc, "P1-D0200", "L", original_l)
+        await write_typed(plc, "P1-D0300", "F", original_f)
+        await write_typed(plc, "P1-D0100", "U", original_u)
 
 
 async def demo_array_reads(plc) -> None:
@@ -171,10 +179,15 @@ async def demo_bit_in_word(plc) -> None:
     Use case: toggling a single command flag in a shared control word without
               disturbing the other flag bits (e.g., start/stop bit 0).
     """
-    await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=True)
-    print("[write_bit_in_word] Set   bit 0 of P1-D0100")
-    await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=False)
-    print("[write_bit_in_word] Clear bit 0 of P1-D0100")
+    original_word = await read_typed(plc, "P1-D0100", "U")
+    original_bit = bool(int(original_word) & 0x0001)
+    try:
+        await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=True)
+        print("[write_bit_in_word] Set   bit 0 of P1-D0100")
+        await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=False)
+        print("[write_bit_in_word] Clear bit 0 of P1-D0100")
+    finally:
+        await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=original_bit)
 
 
 async def demo_read_named(plc) -> None:

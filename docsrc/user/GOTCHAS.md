@@ -56,6 +56,8 @@ from toyopuc import ToyopucDeviceClient
 
 def main() -> None:
     with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:pc10g:pc10") as client:
+        # Use only a test FR address. commit_fr persists the staged value
+        # to flash and does not restore the previous value automatically.
         client.write_fr("FR000000", 0x1234, commit=False)
         client.commit_fr("FR000000", wait=True)
 

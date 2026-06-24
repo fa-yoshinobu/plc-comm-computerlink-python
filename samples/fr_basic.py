@@ -16,6 +16,10 @@ Examples:
     python samples/fr_basic.py --host 192.168.250.100 --port 1035 \
         --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 \
         --target FR000000 --value 0x1234 --commit
+
+Warning:
+    FR writes affect flash-backed PLC storage. Use only a test address you
+    control, and pass --commit only when the value should survive power cycles.
 """
 
 import argparse
@@ -55,7 +59,11 @@ def main() -> int:
     p.add_argument("--profile", required=True, help="Canonical PLC profile with FR support")
     p.add_argument("--target", default="FR000000", help="FR word device such as FR000000")
     p.add_argument("--value", type=parse_int_auto, default=0x1234, help="word value to write")
-    p.add_argument("--commit", action="store_true", help="persist the written FR block to flash")
+    p.add_argument(
+        "--commit",
+        action="store_true",
+        help="persist the written FR block to flash; use only for an intentional test write",
+    )
     args = p.parse_args()
 
     with ToyopucDeviceClient(

@@ -86,9 +86,13 @@ async def main() -> None:
     )
 
     async with await open_and_connect(options) as client:
-        await write_typed(client, "P1-D0001", "U", 1234)
-        value = await read_typed(client, "P1-D0001", "U")
-        print(f"P1-D0001 = {value}")
+        original = await read_typed(client, "P1-D0001", "U")
+        try:
+            await write_typed(client, "P1-D0001", "U", 1234)
+            value = await read_typed(client, "P1-D0001", "U")
+            print(f"P1-D0001 = {value}")
+        finally:
+            await write_typed(client, "P1-D0001", "U", original)
 
 
 asyncio.run(main())
