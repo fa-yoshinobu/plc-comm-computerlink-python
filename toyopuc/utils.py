@@ -25,6 +25,11 @@ UDP_RECEIVE_BUFFER_SIZE = 65_535
 # ---------------------------------------------------------------------------
 
 
+def _validate_int_range(value: int, name: str, min_value: int, max_value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not min_value <= value <= max_value:
+        raise ValueError(f"{name} must be in the range {min_value}-{max_value}")
+
+
 @dataclass(frozen=True)
 class ToyopucConnectionOptions:
     """Stable connection settings for one TOYOPUC session.
@@ -57,6 +62,13 @@ class ToyopucConnectionOptions:
 
     def __post_init__(self) -> None:
         from .profiles import ToyopucPlcProfiles
+
+        if self.host is None or not str(self.host).strip():
+            raise ValueError("Host must not be empty")
+        _validate_int_range(self.port, "Port", 1, 65_535)
+        _validate_int_range(self.local_port, "LocalPort", 0, 65_535)
+        if isinstance(self.recv_bufsize, bool) or not isinstance(self.recv_bufsize, int) or self.recv_bufsize < 1:
+            raise ValueError("RecvBufsize must be 1 or greater")
 
         object.__setattr__(self, "plc_profile", ToyopucPlcProfiles.from_name(self.plc_profile).name)
 

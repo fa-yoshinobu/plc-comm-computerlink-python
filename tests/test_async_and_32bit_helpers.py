@@ -214,6 +214,21 @@ def test_connection_options_requires_explicit_profile() -> None:
         ToyopucConnectionOptions("127.0.0.1")
 
 
+def test_connection_options_validates_factory_level_network_options() -> None:
+    with pytest.raises(ValueError, match="Host must not be empty"):
+        ToyopucConnectionOptions(" ", plc_profile=GENERIC_PROFILE)
+    with pytest.raises(ValueError, match="Port must be in the range 1-65535"):
+        ToyopucConnectionOptions("127.0.0.1", port=0, plc_profile=GENERIC_PROFILE)
+    with pytest.raises(ValueError, match="Port must be in the range 1-65535"):
+        ToyopucConnectionOptions("127.0.0.1", port=65_536, plc_profile=GENERIC_PROFILE)
+    with pytest.raises(ValueError, match="LocalPort must be in the range 0-65535"):
+        ToyopucConnectionOptions("127.0.0.1", local_port=-1, plc_profile=GENERIC_PROFILE)
+    with pytest.raises(ValueError, match="LocalPort must be in the range 0-65535"):
+        ToyopucConnectionOptions("127.0.0.1", local_port=65_536, plc_profile=GENERIC_PROFILE)
+    with pytest.raises(ValueError, match="RecvBufsize must be 1 or greater"):
+        ToyopucConnectionOptions("127.0.0.1", recv_bufsize=0, plc_profile=GENERIC_PROFILE)
+
+
 def test_connection_options_defaults() -> None:
     options = ToyopucConnectionOptions("127.0.0.1", plc_profile=GENERIC_PROFILE)
     assert options.port == 1025
