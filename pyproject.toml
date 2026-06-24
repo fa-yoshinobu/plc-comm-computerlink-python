@@ -15,7 +15,7 @@ maintainers = [{name = "fa-yoshinobu"}]
 license = "MIT"
 keywords = ["toyopuc", "plc", "computer-link", "industrial", "tcp", "udp"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Manufacturing",
     "Operating System :: OS Independent",
