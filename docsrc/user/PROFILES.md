@@ -2,6 +2,15 @@
 
 Canonical profile names are part of the public configuration contract. The library rejects missing, blank, alias, and abbreviated profile strings immediately.
 
+## Explicit selection is required
+
+Always pass one exact canonical profile name through `plc_profile`.
+
+- No profile is inferred from the PLC model, CPU status, address string, host, port, or transport.
+- `toyopuc:generic` is not applied automatically when the profile is omitted.
+- Old names, short names, aliases, and case variants are rejected.
+- Address and dtype inputs may be normalized for convenience, but profile names are not.
+
 ## Canonical profiles
 
 | Canonical profile | Hardware | Profile-specific cautions |
