@@ -118,8 +118,7 @@ def parse_device_address(device: str, *, profile: str | None = None) -> ToyopucA
     base_device, dtype, bit_index = _parse_address(device)
     canonical_base = normalize_address(base_device, profile=profile)
     if dtype == "BIT_IN_WORD":
-        if bit_index is None or not 0 <= bit_index <= 15:
-            raise ValueError(f"bit-in-word index must be 0-F: {device!r}")
+        bit_index = _require_bit_in_word_index(device, bit_index)
         return ToyopucAddress(
             text=f"{canonical_base}.{bit_index:X}",
             base_device=canonical_base,
@@ -564,7 +563,10 @@ def _parse_address(address: str) -> tuple[str, str, int | None]:
     """
     if ":" in address:
         base, dtype = address.split(":", 1)
-        return base.strip(), dtype.strip().upper(), None
+        normalized_dtype = dtype.strip().upper()
+        if normalized_dtype == "BIT_IN_WORD":
+            raise ValueError(f"bit-in-word address requires explicit bit index 0-F: {address!r}")
+        return base.strip(), normalized_dtype, None
     if "." in address:
         base, bit_str = address.split(".", 1)
         bit_text = bit_str.strip()
@@ -572,6 +574,14 @@ def _parse_address(address: str) -> tuple[str, str, int | None]:
             return base.strip(), "BIT_IN_WORD", int(bit_text, 16)
         raise ValueError(f"Invalid bit-in-word index {bit_str!r}; use one hex digit 0-F or ':' for dtype.")
     return address.strip(), "U", None
+
+
+def _require_bit_in_word_index(address: str, bit_index: int | None) -> int:
+    if bit_index is None:
+        raise ValueError(f"bit-in-word address requires explicit bit index 0-F: {address!r}")
+    if not 0 <= bit_index <= 15:
+        raise ValueError(f"bit-in-word index must be 0-F: {address!r}")
+    return bit_index
 
 
 async def read_named(
@@ -604,8 +614,9 @@ async def read_named(
     for address in addresses:
         base, dtype, bit_idx = _parse_address(address)
         if dtype == "BIT_IN_WORD":
+            bit_idx = _require_bit_in_word_index(address, bit_idx)
             raw = int(await client.read(base)) & 0xFFFF
-            result[address] = bool((raw >> (bit_idx or 0)) & 1)
+            result[address] = bool((raw >> bit_idx) & 1)
         else:
             result[address] = await read_typed(client, base, dtype)
     return result

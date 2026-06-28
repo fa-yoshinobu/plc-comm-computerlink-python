@@ -173,6 +173,8 @@ def test_read_named_rejects_invalid_bit_index() -> None:
     async def run_checks() -> None:
         with pytest.raises(ValueError):
             await read_named(client, ["B0000.10"])
+        with pytest.raises(ValueError, match="explicit bit index"):
+            await read_named(client, ["B0000:BIT_IN_WORD"])
 
     asyncio.run(run_checks())
 
@@ -207,6 +209,7 @@ def test_public_device_address_helpers_parse_and_format() -> None:
 def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
     assert try_parse_device_address("P1-D1000", profile="toyopuc:plus:standard") is None
     assert try_parse_device_address("P1-D0100.10", profile="toyopuc:generic") is None
+    assert try_parse_device_address("P1-D0100:BIT_IN_WORD", profile="toyopuc:generic") is None
 
 
 def test_connection_options_requires_explicit_profile() -> None:
