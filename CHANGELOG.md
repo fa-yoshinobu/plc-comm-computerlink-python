@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Tooling`: Developer/operator command-line tools and helper utilities.
 - `CI`: Release checks, workflow scripts, or automation-only changes.
 
-## [Unreleased] - 2026-06-28
+## [Unreleased]
+
+## [1.1.0] - 2026-06-29
 
 ### Changed
+- Release: Bumped package metadata to `1.1.0`.
 - Library: Made byte-unit parsing require explicit `L` / `H` suffixes and made `read_many` / `write_many` / `read_named` reject implicit multi-request splitting before communication.
 - Docs: Documented explicit request-boundary behavior for multi-address helpers.
 - Samples: Updated high-level samples to keep `read_many`, `write_many`, `read_named`, and `poll` request boundaries explicit.
