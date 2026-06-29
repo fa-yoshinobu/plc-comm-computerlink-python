@@ -591,6 +591,61 @@ class ToyopucDeviceClient(ToyopucClient):
             self._run_plan_cache[key] = plan
         return plan
 
+    def _require_single_read_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
+        if len(devices) <= 1:
+            return
+        plan = self._get_run_plan(devices, split_pc10)
+        if len(plan) != 1 or not self._can_read_as_single_request(devices):
+            self._raise_implicit_split_error(operation)
+
+    def _require_single_write_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
+        if len(devices) <= 1:
+            return
+        plan = self._get_run_plan(devices, split_pc10)
+        if len(plan) != 1 or not self._can_write_as_single_request(devices):
+            self._raise_implicit_split_error(operation)
+
+    @staticmethod
+    def _raise_implicit_split_error(operation: str) -> None:
+        raise ToyopucProtocolError(
+            f"{operation} requires one compatible protocol request. "
+            "Split the operation into explicit calls or use chunked helpers when multiple requests are intentional."
+        )
+
+    @staticmethod
+    def _pc10_block_consecutive(devices: list[ResolvedDevice], step: int) -> bool:
+        if not devices:
+            return True
+        start = _require(devices[0].addr32, "pc10 addr32")
+        block = start >> 16
+        for i, device in enumerate(devices):
+            addr32 = _require(device.addr32, "pc10 addr32")
+            if addr32 != start + (i * step) or (addr32 >> 16) != block:
+                return False
+        return True
+
+    @staticmethod
+    def _can_read_as_single_request(devices: list[ResolvedDevice]) -> bool:
+        key = _batch_key(devices[0])
+        if key is None or any(_batch_key(device) != key for device in devices):
+            return False
+        if key == "pc10-byte":
+            return ToyopucDeviceClient._pc10_block_consecutive(devices, 1)
+        if key == "pc10-word" and _contains_packed_pc10_word_device(devices):
+            return ToyopucDeviceClient._pc10_block_consecutive(devices, 2)
+        return True
+
+    @staticmethod
+    def _can_write_as_single_request(devices: list[ResolvedDevice]) -> bool:
+        key = _batch_key(devices[0])
+        if key is None or any(_batch_key(device) != key for device in devices):
+            return False
+        if len({device.text for device in devices}) != len(devices):
+            return False
+        if key == "pc10-byte":
+            return ToyopucDeviceClient._pc10_block_consecutive(devices, 1)
+        return True
+
     def resolve_device(self, device: str) -> ResolvedDevice:
         """Resolve a string address into a `ResolvedDevice`."""
         key = device.strip().upper()
@@ -682,8 +737,9 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         devices: Sequence[str | ResolvedDevice],
     ) -> list[object]:
-        """Read multiple devices through relay hops with batching when possible."""
+        """Read multiple devices through relay hops as one compatible protocol request."""
         resolved = [self.resolve_device(d) if isinstance(d, str) else d for d in devices]
+        self._require_single_read_request(resolved, split_pc10=False, operation="relay_read_many")
         return self._relay_read_runs(hops, resolved, split_pc10=False)
 
     def relay_write_many(
@@ -691,13 +747,18 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         items: Mapping[str | ResolvedDevice, object],
     ) -> None:
-        """Write multiple devices through relay hops with batching when possible."""
+        """Write multiple devices through relay hops as one compatible protocol request."""
         resolved_items = []
         for device, value in items.items():
             resolved = self.resolve_device(device) if isinstance(device, str) else device
             resolved_items.append((resolved, value))
         if not resolved_items:
             return
+        self._require_single_write_request(
+            [resolved for resolved, _ in resolved_items],
+            split_pc10=True,
+            operation="relay_write_many",
+        )
         self._relay_write_runs(
             hops,
             [resolved for resolved, _ in resolved_items],
@@ -860,12 +921,13 @@ class ToyopucDeviceClient(ToyopucClient):
         self._write_resolved_device(resolved, value)
 
     def read_many(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
-        """Read multiple devices with batching when possible and preserve input order."""
+        """Read multiple devices as one compatible protocol request and preserve input order."""
         resolved = [self.resolve_device(d) if isinstance(d, str) else d for d in devices]
+        self._require_single_read_request(resolved, split_pc10=False, operation="read_many")
         return self._read_runs(resolved, split_pc10=False)
 
     def write_many(self, items: Mapping[str | ResolvedDevice, object]) -> None:
-        """Write multiple devices with batching when possible in mapping iteration order."""
+        """Write multiple devices as one compatible protocol request in mapping iteration order."""
         resolved_items = []
         for device, value in items.items():
             resolved = self.resolve_device(device) if isinstance(device, str) else device
@@ -874,6 +936,11 @@ class ToyopucDeviceClient(ToyopucClient):
             resolved_items.append((resolved, value))
         if not resolved_items:
             return
+        self._require_single_write_request(
+            [resolved for resolved, _ in resolved_items],
+            split_pc10=True,
+            operation="write_many",
+        )
         self._write_runs(
             [resolved for resolved, _ in resolved_items],
             [value for _, value in resolved_items],

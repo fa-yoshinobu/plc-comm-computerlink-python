@@ -75,7 +75,7 @@ def main() -> int:
         plc.write("ES0000", 0x3333)
         print("ES0000 =", hex(plc.read("ES0000")))
 
-        values = plc.read_many(["P1-D0000", "P1-M0000", "P1-D0000L", "ES0000"])
+        values = plc.read_many(["P1-D0000", "P1-D0001"])
         print("read_many =", values)
 
         plc.write("P1-M0010W", 0x1234)

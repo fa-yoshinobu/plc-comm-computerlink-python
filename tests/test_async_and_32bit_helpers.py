@@ -7,6 +7,7 @@ from toyopuc import (
     ToyopucClient,
     ToyopucConnectionOptions,
     ToyopucDeviceClient,
+    ToyopucProtocolError,
     encode_word_address,
     format_device_address,
     normalize_address,
@@ -160,8 +161,20 @@ def test_read_named_supports_hex_bit_indices() -> None:
     client.values = {"B0000": (1 << 10) | (1 << 13) | (1 << 15)}
 
     async def run_checks() -> None:
-        snapshot = await read_named(client, ["B0000.A", "B0000.D", "B0000.F"])
-        assert snapshot == {"B0000.A": True, "B0000.D": True, "B0000.F": True}
+        assert await read_named(client, ["B0000.A"]) == {"B0000.A": True}
+        assert await read_named(client, ["B0000.D"]) == {"B0000.D": True}
+        assert await read_named(client, ["B0000.F"]) == {"B0000.F": True}
+
+    asyncio.run(run_checks())
+
+
+def test_read_named_rejects_multiple_addresses() -> None:
+    client = _DummyAsyncUtilityClient()
+    client.values = {"B0000": 0}
+
+    async def run_checks() -> None:
+        with pytest.raises(ToyopucProtocolError, match="one named address"):
+            await read_named(client, ["B0000:A", "B0001:A"])
 
     asyncio.run(run_checks())
 

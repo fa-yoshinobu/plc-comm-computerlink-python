@@ -306,9 +306,6 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
     area, num_text, suffix = _split_known_area_body(body, text)
     num = int(num_text, radix)
 
-    if unit == "byte" and suffix is None:
-        # Default to low byte when omitted for byte access.
-        suffix = "L"
     if unit == "byte":
         if suffix not in ("L", "H"):
             raise ValueError(f"L/H suffix required for byte unit: {text!r}")
@@ -356,8 +353,6 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> tuple[in
     area, num_text, suffix = _split_known_area_body(body, text)
     num = int(num_text, radix)
 
-    if unit == "byte" and suffix is None:
-        suffix = "L"
     if unit == "byte":
         if suffix not in ("L", "H"):
             raise ValueError(f"L/H suffix required for byte unit: {text!r}")

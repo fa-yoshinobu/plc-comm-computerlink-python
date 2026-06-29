@@ -13,6 +13,8 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from .errors import ToyopucProtocolError
+
 if TYPE_CHECKING:
     from .async_client import AsyncToyopucDeviceClient
     from .client import ToyopucTraceFrame
@@ -588,7 +590,7 @@ async def read_named(
     client: AsyncToyopucDeviceClient,
     addresses: list[str],
 ) -> dict[str, int | float | bool]:
-    """Read multiple devices by address string and return results as a dict.
+    """Read one device by address string and return the result as a dict.
 
     The returned dictionary preserves the original address strings as keys so
     application code can display or diff snapshots without rebuilding the
@@ -605,11 +607,17 @@ async def read_named(
 
     Args:
         client: Connected AsyncToyopucDeviceClient.
-        addresses: List of address strings.
+        addresses: List containing exactly one address string.
 
     Returns:
         Dictionary mapping each address string to its value.
     """
+    if len(addresses) != 1:
+        raise ToyopucProtocolError(
+            "read_named requires exactly one named address per call. "
+            "Split the operation into explicit calls when multiple requests are intentional."
+        )
+
     result: dict[str, int | float | bool] = {}
     for address in addresses:
         base, dtype, bit_idx = _parse_address(address)
@@ -632,19 +640,19 @@ async def poll(
     addresses: list[str],
     interval: float,
 ) -> AsyncIterator[dict[str, int | float | bool]]:
-    """Yield a snapshot of all devices every *interval* seconds.
+    """Yield one named-device snapshot every *interval* seconds.
 
     This helper performs repeated :func:`read_named` calls and sleeps for the
     requested interval between snapshots.
 
     Args:
         client: Connected AsyncToyopucDeviceClient.
-        addresses: Address strings (same format as :func:`read_named`).
+        addresses: List containing exactly one address string.
         interval: Poll interval in seconds.
 
     Usage::
 
-        async for snapshot in poll(client, ["P1-D0100", "P1-D0200:F"], interval=1.0):
+        async for snapshot in poll(client, ["P1-D0100"], interval=1.0):
             print(snapshot)
     """
     while True:

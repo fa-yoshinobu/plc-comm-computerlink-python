@@ -87,6 +87,11 @@ def test_unknown_area_is_rejected_without_fallback() -> None:
         parse_address("QF00", "word")
 
 
+def test_byte_unit_requires_explicit_lh_suffix() -> None:
+    with pytest.raises(ValueError, match="L/H suffix required"):
+        parse_address("D0100", "byte")
+
+
 def test_gm_word_and_byte_address_spaces_are_consistent() -> None:
     gm_word = resolve_device("GM000W", profile="toyopuc:generic")
     gm_low = resolve_device("GM000L", profile="toyopuc:generic")

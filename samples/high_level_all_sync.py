@@ -169,32 +169,29 @@ def main() -> None:
         # ---------------------------------------------------------------
         # 3. read_many / write_many - batch access
         #
-        # read_many(devices) - read an arbitrary list of devices in order.
+        # read_many(devices) - read a compatible list of devices in order.
         #     Returns list[object] in the same order as input.
         #
         # write_many(items)  - write a mapping of {device: value} in order.
         #
-        # Use case: reading a multi-device snapshot (word registers, bits,
-        #           special registers) without multiple round-trips.
+        # Use case: reading or writing one compatible protocol request.
         # ---------------------------------------------------------------
-        values = plc.read_many(["P1-D0100", "P1-D0101", "P1-M0000"])
-        print(f"[read_many]  P1-D0100={values[0]}  P1-D0101={values[1]}  P1-M0000={values[2]}")
+        values = plc.read_many(["P1-D0100", "P1-D0101"])
+        print(f"[read_many]  P1-D0100={values[0]}  P1-D0101={values[1]}")
 
         try:
             plc.write_many(
                 {
                     "P1-D0100": 10,
                     "P1-D0101": 20,
-                    "P1-M0000": 0,
                 }
             )
-            print("[write_many] Wrote {P1-D0100: 10, P1-D0101: 20, P1-M0000: 0}")
+            print("[write_many] Wrote {P1-D0100: 10, P1-D0101: 20}")
         finally:
             plc.write_many(
                 {
                     "P1-D0100": values[0],
                     "P1-D0101": values[1],
-                    "P1-M0000": values[2],
                 }
             )
 

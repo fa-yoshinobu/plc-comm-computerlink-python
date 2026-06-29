@@ -7,11 +7,11 @@
 | `ToyopucConnectionOptions` | Store one explicit connection profile for async code. |
 | `open_and_connect(options)` | Create and connect an async high-level client. |
 | `read_typed` / `write_typed` | Read or write one typed value. |
-| `read_named` | Read a mixed named snapshot. |
+| `read_named` | Read one named word, typed, or bit-in-word address. |
 | `read_words_single_request` / `read_dwords_single_request` | Keep a contiguous read as one logical request. |
 | `read_words_chunked` / `read_dwords_chunked` | Split a large contiguous read deliberately. |
 | `write_bit_in_word` | Change one bit inside a word with read-modify-write. |
-| `poll` | Repeatedly yield named snapshots. |
+| `poll` | Repeatedly yield one named address. |
 | `ToyopucDeviceClient` | Use the synchronous high-level API. |
 
 ## Connection
@@ -134,15 +134,20 @@ async def main() -> None:
     )
 
     async with await open_and_connect(options) as client:
-        snapshot = await read_named(
-            client,
-            ["P1-D0000", "P1-D0100:F", "P1-D0102:S", "P1-D0000.3"],
-        )
+        snapshot = await read_named(client, ["P1-D0100:F"])
         print(snapshot)
 
 
 asyncio.run(main())
 ```
+
+## Batching and request boundaries
+
+`ToyopucDeviceClient.read_many` and `ToyopucDeviceClient.write_many` execute only when all requested devices can be represented by one compatible protocol request. They raise `ToyopucProtocolError` before communication when the request would need multiple protocol requests, such as incompatible protocol groups, PC10 block boundary crossings, or helper paths that would fall back to individual requests.
+
+Async `read_named` accepts one named address per call. Use explicit repeated calls when multiple named reads are intentional.
+
+For contiguous word ranges, use `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, or `write_dwords_single_request`. These helpers also fail if the requested range cannot be represented as one compatible protocol request. Use the `*_chunked` helpers, or separate explicit calls, only when splitting is intentional and partial completion is acceptable.
 
 ## Block reads
 
@@ -225,7 +230,7 @@ async def main() -> None:
 
     async with await open_and_connect(options) as client:
         count = 0
-        async for snapshot in poll(client, ["P1-D0000", "P1-D0100:F"], interval=1.0):
+        async for snapshot in poll(client, ["P1-D0000"], interval=1.0):
             print(snapshot)
             count += 1
             if count >= 3:

@@ -192,7 +192,7 @@ async def demo_bit_in_word(plc) -> None:
 
 async def demo_read_named(plc) -> None:
     """
-    read_named - read multiple devices with mixed types in one call.
+    read_named - read one named device with an explicit value view.
 
     Address notation (same as ToyopucDeviceClient):
         "P1-D0100"    unsigned 16-bit (default)
@@ -202,20 +202,12 @@ async def demo_read_named(plc) -> None:
         "P1-D0100:L"  signed 32-bit
         "P1-D0100.3"  bit 3 inside P1-D0100 (bool)
 
-    Use case: reading a heterogeneous process snapshot (float32 speed,
-              signed error code, alarm bit) in a single asyncio step.
+    Use case: reading typed process values while making each request boundary explicit.
     """
-    snapshot = await read_named(
-        plc,
-        [
-            "P1-D0100",
-            "P1-D0300:F",
-            "P1-D0200:L",
-            "P1-D0100.3",
-        ],
-    )
-    for addr, value in snapshot.items():
-        print(f"[read_named] {addr} = {value!r}")
+    for address in ["P1-D0100", "P1-D0300:F", "P1-D0200:L", "P1-D0100.3"]:
+        snapshot = await read_named(plc, [address])
+        for addr, value in snapshot.items():
+            print(f"[read_named] {addr} = {value!r}")
 
 
 async def demo_poll(plc, count: int) -> None:
@@ -227,7 +219,7 @@ async def demo_poll(plc, count: int) -> None:
     """
     print(f"\nPolling {count} snapshots:")
     i = 0
-    async for snap in poll(plc, ["P1-D0100", "P1-D0300:F", "P1-D0100.3"], interval=1.0):
+    async for snap in poll(plc, ["P1-D0100"], interval=1.0):
         print(f"  [{i + 1}] {snap}")
         i += 1
         if i >= count:

@@ -19,6 +19,12 @@ if __name__ == "__main__":
     main()
 ```
 
+## Symptom: multi-address access hides splitting
+
+| Root cause | Fix |
+| --- | --- |
+| A multi-address request can require multiple protocol requests, incompatible protocol groups, PC10 block boundary crossings, or an internal fallback to individual requests. | `read_many` / `write_many` now reject those cases before communication. Keep each call to one compatible protocol request, or use single-request helpers, chunked helpers, or separate explicit calls when splitting is intentional. |
+
 ## Symptom: `P1-D0100.D` reads a bit instead of a dword
 
 | Root cause | Fix |

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-06-28
 
+### Changed
+- Library: Made byte-unit parsing require explicit `L` / `H` suffixes and made `read_many` / `write_many` / `read_named` reject implicit multi-request splitting before communication.
+- Docs: Documented explicit request-boundary behavior for multi-address helpers.
+- Samples: Updated high-level samples to keep `read_many`, `write_many`, `read_named`, and `poll` request boundaries explicit.
+- Tests: Added coverage for explicit byte suffix requirements and rejected implicit multi-request named reads.
+
 ### Fixed
 - Library: Made `BIT_IN_WORD` helper addresses require an explicit bit index such as `P1-D0100.0` through `P1-D0100.F`; `P1-D0100:BIT_IN_WORD` now fails in `parse_device_address`, `try_parse_device_address`, and `read_named` instead of silently reading bit 0.
 - Tests: Added coverage for rejecting `BIT_IN_WORD` addresses without an explicit bit index.
