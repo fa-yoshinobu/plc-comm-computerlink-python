@@ -209,7 +209,7 @@ python samples/relay_basic.py --mode word-read --device P1-D0000
 
 ### Related Documents
 
-- [VER_1.0.1_FIX_NOTES.md](../validation/incidents/VER_1.0.1_FIX_NOTES.md)
+- [GITHUB_RELEASE_v1.0.1.md](GITHUB_RELEASE_v1.0.1.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 
