@@ -64,6 +64,18 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Connection reuse and concurrent requests
+
+Keep one connected `AsyncToyopucDeviceClient` open for repeated reads, writes,
+and polling. The async wrapper runs PLC operations on a single worker, so
+overlapping awaits on the same async client are serialized instead of sharing
+one socket at the same time.
+
+Do not share the synchronous `ToyopucDeviceClient` across threads unless your
+application adds its own lock. After a persistent socket or protocol connection
+failure, leave the current context and create a new client with
+`open_and_connect`.
+
 ## Read single
 
 ```python
