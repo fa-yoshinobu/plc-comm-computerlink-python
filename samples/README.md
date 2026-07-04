@@ -13,6 +13,8 @@ Use only test addresses that are safe for your PLC program before you run any wr
 | `high_level_all_sync.py` | Synchronous cookbook for `ToyopucDeviceClient`. |
 | `high_level_all_async.py` | Async cookbook for `ToyopucConnectionOptions`, `open_and_connect`, typed helpers, named reads, and polling. |
 | `polling_reconnect.py` | Read-only polling loop with automatic reconnect and backoff after transport loss. |
+| `multi_plc_monitor.py` | Read-only multi-PLC polling with reconnect state transitions and long-form CSV output. |
+| `config_polling.py` | Read-only polling from JSON or YAML configuration, with `--dry-run` validation before connection. |
 | `high_level_udp.py` | UDP connection with a fixed local port. |
 | `fr_basic.py` | FR read/write and optional flash commit. |
 | `relay_basic.py` | Relay CPU status, clock, word, and FR operations. |
@@ -34,6 +36,8 @@ python samples/high_level_basic.py --host 192.168.250.100 --port 1025 --profile 
 python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
 python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 --profile toyopuc:plus:extended
 python samples/polling_reconnect.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
+python samples/multi_plc_monitor.py --plc line-a=192.168.250.100,toyopuc:plus:extended,1025,tcp --tag d0100=P1-D0100:U --cycles 1 --dry-run
+python samples/config_polling.py --config samples/config_polling.example.json --dry-run
 python samples/high_level_udp.py --host 192.168.250.100 --port 1035 --local-port 12000 --profile toyopuc:plus:extended
 python samples/fr_basic.py --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 --target FR000000 --value 0x1234
 python samples/relay_basic.py --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible --hops "P1-L2:N2" --mode cpu-status
@@ -49,6 +53,8 @@ python samples/clock_and_status.py --host 192.168.250.100 --port 1025 --profile 
 | Full synchronous walkthrough | `python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
 | Full async walkthrough | `python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 --profile toyopuc:plus:extended` |
 | Read-only polling with reconnect | `python samples/polling_reconnect.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
+| Multi-PLC read-only monitor | `python samples/multi_plc_monitor.py --plc line-a=192.168.250.100,toyopuc:plus:extended,1025,tcp --tag d0100=P1-D0100:U --cycles 1 --dry-run` |
+| Config-driven read-only polling | `python samples/config_polling.py --config samples/config_polling.example.json --dry-run` |
 | UDP with a fixed local port | `python samples/high_level_udp.py --host 192.168.250.100 --port 1035 --local-port 12000 --profile toyopuc:plus:extended` |
 | FR read/write without commit | `python samples/fr_basic.py --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 --target FR000000 --value 0x1234` |
 | FR read/write with commit | `python samples/fr_basic.py --host 192.168.250.100 --port 1035 --protocol udp --local-port 12000 --profile toyopuc:pc10g:pc10 --target FR000000 --value 0x1234 --commit` |

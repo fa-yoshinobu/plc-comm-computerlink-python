@@ -252,6 +252,27 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Operational recipes
+
+The samples directory includes two read-only operational recipes:
+
+- `samples/multi_plc_monitor.py` reads one or more PLCs in one loop and writes CSV rows as `timestamp,plc,tag,value`.
+- `samples/config_polling.py` runs the same polling workflow from a JSON or YAML configuration file.
+
+Both recipes use the same reconnect states as `polling_reconnect.py`: `connected`, `lost`, `reconnecting`, and `recovered`. The default reconnect backoff starts at 1 second and caps at 30 seconds.
+
+Validate a monitor setup without opening a PLC connection:
+
+```bash
+python samples/multi_plc_monitor.py --plc line-a=192.168.250.100,toyopuc:plus:extended,1025,tcp --tag d0100=P1-D0100:U --cycles 1 --dry-run
+```
+
+Validate a configuration file without opening a PLC connection:
+
+```bash
+python samples/config_polling.py --config samples/config_polling.example.json --dry-run
+```
+
 ## FR two-phase write
 
 FR writes update RAM first. Persist the touched FR block only when you intentionally call the commit phase.
