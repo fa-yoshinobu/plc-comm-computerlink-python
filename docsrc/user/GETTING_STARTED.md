@@ -109,7 +109,7 @@ asyncio.run(main())
 
 ## If it does not work
 
-Use the shared [Computerlink Error Codes](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/error-codes/) page for connection, addressing, write, relay, and PLC error-code checks.
+Use the shared [Computerlink Troubleshooting & Codes](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/troubleshooting-codes/) page for connection, addressing, write, relay, and PLC error-code checks.
 
 | Symptom | Check |
 | --- | --- |
