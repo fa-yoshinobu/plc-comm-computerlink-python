@@ -22,6 +22,8 @@ class ToyopucAddressRange:
     end: int
 
     def contains(self, index: int) -> bool:
+        """Return whether ``index`` falls inside this inclusive range."""
+
         return self.start <= index <= self.end
 
 
@@ -58,14 +60,20 @@ class ToyopucAreaDescriptor:
 
     @property
     def supports_direct(self) -> bool:
+        """Whether this area supports non-prefixed direct access."""
+
         return len(self.direct_ranges) > 0
 
     @property
     def supports_prefixed(self) -> bool:
+        """Whether this area supports P1/P2/P3-prefixed access."""
+
         return len(self.prefixed_ranges) > 0
 
     @property
     def packed_address_width(self) -> int:
+        """Address width used by packed/derived word or byte access."""
+
         return max(1, self.address_width - 1)
 
     def uses_derived_access(self, unit: str, packed: bool = False) -> bool:
@@ -75,6 +83,8 @@ class ToyopucAreaDescriptor:
         return unit == "byte" or (unit == "word" and packed)
 
     def get_address_width(self, unit: str, packed: bool = False) -> int:
+        """Return the expected hexadecimal digit width for an address unit."""
+
         if self.uses_derived_access(unit, packed):
             return self.packed_address_width
         return self.address_width
@@ -154,6 +164,8 @@ class ToyopucAddressingOptions:
 
     @staticmethod
     def from_profile(profile: str | None) -> ToyopucAddressingOptions:
+        """Return addressing options associated with a canonical PLC profile."""
+
         return ToyopucPlcProfiles.from_name(profile).addressing_options
 
 
@@ -218,6 +230,8 @@ class ToyopucDeviceMatrixRow:
     example_start_addresses: tuple[str, ...]
 
     def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation of this matrix row."""
+
         return {
             "profile": self.profile,
             "area": self.area,
@@ -726,10 +740,14 @@ class ToyopucPlcProfiles:
 
     @classmethod
     def get_names(cls) -> list[str]:
+        """Return canonical PLC profile names known to the catalog."""
+
         return [p.name for p in cls._all()]
 
     @classmethod
     def from_name(cls, profile: str | None) -> ToyopucPlcProfile:
+        """Resolve a canonical PLC profile name to its profile object."""
+
         if not profile or not profile.strip():
             raise ValueError(
                 f"PLC profile is required. Use an explicit canonical profile name such as {cls.Generic.name!r}."
@@ -742,6 +760,8 @@ class ToyopucPlcProfiles:
 
     @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
+        """Return metadata for one area in the selected PLC profile."""
+
         normalized = area.strip().upper()
         plc_profile = cls.from_name(profile)
         for descriptor in plc_profile.areas:
@@ -774,10 +794,14 @@ class ToyopucDeviceCatalog:
 
     @classmethod
     def get_area_descriptors(cls, profile: str | None = None) -> tuple[ToyopucAreaDescriptor, ...]:
+        """Return all area descriptors for the selected PLC profile."""
+
         return ToyopucPlcProfiles.from_name(profile).areas
 
     @classmethod
     def get_areas(cls, prefixed: bool, profile: str | None = None) -> list[str]:
+        """Return area names available for direct or prefixed access."""
+
         areas: list[str] = []
         for descriptor in cls.get_area_descriptors(profile):
             if (prefixed and descriptor.supports_prefixed) or (not prefixed and descriptor.supports_direct):
@@ -786,6 +810,8 @@ class ToyopucDeviceCatalog:
 
     @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
+        """Return metadata for one area in the selected PLC profile."""
+
         return ToyopucPlcProfiles.get_area_descriptor(area, profile)
 
     @classmethod
@@ -798,12 +824,16 @@ class ToyopucDeviceCatalog:
         unit: str | None = None,
         packed: bool = False,
     ) -> tuple[ToyopucAddressRange, ...]:
+        """Return supported index ranges for one area/access/unit selection."""
+
         descriptor = cls.get_area_descriptor(area, profile)
         resolved_unit = cls._default_unit(descriptor, unit, packed)
         return cls._get_supported_ranges(descriptor, prefixed, resolved_unit, packed)
 
     @staticmethod
     def format_address_range(family_code: str, address_range: ToyopucAddressRange, width: int) -> str:
+        """Format one address range with a family code and fixed hexadecimal width."""
+
         if not family_code or not family_code.strip():
             raise ValueError("family_code is required")
         return (
@@ -817,6 +847,8 @@ class ToyopucDeviceCatalog:
         ranges: tuple[ToyopucAddressRange, ...] | list[ToyopucAddressRange],
         width: int,
     ) -> str:
+        """Format multiple address ranges as comma-separated text."""
+
         if not family_code or not family_code.strip():
             raise ValueError("family_code is required")
         return ", ".join(ToyopucDeviceCatalog.format_address_range(family_code, r, width) for r in ranges)
@@ -849,6 +881,8 @@ class ToyopucDeviceCatalog:
         unit: str | None = None,
         packed: bool = False,
     ) -> ToyopucAddressRange:
+        """Return the single supported range for an area or raise if there are several."""
+
         plc_profile = ToyopucPlcProfiles.from_name(profile)
         ranges = cls.get_supported_ranges(area, prefixed, plc_profile.name, unit=unit, packed=packed)
         if len(ranges) == 1:
@@ -868,6 +902,8 @@ class ToyopucDeviceCatalog:
         unit: str | None = None,
         packed: bool = False,
     ) -> bool:
+        """Return whether an index is supported for one area/access/unit selection."""
+
         plc_profile = ToyopucPlcProfiles.from_name(profile)
         try:
             ranges = cls.get_supported_ranges(area, prefixed, plc_profile.name, unit=unit, packed=packed)
@@ -886,6 +922,8 @@ class ToyopucDeviceCatalog:
         packed: bool = False,
         options: ToyopucAddressingOptions | None = None,
     ) -> list[str]:
+        """Return representative start addresses that can be resolved for an area."""
+
         plc_profile = ToyopucPlcProfiles.from_name(profile)
         descriptor = cls.get_area_descriptor(area, plc_profile.name)
         normalized_prefix = cls._normalize_prefix(prefix)
