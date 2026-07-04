@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Samples: Added read-only `multi_plc_monitor.py` and `config_polling.py` operational recipes with dry-run validation and reconnect backoff.
 - Docs: Added public API docstrings for the Computerlink Python package and a CI coverage check for public API documentation.
 - Docs: Added a Gotchas entry clarifying that `read_named()` accepts one address per call and should not be used as a multi-address snapshot helper.
 - Docs: Removed the per-library troubleshooting/code page; shared Computerlink troubleshooting and code guidance now lives in the PLC Setup Guide.
