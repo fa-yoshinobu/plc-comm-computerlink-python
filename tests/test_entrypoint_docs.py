@@ -53,10 +53,12 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
     assert "run_sim_tests.bat" not in text
 
 
-def test_release_check_delegates_to_ci_only() -> None:
+def test_release_check_checks_canonical_profiles_then_delegates_to_ci() -> None:
     text = _read("release_check.bat")
 
-    assert "[2/2] Running CI" in text
+    assert "[2/3] Checking canonical ComputerLink profile fixtures" in text
+    assert "scripts\\update_computerlink_profile_jsons.ps1 -FailIfChanged" in text
+    assert "[3/3] Running CI" in text
     assert "call run_ci.bat" in text
     assert text.count("call ") == 1
 
