@@ -98,6 +98,8 @@ class ClockData:
     weekday: int
 
     def as_datetime(self, *, year_base: int = 2000) -> datetime:
+        """Convert the PLC clock fields into a Python ``datetime``."""
+
         year = year_base + self.year_2digit
         return datetime(year, self.month, self.day, self.hour, self.minute, self.second)
 
@@ -122,6 +124,8 @@ class CpuStatusData:
 
     @property
     def raw_bytes(self) -> bytes:
+        """Return the eight raw CPU-status bytes."""
+
         return bytes(
             [
                 self.data1,
@@ -137,169 +141,253 @@ class CpuStatusData:
 
     @property
     def raw_bytes_hex(self) -> str:
+        """Return the raw CPU-status bytes as space-separated hexadecimal text."""
+
         return " ".join(f"{b:02X}" for b in self.raw_bytes)
 
     def raw_hex(self) -> str:
+        """Return the raw CPU-status bytes as space-separated hexadecimal text."""
+
         return self.raw_bytes_hex
 
     @property
     def run(self) -> bool:
+        """Whether the PLC reports RUN state."""
+
         return bool(self.data1 & 0x80)
 
     @property
     def under_stop(self) -> bool:
+        """Whether the PLC reports STOP state."""
+
         return bool(self.data1 & 0x40)
 
     @property
     def under_stop_request_continuity(self) -> bool:
+        """Whether stop-request continuity is active."""
+
         return bool(self.data1 & 0x20)
 
     @property
     def under_pseudo_stop(self) -> bool:
+        """Whether pseudo-stop state is active."""
+
         return bool(self.data1 & 0x10)
 
     @property
     def debug_mode(self) -> bool:
+        """Whether debug mode is active."""
+
         return bool(self.data1 & 0x08)
 
     @property
     def io_monitor_user_mode(self) -> bool:
+        """Whether I/O monitor user mode is active."""
+
         return bool(self.data1 & 0x04)
 
     @property
     def pc3_mode(self) -> bool:
+        """Whether the CPU reports PC3 mode."""
+
         return bool(self.data1 & 0x02)
 
     @property
     def pc10_mode(self) -> bool:
+        """Whether the CPU reports PC10 mode."""
+
         return bool(self.data1 & 0x01)
 
     @property
     def fatal_failure(self) -> bool:
+        """Whether a fatal failure flag is set."""
+
         return bool(self.data2 & 0x80)
 
     @property
     def faint_failure(self) -> bool:
+        """Whether a faint failure flag is set."""
+
         return bool(self.data2 & 0x40)
 
     @property
     def alarm(self) -> bool:
+        """Whether an alarm flag is set."""
+
         return bool(self.data2 & 0x20)
 
     @property
     def io_allocation_parameter_altered(self) -> bool:
+        """Whether the I/O allocation parameter altered flag is set."""
+
         return bool(self.data2 & 0x08)
 
     @property
     def with_memory_card(self) -> bool:
+        """Whether the CPU reports a memory card present."""
+
         return bool(self.data2 & 0x04)
 
     @property
     def memory_card_operation(self) -> bool:
+        """Whether a memory-card operation flag is set."""
+
         return bool(self.data3 & 0x80)
 
     @property
     def write_protected_program_info(self) -> bool:
+        """Whether program information write protection is active."""
+
         return bool(self.data3 & 0x40)
 
     @property
     def read_protected_system_memory(self) -> bool:
+        """Whether system memory read protection is active."""
+
         return bool(self.data4 & 0x80)
 
     @property
     def write_protected_system_memory(self) -> bool:
+        """Whether system memory write protection is active."""
+
         return bool(self.data4 & 0x40)
 
     @property
     def read_protected_system_io(self) -> bool:
+        """Whether system I/O read protection is active."""
+
         return bool(self.data4 & 0x20)
 
     @property
     def write_protected_system_io(self) -> bool:
+        """Whether system I/O write protection is active."""
+
         return bool(self.data4 & 0x10)
 
     @property
     def trace(self) -> bool:
+        """Whether trace is active."""
+
         return bool(self.data5 & 0x80)
 
     @property
     def scan_sampling_trace(self) -> bool:
+        """Whether scan-sampling trace is active."""
+
         return bool(self.data5 & 0x40)
 
     @property
     def periodic_sampling_trace(self) -> bool:
+        """Whether periodic-sampling trace is active."""
+
         return bool(self.data5 & 0x20)
 
     @property
     def enable_detected(self) -> bool:
+        """Whether enable detection is flagged."""
+
         return bool(self.data5 & 0x10)
 
     @property
     def trigger_detected(self) -> bool:
+        """Whether trigger detection is flagged."""
+
         return bool(self.data5 & 0x08)
 
     @property
     def one_scan_step(self) -> bool:
+        """Whether one-scan-step execution is active."""
+
         return bool(self.data5 & 0x04)
 
     @property
     def one_block_step(self) -> bool:
+        """Whether one-block-step execution is active."""
+
         return bool(self.data5 & 0x02)
 
     @property
     def one_instruction_step(self) -> bool:
+        """Whether one-instruction-step execution is active."""
+
         return bool(self.data5 & 0x01)
 
     @property
     def io_offline(self) -> bool:
+        """Whether I/O offline state is active."""
+
         return bool(self.data6 & 0x80)
 
     @property
     def remote_run_setting(self) -> bool:
+        """Whether remote RUN setting is active."""
+
         return bool(self.data6 & 0x40)
 
     @property
     def status_latch_setting(self) -> bool:
+        """Whether status latch setting is active."""
+
         return bool(self.data6 & 0x20)
 
     @property
     def write_priority_limited_program_info(self) -> bool:
+        """Whether write-priority limited program information is active."""
+
         return bool(self.data7 & 0x40)
 
     @property
     def abnormal_write_flash_register(self) -> bool:
+        """Whether abnormal flash-register write is flagged."""
+
         return bool(self.data7 & 0x20)
 
     @property
     def under_writing_flash_register(self) -> bool:
+        """Whether flash-register writing is in progress."""
+
         return bool(self.data7 & 0x10)
 
     @property
     def abnormal_write_equipment_info(self) -> bool:
+        """Whether abnormal equipment-information write is flagged."""
+
         return bool(self.data7 & 0x08)
 
     @property
     def abnormal_writing_equipment_info(self) -> bool:
+        """Whether equipment-information writing is abnormal."""
+
         return bool(self.data7 & 0x04)
 
     @property
     def abnormal_write_during_run(self) -> bool:
+        """Whether abnormal write-during-RUN is flagged."""
+
         return bool(self.data7 & 0x02)
 
     @property
     def under_writing_during_run(self) -> bool:
+        """Whether write-during-RUN is in progress."""
+
         return bool(self.data7 & 0x01)
 
     @property
     def program3_running(self) -> bool:
+        """Whether program 3 is running."""
+
         return bool(self.data8 & 0x08)
 
     @property
     def program2_running(self) -> bool:
+        """Whether program 2 is running."""
+
         return bool(self.data8 & 0x04)
 
     @property
     def program1_running(self) -> bool:
+        """Whether program 1 is running."""
+
         return bool(self.data8 & 0x02)
 
 
@@ -325,16 +413,22 @@ def parse_response(frame: bytes) -> ResponseFrame:
 
 
 def pack_u16_le(value: int) -> bytes:
+    """Pack one unsigned 16-bit integer in little-endian order."""
+
     return bytes([value & 0xFF, (value >> 8) & 0xFF])
 
 
 def unpack_u16_le(data: bytes) -> list[int]:
+    """Unpack little-endian 16-bit words from a byte payload."""
+
     if len(data) % 2 != 0:
         raise ToyopucProtocolError("Word data length must be even")
     return [data[i] | (data[i + 1] << 8) for i in range(0, len(data), 2)]
 
 
 def pack_ext_bit_spec(no: int, bit: int) -> int:
+    """Pack an extended bit ``No`` and bit position into one protocol byte."""
+
     if not 0 <= no <= 0x0F:
         raise ToyopucProtocolError("Extended bit No must fit in 4 bits")
     if not 0 <= bit <= 0x0F:
@@ -343,12 +437,16 @@ def pack_ext_bit_spec(no: int, bit: int) -> int:
 
 
 def pack_bcd(value: int) -> int:
+    """Pack a decimal value from 0 to 99 as one BCD byte."""
+
     if value < 0 or value > 99:
         raise ToyopucProtocolError("BCD value out of range")
     return ((value // 10) << 4) | (value % 10)
 
 
 def unpack_bcd(value: int) -> int:
+    """Unpack one BCD byte into a decimal integer."""
+
     hi = (value >> 4) & 0x0F
     lo = value & 0x0F
     if hi > 9 or lo > 9:
@@ -471,11 +569,15 @@ def parse_cpu_status_data_a0_raw(data: bytes) -> bytes:
 
 
 def build_word_read(addr: int, count: int) -> bytes:
+    """Build ``CMD=1C`` continuous word-read command."""
+
     n = _require_count("CMD=1C word-read", count, _CONTINUOUS_WORD_MAX)
     return build_command(0x1C, pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_word_write(addr: int, values: Iterable[int]) -> bytes:
+    """Build ``CMD=1D`` continuous word-write command."""
+
     vals = list(values)
     _require_count("CMD=1D word-write", len(vals), _CONTINUOUS_WORD_MAX)
     data = pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
@@ -483,25 +585,35 @@ def build_word_write(addr: int, values: Iterable[int]) -> bytes:
 
 
 def build_byte_read(addr: int, count: int) -> bytes:
+    """Build ``CMD=1E`` continuous byte-read command."""
+
     n = _require_count("CMD=1E byte-read", count, _CONTINUOUS_BYTE_MAX)
     return build_command(0x1E, pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_byte_write(addr: int, values: Iterable[int]) -> bytes:
+    """Build ``CMD=1F`` continuous byte-write command."""
+
     vals = bytes(values)
     _require_count("CMD=1F byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     return build_command(0x1F, pack_u16_le(addr) + vals)
 
 
 def build_bit_read(addr: int) -> bytes:
+    """Build ``CMD=20`` single bit-read command."""
+
     return build_command(0x20, pack_u16_le(addr))
 
 
 def build_bit_write(addr: int, value: int) -> bytes:
+    """Build ``CMD=21`` single bit-write command."""
+
     return build_command(0x21, pack_u16_le(addr) + bytes([1 if value else 0]))
 
 
 def build_multi_word_read(addrs: Iterable[int]) -> bytes:
+    """Build ``CMD=22`` multi-point word-read command."""
+
     items = list(addrs)
     _require_count("CMD=22 multi-word-read", len(items), _BASIC_MULTI_MAX_POINTS)
     data = b"".join(pack_u16_le(a) for a in items)
@@ -509,6 +621,8 @@ def build_multi_word_read(addrs: Iterable[int]) -> bytes:
 
 
 def build_multi_word_write(pairs: Iterable[tuple[int, int]]) -> bytes:
+    """Build ``CMD=23`` multi-point word-write command."""
+
     items = list(pairs)
     _require_count("CMD=23 multi-word-write", len(items), _BASIC_MULTI_MAX_POINTS)
     data = b"".join(pack_u16_le(a) + pack_u16_le(v) for a, v in items)
@@ -516,6 +630,8 @@ def build_multi_word_write(pairs: Iterable[tuple[int, int]]) -> bytes:
 
 
 def build_multi_byte_read(addrs: Iterable[int]) -> bytes:
+    """Build ``CMD=24`` multi-point byte-read command."""
+
     items = list(addrs)
     _require_count("CMD=24 multi-byte-read", len(items), _BASIC_MULTI_MAX_POINTS)
     data = b"".join(pack_u16_le(a) for a in items)
@@ -523,6 +639,8 @@ def build_multi_byte_read(addrs: Iterable[int]) -> bytes:
 
 
 def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
+    """Build ``CMD=25`` multi-point byte-write command."""
+
     items = list(pairs)
     _require_count("CMD=25 multi-byte-write", len(items), _BASIC_MULTI_MAX_POINTS)
     data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in items)
@@ -530,11 +648,15 @@ def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
 
 
 def build_ext_word_read(no: int, addr: int, count: int) -> bytes:
+    """Build ``CMD=94`` extended word-read command."""
+
     n = _require_count("CMD=94 ext-word-read", count, _CONTINUOUS_WORD_MAX)
     return build_command(0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
+    """Build ``CMD=95`` extended word-write command."""
+
     vals = list(values)
     _require_count("CMD=95 ext-word-write", len(vals), _CONTINUOUS_WORD_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
@@ -542,11 +664,15 @@ def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
 
 
 def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
+    """Build ``CMD=96`` extended byte-read command."""
+
     n = _require_count("CMD=96 ext-byte-read", count, _CONTINUOUS_BYTE_MAX)
     return build_command(0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
+    """Build ``CMD=97`` extended byte-write command."""
+
     vals = bytes(values)
     _require_count("CMD=97 ext-byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + vals
@@ -558,6 +684,8 @@ def build_ext_multi_read(
     byte_points: Sequence[tuple[int, int]],
     word_points: Sequence[tuple[int, int]],
 ) -> bytes:
+    """Build ``CMD=98`` extended mixed multi-read command."""
+
     _require_ext_multi_read_limits(len(bit_points), len(byte_points), len(word_points))
     data = bytearray()
     data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
@@ -578,6 +706,8 @@ def build_ext_multi_write(
     byte_points: Sequence[tuple[int, int, int]],
     word_points: Sequence[tuple[int, int, int]],
 ) -> bytes:
+    """Build ``CMD=99`` extended mixed multi-write command."""
+
     _require_ext_multi_write_limits(len(bit_points), len(byte_points), len(word_points))
     data = bytearray()
     data.extend([len(bit_points) & 0xFF, len(byte_points) & 0xFF, len(word_points) & 0xFF])
@@ -598,6 +728,8 @@ def build_ext_multi_write(
 
 # PC10 commands (C2-C6)
 def build_pc10_block_read(addr32: int, count: int) -> bytes:
+    """Build ``CMD=C2`` PC10 32-bit-address block-read command."""
+
     n = _require_count("CMD=C2 PC10 block-read", count, _PC10_BLOCK_MAX_BYTES)
     _require_pc10_block_range(addr32, n)
     # Address is 32-bit (low word, high word)
@@ -608,6 +740,8 @@ def build_pc10_block_read(addr32: int, count: int) -> bytes:
 
 
 def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
+    """Build ``CMD=C3`` PC10 32-bit-address block-write command."""
+
     _require_length("CMD=C3 PC10 block-write", len(data_bytes), _PC10_BLOCK_MAX_BYTES)
     _require_pc10_block_range(addr32, len(data_bytes))
     return build_command(
@@ -617,18 +751,24 @@ def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
 
 
 def build_pc10_multi_read(payload: bytes) -> bytes:
+    """Build ``CMD=C4`` PC10 multi-read command from a preformatted payload."""
+
     # Payload is already formatted per manual (CMD=C4)
     _require_length("CMD=C4 PC10 multi-read payload", len(payload), _PC10_MULTI_MAX_PAYLOAD_BYTES)
     return build_command(0xC4, payload)
 
 
 def build_pc10_multi_write(payload: bytes) -> bytes:
+    """Build ``CMD=C5`` PC10 multi-write command from a preformatted payload."""
+
     # Payload is already formatted per manual (CMD=C5)
     _require_length("CMD=C5 PC10 multi-write payload", len(payload), _PC10_MULTI_MAX_PAYLOAD_BYTES)
     return build_command(0xC5, payload)
 
 
 def build_fr_register(ex_no: int) -> bytes:
+    """Build ``CMD=CA`` FR-register command for one expansion number."""
+
     return build_command(0xCA, bytes([ex_no & 0xFF]))
 
 
@@ -679,6 +819,8 @@ def build_relay_command(link_no: int, station_no: int, inner_payload: bytes, *, 
 
 
 def build_relay_nested(hops: Sequence[tuple[int, int]], inner_payload: bytes) -> bytes:
+    """Build a nested relay command by wrapping an inner payload through each hop."""
+
     hops = list(hops)
     if not hops:
         raise ValueError("at least one relay hop is required")

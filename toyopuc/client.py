@@ -61,12 +61,16 @@ from .relay import (
 
 
 class ToyopucTraceDirection(Enum):
+    """Direction for a traced TOYOPUC computer-link frame."""
+
     SEND = "send"
     RECEIVE = "receive"
 
 
 @dataclass(frozen=True)
 class ToyopucTraceFrame:
+    """One raw TOYOPUC frame observed by a trace hook."""
+
     direction: ToyopucTraceDirection
     data: bytes
     timestamp: datetime
@@ -183,6 +187,8 @@ def _pack_float32_low_word_first_words(values: Iterable[float]) -> list[int]:
 
 
 def format_response_error(resp: ResponseFrame) -> str:
+    """Return a human-readable description for a non-OK response frame."""
+
     msg = f"Response error rc=0x{resp.rc:02X}"
     if resp.rc == 0x10:
         # Some PLCs return the detailed error code in CMD with no data,
@@ -287,6 +293,8 @@ class ToyopucClient:
         self.close()
 
     def connect(self) -> None:
+        """Open the configured TCP or UDP socket if it is not already open."""
+
         if self._sock:
             return
         if self.transport == "tcp":
@@ -302,6 +310,8 @@ class ToyopucClient:
         self._sock = sock
 
     def close(self) -> None:
+        """Close the current socket and clear transport state."""
+
         if self._sock:
             try:
                 self._sock.close()
@@ -317,10 +327,14 @@ class ToyopucClient:
 
     @property
     def last_tx(self) -> bytes | None:
+        """Last raw frame transmitted by this client, if available."""
+
         return self._last_tx
 
     @property
     def last_rx(self) -> bytes | None:
+        """Last raw frame received by this client, if available."""
+
         return self._last_rx
 
     def _recv_exact_into(self, buffer: bytearray | memoryview) -> None:
@@ -410,6 +424,8 @@ class ToyopucClient:
         raise ToyopucError("Send/receive failed")
 
     def send_raw(self, cmd: int, data: bytes = b"") -> ResponseFrame:
+        """Send one raw command code and payload, returning the parsed response frame."""
+
         payload = build_command(cmd, data)
         return self._send_and_recv(payload)
 
