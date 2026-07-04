@@ -58,11 +58,6 @@ asyncio.run(main())
 | [Gotchas](docsrc/user/GOTCHAS.md) | Symptoms, root causes, and fixes for common mistakes. |
 | [Samples](samples/README.md) | Complete sample programs and command lines. |
 
-## Hardware verified
-
-Live-device verification is maintained in [Latest communication verification](docsrc/user/LATEST_COMMUNICATION_VERIFICATION.md).
-See that page for verified PLC models, transports, dates, limitations, and retained validation notes.
-
 ## License and registry
 
 | Item | Value |

@@ -25,6 +25,33 @@ if __name__ == "__main__":
 | --- | --- |
 | A multi-address request can require multiple protocol requests, incompatible protocol groups, PC10 block boundary crossings, or an internal fallback to individual requests. | `read_many` / `write_many` now reject those cases before communication. Keep each call to one compatible protocol request, or use single-request helpers, chunked helpers, or separate explicit calls when splitting is intentional. |
 
+## Symptom: `read_named(["P1-D0000", "P1-D0001"])` is rejected
+
+| Root cause | Fix |
+| --- | --- |
+| Computerlink named reads intentionally accept one named address per call. Unlike SLMP or Host Link snapshots, they do not split a multi-address list into several PLC requests. | Call `read_named` once per named address, or use `read_words_single_request` / chunked helpers for contiguous ranges. |
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1025,
+        plc_profile="toyopuc:plus:extended",
+    )
+    async with await open_and_connect(options) as client:
+        d0000 = await read_named(client, ["P1-D0000"])
+        d0001 = await read_named(client, ["P1-D0001"])
+        print(d0000["P1-D0000"], d0001["P1-D0001"])
+
+
+asyncio.run(main())
+```
+
 ## Symptom: `P1-D0100.D` reads a bit instead of a dword
 
 | Root cause | Fix |

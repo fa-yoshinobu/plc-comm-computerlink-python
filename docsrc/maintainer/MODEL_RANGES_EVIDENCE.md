@@ -2,9 +2,9 @@
 
 Related documents:
 
-- [USAGE_GUIDE.md](USAGE_GUIDE.md)
-- [PROFILES.md](PROFILES.md)
-- [SUPPORTED_REGISTERS.md](SUPPORTED_REGISTERS.md)
+- [USAGE_GUIDE.md](../user/USAGE_GUIDE.md)
+- [PROFILES.md](../user/PROFILES.md)
+- [SUPPORTED_REGISTERS.md](../user/SUPPORTED_REGISTERS.md)
 - [Project README](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/README.md)
 
 This document records writable device ranges confirmed per hardware model.
