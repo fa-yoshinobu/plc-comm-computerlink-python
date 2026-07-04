@@ -118,3 +118,8 @@ Use the shared [Computerlink Troubleshooting & Codes](https://fa-yoshinobu.githu
 | Address error | Use `P1-D0000`, not `D0000`, for basic area families. |
 | Dword reads look wrong | Use `P1-D0100:D` or dtype `"D"`; `P1-D0100.D` means bit 13. |
 | FR write does not persist | Use `write_fr(..., commit=True)` or call `commit_fr()`. |
+
+## Next steps
+
+- Open the runnable samples: [samples README](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/tree/main/samples).
+- Continue with the [Usage guide](USAGE_GUIDE.md) and [Gotchas](GOTCHAS.md).
