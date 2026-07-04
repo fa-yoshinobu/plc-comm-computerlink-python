@@ -4,7 +4,7 @@ Related documents:
 
 - [USAGE_GUIDE.md](../user/USAGE_GUIDE.md)
 - [PROFILES.md](../user/PROFILES.md)
-- [SUPPORTED_REGISTERS.md](../user/SUPPORTED_REGISTERS.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [Project README](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/README.md)
 
 This document records writable device ranges confirmed per hardware model.

@@ -4,7 +4,7 @@ Related documents:
 
 - [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 - [RELEASE_PROCESS.md](RELEASE_PROCESS.md)
 
@@ -108,7 +108,7 @@ Verified feature groups:
 - [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
-- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [TODO.md](../../TODO.md)
 - [RELEASE_PROCESS.md](RELEASE_PROCESS.md)
 - [../../samples/README.md](../../samples/README.md)

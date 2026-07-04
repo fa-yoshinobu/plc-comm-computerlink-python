@@ -4,7 +4,7 @@ Related documents:
 
 - [README.md](../../README.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [../../scripts/README.md](../../scripts/README.md)
 
 This document is a working protocol summary for the 2ET Ethernet module.

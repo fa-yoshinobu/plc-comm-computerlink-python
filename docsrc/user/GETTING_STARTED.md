@@ -109,6 +109,8 @@ asyncio.run(main())
 
 ## If it does not work
 
+Use the shared [Computerlink Error Codes](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/error-codes/) page for connection, addressing, write, relay, and PLC error-code checks.
+
 | Symptom | Check |
 | --- | --- |
 | Timeout | Confirm host `192.168.250.100`, TCP port `1025`, and PLC network settings. |
@@ -116,13 +118,3 @@ asyncio.run(main())
 | Address error | Use `P1-D0000`, not `D0000`, for basic area families. |
 | Dword reads look wrong | Use `P1-D0100:D` or dtype `"D"`; `P1-D0100.D` means bit 13. |
 | FR write does not persist | Use `write_fr(..., commit=True)` or call `commit_fr()`. |
-
-## Next pages
-
-| Page | What you read next |
-| --- | --- |
-| [Usage guide](./USAGE_GUIDE.md) | Common read, write, block, polling, FR, and relay workflows. |
-| [Supported registers](./SUPPORTED_REGISTERS.md) | Device families and address forms. |
-| [Profiles](./PROFILES.md) | Canonical profiles and profile-specific notes. |
-| [Gotchas](./GOTCHAS.md) | Symptom-driven troubleshooting. |
-| [Samples](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/blob/main/samples/README.md) | Complete runnable sample commands. |

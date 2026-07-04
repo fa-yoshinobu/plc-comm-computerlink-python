@@ -1,6 +1,8 @@
-# Profiles
+# PLC profiles
 
 Canonical profile names are part of the public configuration contract. The library rejects missing, blank, alias, and abbreviated profile strings immediately.
+
+Device-family notation, type suffixes, practical range notes, and model-specific writable range summaries are shared across the Computerlink libraries. Use the common [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) page for those details.
 
 ## Explicit selection is required
 

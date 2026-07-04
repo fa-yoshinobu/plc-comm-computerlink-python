@@ -13,7 +13,7 @@ The maintained profile table is in [PLC profiles](docsrc/user/PROFILES.md). Choo
 
 ## Supported device types
 
-The maintained device and range tables are in [Supported registers](docsrc/user/SUPPORTED_REGISTERS.md). Use that page for supported device families, address syntax, and profile-specific notes.
+The shared device and range tables are in the [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) page. Use that page for supported device families, address syntax, and profile-specific notes.
 
 ## Installation
 
@@ -53,8 +53,9 @@ asyncio.run(main())
 | [Full documentation site](https://fa-yoshinobu.github.io/plc-comm-docs-site/) | Unified docs for all PLC communication libraries. |
 | [Getting started](docsrc/user/GETTING_STARTED.md) | First connection, first read, and first write. |
 | [Usage guide](docsrc/user/USAGE_GUIDE.md) | Recommended entry points and common workflows. |
-| [Supported registers](docsrc/user/SUPPORTED_REGISTERS.md) | Public device families and typed address forms. |
 | [PLC profiles](docsrc/user/PROFILES.md) | Exact canonical profile names and profile-specific cautions. |
+| [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) | Check shared device families, address notation, and model range notes. |
+| [Computerlink Error Codes](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/error-codes/) | Troubleshoot common connection, address, write, relay, and PLC error-code symptoms. |
 | [Gotchas](docsrc/user/GOTCHAS.md) | Symptoms, root causes, and fixes for common mistakes. |
 | [Samples](samples/README.md) | Complete sample programs and command lines. |
 

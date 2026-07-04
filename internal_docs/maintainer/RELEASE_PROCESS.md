@@ -5,7 +5,7 @@ Related documents:
 - [README.md](../../README.md)
 - [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 
 This document is a practical checklist for releasing the library as a package.
@@ -27,7 +27,7 @@ Confirm what is part of the release.
   - `README.md`
   - `internal_docs/maintainer/TESTING_GUIDE.md`
   - `internal_docs/maintainer/PROTOCOL_SPEC.md`
-  - `docsrc/user/MODEL_RANGES.md`
+  - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
   - `TODO.md`
   - `LICENSE`
   - `pyproject.toml`
@@ -98,7 +98,7 @@ Verify that the docs match the code.
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
   - protocol summary
   - example messages
-- [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md)
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
   - model-specific writable ranges
 - [TODO.md](../../TODO.md)
   - open items clearly separated from verified behavior
@@ -231,6 +231,6 @@ Current release note file:
 After release:
 
 - record tag / version
-- keep [MODEL_RANGES.md](../../docsrc/user/MODEL_RANGES.md) updated when new hardware is tested
+- keep [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) updated when new hardware is tested
 - move completed items out of [TODO.md](../../TODO.md)
 

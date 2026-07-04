@@ -62,7 +62,7 @@ Observed limitation:
 - `README.md`
 - `internal_docs/maintainer/TESTING_GUIDE.md`
 - `internal_docs/maintainer/PROTOCOL_SPEC.md`
-- `docsrc/MODEL_RANGES.md`
+- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - `internal_docs/maintainer/RELEASE_PROCESS.md`
 - `docsrc/RELEASE_NOTES.md`
 - `samples/README.md`
