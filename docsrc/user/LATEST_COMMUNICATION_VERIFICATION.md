@@ -24,7 +24,3 @@ This page keeps the current public summary only. Older detailed notes are not ke
 - exact writable ranges depend on profile and hardware
 - the tested `PC10G` notes include model-specific unsupported areas such as missing `B` support on the tested unit
 - `FR` exposure is profile-dependent and should not be the first smoke test
-
-## Where Older Evidence Went
-
-This public page keeps only the current summary. Detailed historical evidence is retained as maintainer notes.
