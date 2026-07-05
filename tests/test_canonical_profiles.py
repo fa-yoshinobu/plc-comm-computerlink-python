@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from toyopuc import ToyopucPlcProfiles
+from toyopuc import ToyopucPlcProfiles, display_name
 
 
 def _range_to_dict(value) -> dict[str, int]:
@@ -48,7 +48,7 @@ def test_embedded_toyopuc_profiles_match_canonical_fixture() -> None:
 
     assert ToyopucPlcProfiles.get_names() == list(expected)
     for profile_id, expected_profile in expected.items():
-        assert expected_profile["display_name"].strip()
+        assert display_name(profile_id) == expected_profile["display_name"]
         actual = ToyopucPlcProfiles.from_name(profile_id)
         assert _options_to_dict(actual.addressing_options) == expected_profile["addressing_options"]
         assert [_area_to_dict(area) for area in actual.areas] == expected_profile["areas"]

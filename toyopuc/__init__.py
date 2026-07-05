@@ -44,6 +44,7 @@ from .profiles import (
     ToyopucDeviceMatrixRow,
     ToyopucPlcProfile,
     ToyopucPlcProfiles,
+    display_name,
 )
 from .protocol import ClockData, CpuStatusData
 from .relay import RelayLayer, format_relay_hop, normalize_relay_hops, parse_relay_hops
@@ -133,4 +134,5 @@ __all__ = [
     "ToyopucDeviceMatrixRow",
     "ToyopucPlcProfile",
     "ToyopucPlcProfiles",
+    "display_name",
 ]

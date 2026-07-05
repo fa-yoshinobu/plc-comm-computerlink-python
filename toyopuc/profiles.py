@@ -759,6 +759,13 @@ class ToyopucPlcProfiles:
         raise ValueError(f"Unknown PLC profile: {profile!r}")
 
     @classmethod
+    def display_name(cls, profile: str | None) -> str:
+        """Return the canonical human-readable display name for a PLC profile."""
+
+        normalized = cls.from_name(profile).name
+        return _PROFILE_DISPLAY_NAMES[normalized]
+
+    @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
         """Return metadata for one area in the selected PLC profile."""
 
@@ -785,6 +792,27 @@ class ToyopucPlcProfiles:
             cls.Pc3JgMode,
             cls.Pc3JgPc3Separate,
         )
+
+
+_PROFILE_DISPLAY_NAMES = {
+    "toyopuc:generic": "TOYOPUC Generic",
+    "toyopuc:plus:standard": "TOYOPUC Plus (standard)",
+    "toyopuc:plus:extended": "TOYOPUC Plus (extended)",
+    "toyopuc:nano-10gx:native": "TOYOPUC Nano 10GX (native)",
+    "toyopuc:nano-10gx:compatible": "TOYOPUC Nano 10GX (compatible)",
+    "toyopuc:pc10g:standard-pc3jg": "TOYOPUC PC10G (standard PC3JG)",
+    "toyopuc:pc10g:pc10": "TOYOPUC PC10G (PC10)",
+    "toyopuc:pc3jx:pc3-separate": "TOYOPUC PC3JX (PC3 separate)",
+    "toyopuc:pc3jx:plus-expansion": "TOYOPUC PC3JX (Plus expansion)",
+    "toyopuc:pc3jg:pc3jg": "TOYOPUC PC3JG (PC3JG)",
+    "toyopuc:pc3jg:pc3-separate": "TOYOPUC PC3JG (PC3 separate)",
+}
+
+
+def display_name(profile: str | None) -> str:
+    """Return the canonical human-readable display name for a PLC profile."""
+
+    return ToyopucPlcProfiles.display_name(profile)
 
 
 class ToyopucDeviceCatalog:
