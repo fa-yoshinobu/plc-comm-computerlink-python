@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Library: Synced the embedded TOYOPUC profile fixture to `plc-comm-computerlink-profiles` `v1.0.1`, including canonical `display_name` labels.
+- Library: Added `display_name(profile)` and `ToyopucPlcProfiles.display_name(profile)` as public UI-label helpers while keeping stored PLC profile values canonical.
+- Docs: Documented the profile display-name helpers and canonical-ID storage guidance.
+- Tests: Added canonical fixture parity coverage for profile `display_name` values.
 - Samples: Added read-only `multi_plc_monitor.py` and `config_polling.py` operational recipes with dry-run validation and reconnect backoff.
 - Docs: Added public API docstrings for the Computerlink Python package and a CI coverage check for public API documentation.
 - Docs: Added a Gotchas entry clarifying that `read_named()` accepts one address per call and should not be used as a multi-address snapshot helper.
