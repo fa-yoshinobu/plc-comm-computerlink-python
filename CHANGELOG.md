@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Tooling`: Developer/operator command-line tools and helper utilities.
 - `CI`: Release checks, workflow scripts, or automation-only changes.
 
-## [Unreleased]
+## [1.2.0] - 2026-07-05
 
 ### Changed
+- Release: Bumped package metadata to `1.2.0`.
+- Tooling: Normalized line-ending handling in the canonical profile JSON update script so `-SourceRoot` runs no longer report false changes.
+- Release: Synced `__version__` with the package version.
 - Library: Synced the embedded TOYOPUC profile fixture to `plc-comm-computerlink-profiles` `v1.0.1`, including canonical `display_name` labels.
 - Library: Added `display_name(profile)` and `ToyopucPlcProfiles.display_name(profile)` as public UI-label helpers while keeping stored PLC profile values canonical.
 - Docs: Documented the profile display-name helpers and canonical-ID storage guidance.
