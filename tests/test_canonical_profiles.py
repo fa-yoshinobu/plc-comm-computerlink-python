@@ -52,4 +52,3 @@ def test_embedded_toyopuc_profiles_match_canonical_fixture() -> None:
         actual = ToyopucPlcProfiles.from_name(profile_id)
         assert _options_to_dict(actual.addressing_options) == expected_profile["addressing_options"]
         assert [_area_to_dict(area) for area in actual.areas] == expected_profile["areas"]
-
