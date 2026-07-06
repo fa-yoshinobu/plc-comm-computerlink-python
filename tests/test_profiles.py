@@ -2,6 +2,7 @@
 
 import pytest
 
+import toyopuc
 from toyopuc import (
     ToyopucAddressingOptions,
     ToyopucDeviceCatalog,
@@ -10,6 +11,10 @@ from toyopuc import (
 from toyopuc.high_level import resolve_device as _resolve_device
 
 GENERIC_PROFILE = "toyopuc:generic"
+
+
+def test_import_name_stays_toyopuc_after_package_rename() -> None:
+    assert toyopuc.__name__ == "toyopuc"
 
 
 def resolve_device(device: str, **kwargs):
