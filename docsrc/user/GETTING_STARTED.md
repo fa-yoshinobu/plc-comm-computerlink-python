@@ -6,7 +6,7 @@ Use this page for your first TOYOPUC Computerlink read and write from Python.
 
 | Step | What you do |
 | --- | --- |
-| 1 | Install `toyopuc-computerlink`. |
+| 1 | Install `plc-comm-toyopuc`. |
 | 2 | Choose one exact canonical profile string. |
 | 3 | Connect to `192.168.250.100:1025` over TCP. |
 | 4 | Read `P1-D0000`. |
@@ -25,7 +25,7 @@ Use this page for your first TOYOPUC Computerlink read and write from Python.
 ## Install
 
 ```bash
-pip install toyopuc-computerlink
+pip install plc-comm-toyopuc
 ```
 
 ## Choose profile

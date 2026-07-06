@@ -17,8 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-06
+
+### BREAKING
+- Release: Renamed the PyPI install package while keeping the Python import name unchanged.
+
+| Old install name | New install name | Import name |
+| --- | --- | --- |
+| `toyopuc-computerlink` | `plc-comm-toyopuc` | `toyopuc` |
+
 ### Added
 - Docs: Added `docsrc/user/API_REFERENCE.md` as the standard user-facing API index and linked it from the README.
+
+### Changed
+- Release: Bumped package metadata to `2.0.0`.
+- Docs: Added the plc-comm family package matrix link to the README.
+- Tests: Added package-rename import-name coverage for `import toyopuc`.
+- Tooling: Updated release duplicate checks to query `plc-comm-toyopuc`.
 
 ## [1.2.0] - 2026-07-05
 

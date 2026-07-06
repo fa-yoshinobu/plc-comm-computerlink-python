@@ -1,11 +1,15 @@
 [![CI](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/ci.yml/badge.svg)](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/toyopuc-computerlink.svg)](https://pypi.org/project/toyopuc-computerlink/)
+[![PyPI](https://img.shields.io/pypi/v/plc-comm-toyopuc.svg)](https://pypi.org/project/plc-comm-toyopuc/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 # TOYOPUC Computerlink for Python
 
 Python library for TOYOPUC Computerlink PLC communication over TCP or UDP.
+
+## PLC Comm Family
+
+This library is part of the plc-comm family. See the [package matrix](https://fa-yoshinobu.github.io/plc-comm-docs-site/package-matrix/) for protocol, language, registry, and install-command mapping.
 
 ## Supported PLC profiles
 
@@ -18,7 +22,7 @@ The shared device and range tables are in the [Computerlink Device Ranges](https
 ## Installation
 
 ```bash
-pip install toyopuc-computerlink
+pip install plc-comm-toyopuc
 ```
 
 ## Quick example
@@ -65,8 +69,8 @@ asyncio.run(main())
 | Item | Value |
 | --- | --- |
 | License | [MIT](LICENSE) |
-| Registry | [PyPI](https://pypi.org/project/toyopuc-computerlink/) |
-| Package | `toyopuc-computerlink` |
+| Registry | [PyPI](https://pypi.org/project/plc-comm-toyopuc/) |
+| Package | `plc-comm-toyopuc` |
 
 ## Commercial support
 

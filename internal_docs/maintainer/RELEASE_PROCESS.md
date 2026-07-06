@@ -15,7 +15,7 @@ Naming used by this project:
 - GitHub repository: `plc-comm-computerlink-python`
 - GitHub URL: `https://github.com/fa-yoshinobu/plc-comm-computerlink-python`
 - Docs site: `https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/`
-- package name: `toyopuc-computerlink`
+- package name: `plc-comm-toyopuc`
 - import name: `toyopuc`
 
 ## 1. Scope
