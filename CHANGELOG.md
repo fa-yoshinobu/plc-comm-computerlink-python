@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Tooling`: Developer/operator command-line tools and helper utilities.
 - `CI`: Release checks, workflow scripts, or automation-only changes.
 
+## [Unreleased]
+
+### Added
+- Docs: Added `docsrc/user/API_REFERENCE.md` as the standard user-facing API index and linked it from the README.
+
 ## [1.2.0] - 2026-07-05
 
 ### Changed
