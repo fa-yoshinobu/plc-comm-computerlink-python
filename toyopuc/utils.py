@@ -53,7 +53,7 @@ class ToyopucConnectionOptions:
 
     host: str
     _: KW_ONLY
-    plc_profile: str
+    plc_profile: str = ""
     port: int = 1025
     local_port: int = 0
     transport: str = "tcp"
@@ -386,7 +386,7 @@ async def open_and_connect(
     transport: str = "tcp",
     retry_delay: float = 0.2,
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
-    plc_profile: str,
+    plc_profile: str = "",
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
