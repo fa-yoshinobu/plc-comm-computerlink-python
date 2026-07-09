@@ -1779,6 +1779,11 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_pc10_block_read(addr32, len(devices) * 2))
             if resp.cmd != 0xC2:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
+            expected = len(devices) * 2
+            if len(resp.data) != expected:
+                raise ToyopucProtocolError(
+                    f"Relay PC10 block-read response size mismatch: expected={expected}, actual={len(resp.data)}"
+                )
             return [int.from_bytes(resp.data[i * 2 : i * 2 + 2], "little") for i in range(len(devices))]
         if _contains_packed_pc10_word_device(devices):
             return self._relay_read_pc10_word_batch_by_segments(hops, devices)
@@ -1808,6 +1813,10 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_pc10_block_read(addrs32[0], len(devices)))
             if resp.cmd != 0xC2:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
+            if len(resp.data) != len(devices):
+                raise ToyopucProtocolError(
+                    f"Relay PC10 block-read response size mismatch: expected={len(devices)}, actual={len(resp.data)}"
+                )
             return list(resp.data[: len(devices)])
         return [int(self._relay_read_resolved_device(hops, d)) for d in devices]
 

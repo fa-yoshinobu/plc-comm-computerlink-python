@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-10
+
+### Changed
+- Release: Bumped package metadata and `toyopuc.__version__` to `2.0.1`.
+
+### BREAKING
+- Library: `ToyopucConnectionOptions` and the direct `open_and_connect` helper now require an explicit `plc_profile`.
+- Library: `ToyopucPlcProfile` now includes `display_name`; use `display_name` for UI labels and the canonical `name` for storage.
+
+### Docs
+- Docs: Clarified required profile selection and the separation between canonical names and display names.
+
 ## [2.0.0] - 2026-07-06
 
 ### BREAKING
