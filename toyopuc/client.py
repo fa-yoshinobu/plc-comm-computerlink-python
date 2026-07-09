@@ -605,6 +605,10 @@ class ToyopucClient:
         resp = self._send_and_recv(build_pc10_block_read(addr32, count))
         if resp.cmd != 0xC2:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        if len(resp.data) != count:
+            raise ToyopucProtocolError(
+                f"PC10 block-read response size mismatch: expected={count}, actual={len(resp.data)}"
+            )
         return resp.data
 
     def pc10_block_write(self, addr32: int, data_bytes: bytes) -> None:
