@@ -3,7 +3,7 @@
 Related documents:
 
 - [README.md](../../README.md)
-- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- [CHANGELOG.md](../../CHANGELOG.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
 - [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
@@ -204,7 +204,7 @@ Confirm:
 
 ## 11. Release Notes
 
-Prepare a short release note with:
+Prepare a short release note in `CHANGELOG.md` and the GitHub Releases body with:
 
 - version
 - confirmed hardware
@@ -218,13 +218,6 @@ Prepare a short release note with:
   - `CMD=CA`
   - `CMD=60`
   - model-specific unsupported ranges
-
-Current release note file:
-
-- [RELEASE_NOTES.md](RELEASE_NOTES.md)
-- GitHub Releases body:
-  - [GITHUB_RELEASE_v1.0.3.md](GITHUB_RELEASE_v1.0.3.md)
-  - includes title, tag, target, body, and upload checklist
 
 ## 12. Post-Release
 
