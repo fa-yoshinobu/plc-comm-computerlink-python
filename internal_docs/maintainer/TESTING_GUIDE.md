@@ -42,15 +42,16 @@ operator convenience artifact, not the library package itself.
 ## Hardware Checks
 
 Do not add new one-off `.bat` files for hardware checks. If a new field issue
-requires live confirmation, run the relevant Python helper directly and record
-only the conclusion in a stable maintainer document.
+requires live confirmation, run the relevant Python helper directly. Latest
+profile facts belong in the profile-side data, not in this repository's
+maintainer notes.
 
 Examples:
 
 ```bat
-python scripts\interactive_cli.py --host 192.168.250.100 --port 1025 --protocol tcp
-python scripts\clock_test.py --host 192.168.250.100 --port 1025 --protocol tcp
-python scripts\cpu_status_test.py --host 192.168.250.100 --port 1025 --protocol tcp
+python scripts\interactive_cli.py --host <plc-host> --port <plc-port> --protocol tcp
+python scripts\clock_test.py --host <plc-host> --port <plc-port> --protocol tcp
+python scripts\cpu_status_test.py --host <plc-host> --port <plc-port> --protocol tcp
 ```
 
 Hardware-specific logs, packet captures, and temporary scan outputs are local

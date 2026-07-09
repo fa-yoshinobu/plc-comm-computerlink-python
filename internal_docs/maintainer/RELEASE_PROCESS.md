@@ -6,7 +6,6 @@ Related documents:
 - [CHANGELOG.md](../../CHANGELOG.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
 - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
-- [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
 
 This document is a practical checklist for releasing the library as a package.
 
@@ -26,7 +25,6 @@ Confirm what is part of the release.
   - `toyopuc/`
   - `README.md`
   - `internal_docs/maintainer/TESTING_GUIDE.md`
-  - `internal_docs/maintainer/PROTOCOL_SPEC.md`
   - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
   - `TODO.md`
   - `LICENSE`
@@ -94,29 +92,14 @@ Verify that the docs match the code.
   - supported / unsupported behavior notes
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
   - test tools usage
-  - verified results
-- [PROTOCOL_SPEC.md](PROTOCOL_SPEC.md)
-  - protocol summary
-  - example messages
 - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
   - model-specific writable ranges
 - [TODO.md](../../TODO.md)
-  - open items clearly separated from verified behavior
+  - active open items only
 
-## 6. Verified Hardware Notes
+## 6. Hardware Notes
 
-Keep tested hardware explicit in release notes.
-
-Currently verified:
-
-- `TOYOPUC-Plus CPU (TCC-6740) + Plus EX2 (TCU-6858)`
-- TCP
-- UDP with fixed `local_port`
-- low-level API
-- high-level API
-- mixed / block / boundary / recovery tests
-
-State clearly that unsupported areas depend on model.
+Keep release notes focused on changed support. Latest profile facts live in the profile data and shared docs, not in release-process notes.
 
 ## 7. Safety Notes
 
@@ -125,7 +108,6 @@ Confirm caution notes are present before release.
 - `FR` is not part of the normal safe path
 - `V` bit mismatch may be tolerated due to PLC-side overwrite
 - `S` word mismatch may be tolerated depending on model / behavior
-- `TOYOPUC-Plus` has unsupported areas such as `B`
 - some UDP environments require fixed PC-side source port
 
 ## 8. Code Checks
@@ -176,12 +158,6 @@ If using Twine:
 python -m twine check dist/*
 ```
 
-Current status:
-
-- `release_check.bat`: completed for `toyopuc-computerlink` `0.1.9`
-- `python -m build`: completed for `toyopuc-computerlink` `0.1.9`
-- `python -m twine check dist/*`: completed for `toyopuc-computerlink` `0.1.9`
-
 Recommended release order:
 
 1. `python -m build`
@@ -207,7 +183,6 @@ Confirm:
 Prepare a short release note in `CHANGELOG.md` and the GitHub Releases body with:
 
 - version
-- confirmed hardware
 - main features
   - low-level client
   - high-level client
@@ -223,7 +198,7 @@ Prepare a short release note in `CHANGELOG.md` and the GitHub Releases body with
 
 After release:
 
-- record tag / version
+- update tag / version
 - keep [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) updated when new hardware is tested
-- move completed items out of [TODO.md](../../TODO.md)
+- keep [TODO.md](../../TODO.md) limited to active items
 
