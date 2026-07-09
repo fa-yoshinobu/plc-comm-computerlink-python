@@ -1,7 +1,7 @@
 # TODO: Toyopuc Computerlink Python
 
-This file tracks active follow-up items for the Toyopuc Computerlink Python library.
+Current active TODOs only.
 
-## 1. Protocol and Model Coverage
+## Current Status
 
-- [ ] **Extended Device Validation**: Expand verified coverage for newer Toyopuc model ranges and unresolved extended-device edge cases.
+No active TODOs are currently tracked.
