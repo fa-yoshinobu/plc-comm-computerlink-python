@@ -212,6 +212,7 @@ class ToyopucPlcProfile:
     """A named device model configuration with area descriptors and options."""
 
     name: str
+    display_name: str
     addressing_options: ToyopucAddressingOptions
     areas: tuple[ToyopucAreaDescriptor, ...]
 
@@ -762,8 +763,7 @@ class ToyopucPlcProfiles:
     def display_name(cls, profile: str | None) -> str:
         """Return the canonical human-readable display name for a PLC profile."""
 
-        normalized = cls.from_name(profile).name
-        return _PROFILE_DISPLAY_NAMES[normalized]
+        return cls.from_name(profile).display_name
 
     @classmethod
     def get_area_descriptor(cls, area: str, profile: str | None = None) -> ToyopucAreaDescriptor:
@@ -792,21 +792,6 @@ class ToyopucPlcProfiles:
             cls.Pc3JgMode,
             cls.Pc3JgPc3Separate,
         )
-
-
-_PROFILE_DISPLAY_NAMES = {
-    "toyopuc:generic": "TOYOPUC Generic",
-    "toyopuc:plus:standard": "TOYOPUC Plus (standard)",
-    "toyopuc:plus:extended": "TOYOPUC Plus (extended)",
-    "toyopuc:nano-10gx:native": "TOYOPUC Nano 10GX (native)",
-    "toyopuc:nano-10gx:compatible": "TOYOPUC Nano 10GX (compatible)",
-    "toyopuc:pc10g:standard-pc3jg": "TOYOPUC PC10G (standard PC3JG)",
-    "toyopuc:pc10g:pc10": "TOYOPUC PC10G (PC10)",
-    "toyopuc:pc3jx:pc3-separate": "TOYOPUC PC3JX (PC3 separate)",
-    "toyopuc:pc3jx:plus-expansion": "TOYOPUC PC3JX (Plus expansion)",
-    "toyopuc:pc3jg:pc3jg": "TOYOPUC PC3JG (PC3JG)",
-    "toyopuc:pc3jg:pc3-separate": "TOYOPUC PC3JG (PC3 separate)",
-}
 
 
 def display_name(profile: str | None) -> str:
@@ -1120,56 +1105,67 @@ class ToyopucDeviceCatalog:
 _OPT = ToyopucAddressingOptions
 ToyopucPlcProfiles.Generic = ToyopucPlcProfile(
     "toyopuc:generic",
+    "TOYOPUC Generic",
     _OPT.Generic,
     _generic_areas(),
 )
 ToyopucPlcProfiles.ToyopucPlusStandard = ToyopucPlcProfile(
     "toyopuc:plus:standard",
+    "TOYOPUC Plus (standard)",
     _OPT.ToyopucPlusStandard,
     _toyopuc_plus_standard_areas(),
 )
 ToyopucPlcProfiles.ToyopucPlusExtended = ToyopucPlcProfile(
     "toyopuc:plus:extended",
+    "TOYOPUC Plus (extended)",
     _OPT.ToyopucPlusExtended,
     _toyopuc_plus_areas(),
 )
 ToyopucPlcProfiles.Nano10GxMode = ToyopucPlcProfile(
     "toyopuc:nano-10gx:native",
+    "TOYOPUC Nano 10GX (native)",
     _OPT.Nano10GxMode,
     _nano10gx_mode_areas(),
 )
 ToyopucPlcProfiles.Nano10GxCompatible = ToyopucPlcProfile(
     "toyopuc:nano-10gx:compatible",
+    "TOYOPUC Nano 10GX (compatible)",
     _OPT.Nano10GxCompatible,
     _nano10gx_mode_areas(),
 )
 ToyopucPlcProfiles.Pc10GStandardPc3Jg = ToyopucPlcProfile(
     "toyopuc:pc10g:standard-pc3jg",
+    "TOYOPUC PC10G (standard PC3JG)",
     _OPT.Pc10GStandardPc3Jg,
     _pc10_standard_pc3jg_areas(),
 )
 ToyopucPlcProfiles.Pc10GMode = ToyopucPlcProfile(
     "toyopuc:pc10g:pc10",
+    "TOYOPUC PC10G (PC10)",
     _OPT.Pc10GMode,
     _pc10_mode_areas(),
 )
 ToyopucPlcProfiles.Pc3JxPc3Separate = ToyopucPlcProfile(
     "toyopuc:pc3jx:pc3-separate",
+    "TOYOPUC PC3JX (PC3 separate)",
     _OPT.Pc3JxPc3Separate,
     _pc3jx_pc3_areas(),
 )
 ToyopucPlcProfiles.Pc3JxPlusExpansion = ToyopucPlcProfile(
     "toyopuc:pc3jx:plus-expansion",
+    "TOYOPUC PC3JX (Plus expansion)",
     _OPT.Pc3JxPlusExpansion,
     _pc3jx_plus_areas(),
 )
 ToyopucPlcProfiles.Pc3JgMode = ToyopucPlcProfile(
     "toyopuc:pc3jg:pc3jg",
+    "TOYOPUC PC3JG (PC3JG)",
     _OPT.Pc3JgMode,
     _pc3jg_mode_areas(),
 )
 ToyopucPlcProfiles.Pc3JgPc3Separate = ToyopucPlcProfile(
     "toyopuc:pc3jg:pc3-separate",
+    "TOYOPUC PC3JG (PC3 separate)",
     _OPT.Pc3JgPc3Separate,
     _pc3jg_pc3_areas(),
 )

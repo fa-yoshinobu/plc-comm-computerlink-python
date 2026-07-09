@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from .errors import ToyopucProtocolError
@@ -52,6 +52,8 @@ class ToyopucConnectionOptions:
     """
 
     host: str
+    _: KW_ONLY
+    plc_profile: str
     port: int = 1025
     local_port: int = 0
     transport: str = "tcp"
@@ -59,7 +61,6 @@ class ToyopucConnectionOptions:
     retries: int = 0
     retry_delay: float = 0.2
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE
-    plc_profile: str | None = None
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
 
     def __post_init__(self) -> None:
@@ -385,7 +386,7 @@ async def open_and_connect(
     transport: str = "tcp",
     retry_delay: float = 0.2,
     recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
-    plc_profile: str | None = None,
+    plc_profile: str,
     trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
 ) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
