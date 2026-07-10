@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -17,13 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.1] - 2026-07-10
+## [3.0.0] - 2026-07-10
 
 ### Changed
-- Release: Bumped package metadata and `toyopuc.__version__` to `2.0.1`.
+- Release: Bumped package metadata and `toyopuc.__version__` to `3.0.0`.
 
 ### BREAKING
-- Library: `ToyopucConnectionOptions` and the direct `open_and_connect` helper now require an explicit `plc_profile`.
+- Library: Breaking: `ToyopucConnectionOptions` and the direct `open_and_connect` helper now require an explicit `plc_profile`.
+- Migration: Pass a canonical `plc_profile` to `ToyopucConnectionOptions` and direct `open_and_connect` calls; use the profile `name` for storage and `display_name` for UI labels.
 - Library: `ToyopucPlcProfile` now includes `display_name`; use `display_name` for UI labels and the canonical `name` for storage.
 
 ### Docs
