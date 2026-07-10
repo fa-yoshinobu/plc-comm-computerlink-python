@@ -1580,7 +1580,7 @@ def main() -> int:
         args.host,
         args.port,
         local_port=args.local_port,
-        protocol=args.protocol,
+        transport=args.protocol,
         timeout=args.timeout,
         retries=args.retries,
     ) as plc:

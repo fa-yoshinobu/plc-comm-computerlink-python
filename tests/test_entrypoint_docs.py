@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,33 @@ def test_samples_readme_uses_current_paths() -> None:
     assert "../scripts/README.md" in text
     assert "examples/" not in text
     assert "../tools/README.md" not in text
+
+
+def test_samples_and_scripts_use_current_transport_keyword() -> None:
+    client_names = {
+        "ToyopucClient",
+        "ToyopucDeviceClient",
+        "AsyncToyopucClient",
+        "AsyncToyopucDeviceClient",
+    }
+    violations: list[str] = []
+
+    for folder in ("samples", "scripts"):
+        for path in sorted((REPO_ROOT / folder).glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if isinstance(node.func, ast.Name):
+                    function_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    function_name = node.func.attr
+                else:
+                    continue
+                if function_name in client_names and any(keyword.arg == "protocol" for keyword in node.keywords):
+                    violations.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+
+    assert violations == []
 
 
 def test_user_docs_focus_on_high_level_api_only() -> None:

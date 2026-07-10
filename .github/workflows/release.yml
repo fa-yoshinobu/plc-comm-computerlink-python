@@ -1,29 +1,104 @@
 name: Release
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the v prefix"
+        description: "Existing release tag version without the v prefix"
         required: true
+        type: string
+
 permissions:
   contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release version: ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ steps.version.outputs.tag }}
+
       - name: Set up Python
         uses: actions/setup-python@v6
-        with: { python-version: "3.11" }
-      - name: Build
+        with:
+          python-version: "3.11"
+
+      - name: Install release dependencies
         run: |
-          pip install build
-          python -m build
-      - name: Upload
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify tag and package versions
         env:
-          GH_TOKEN: "${{ github.token }}"
+          EXPECTED_TAG: ${{ steps.version.outputs.tag }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then tag="${{ github.ref_name }}"; else tag="v${{ inputs.version }}"; fi
-          gh release upload "$tag" dist/* --clobber || gh release create "$tag" dist/* --target main --title "Release $tag" --generate-notes
+          actual_tag="$(git describe --tags --exact-match HEAD)"
+          test "${actual_tag}" = "${EXPECTED_TAG}"
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          import toyopuc
+
+          expected = os.environ["EXPECTED_VERSION"]
+          manifest = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          versions = {"tag": expected, "pyproject.toml": manifest, "toyopuc.__version__": toyopuc.__version__}
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f"Release version mismatch: {versions}")
+          print(f"[OK] release version {expected}")
+          PY
+
+      - name: Run release quality gates
+        run: |
+          python -m ruff check toyopuc tests scripts samples
+          python -m ruff format --check toyopuc tests scripts samples
+          python -m mypy toyopuc
+          python -m pytest -q
+
+      - name: Build and validate distributions
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist build
+          python -m build
+          python -m twine check dist/*
+          test -f "dist/plc_comm_toyopuc-${EXPECTED_VERSION}-py3-none-any.whl"
+          test -f "dist/plc_comm_toyopuc-${EXPECTED_VERSION}.tar.gz"
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            gh release upload "${tag}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "${tag}" dist/* --verify-tag --repo "${GITHUB_REPOSITORY}" --title "Release ${tag}" --generate-notes
+          fi

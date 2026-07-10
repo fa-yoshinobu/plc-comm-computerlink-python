@@ -24,7 +24,7 @@ def main() -> int:
     with ToyopucDeviceClient(
         args.host,
         args.port,
-        protocol="udp",
+        transport="udp",
         local_port=args.local_port,
         timeout=args.timeout,
         retries=args.retries,

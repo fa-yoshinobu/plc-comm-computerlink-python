@@ -278,7 +278,7 @@ def main() -> int:
         host,
         port,
         local_port=local_port,
-        protocol=protocol,
+        transport=protocol,
         timeout=timeout,
         retries=retries,
     ) as plc:
