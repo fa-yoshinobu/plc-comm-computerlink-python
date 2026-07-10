@@ -309,9 +309,11 @@ def _validate_profile_access(
     profile: str,
     device: str,
 ) -> None:
-    """Validate that *parsed* is within the allowed ranges for *profile*.
+    """Reject profile-level route/family combinations that cannot be encoded.
 
-    Raises ValueError with a descriptive message on violation.
+    Catalog address ranges are intentionally advisory and are not enforced
+    here.  Whether a usable index exists is PLC/configuration dependent and
+    belongs in application-layer validation.
     """
     descriptor = ToyopucPlcProfiles.get_area_descriptor(parsed.area, profile)
     if parsed.packed and not descriptor.supports_packed_word:
@@ -319,7 +321,8 @@ def _validate_profile_access(
     expected_width = descriptor.get_address_width(parsed.unit, parsed.packed)
     if parsed.digits and parsed.digits > expected_width:
         raise ValueError(
-            f"Address width out of range for profile {profile!r}: {device} (max {expected_width} hex digits)"
+            f"Address width exceeds the protocol notation for profile {profile!r}: "
+            f"{device} (max {expected_width} hex digits)"
         )
     prefixed = prefix is not None
     ranges = descriptor.get_ranges_for_unit(prefixed, parsed.unit, parsed.packed)
@@ -328,8 +331,6 @@ def _validate_profile_access(
         raise ValueError(
             f"Area {parsed.area!r} is not available for {access_mode} access in profile {profile!r}: {device}"
         )
-    if not any(r.contains(parsed.index) for r in ranges):
-        raise ValueError(f"Address out of range for profile {profile!r}: {device}")
 
 
 def resolve_device(
@@ -344,8 +345,9 @@ def resolve_device(
         options: Optional addressing option flags that control PC10 routing.
             When omitted, the selected profile's options are used.
         profile: Required canonical PLC profile name (e.g.
-            ``"toyopuc:plus:standard"``). The address index is validated
-            against the profile's supported ranges.
+            ``"toyopuc:plus:standard"``). The profile selects addressing
+            behavior and unsupported route/family decisions. Catalog index
+            ranges remain advisory and are not a communication guard.
     """
     plc_profile = ToyopucPlcProfiles.from_name(profile)
     normalized_profile = plc_profile.name

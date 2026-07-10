@@ -220,7 +220,7 @@ def test_public_device_address_helpers_parse_and_format() -> None:
 
 
 def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
-    assert try_parse_device_address("P1-D1000", profile="toyopuc:plus:standard") is None
+    assert try_parse_device_address("P1-D10000", profile="toyopuc:plus:standard") is None
     assert try_parse_device_address("P1-D0100.10", profile="toyopuc:generic") is None
     assert try_parse_device_address("P1-D0100:BIT_IN_WORD", profile="toyopuc:generic") is None
 

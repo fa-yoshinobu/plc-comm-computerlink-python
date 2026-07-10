@@ -276,7 +276,7 @@ def test_resolve_fr_area_pc10_disabled_falls_through_to_ext_word() -> None:
 
 
 # ---------------------------------------------------------------------------
-# resolve_device() — profile-based range validation
+# resolve_device() — profile route validation without catalog range guarding
 # ---------------------------------------------------------------------------
 
 
@@ -287,10 +287,14 @@ def test_resolve_with_profile_valid_address() -> None:
     assert r.area == "D"
 
 
-def test_resolve_with_profile_address_out_of_range() -> None:
-    # D1000 exceeds Plus Standard D range (0x0FFF)
-    with pytest.raises(ValueError, match="out of range"):
-        resolve_device("P1-D1000", profile="toyopuc:plus:standard")
+def test_resolve_with_profile_does_not_guard_catalog_index_range() -> None:
+    # D1000 exceeds the catalog's Plus Standard D range (0x0FFF), but the
+    # communication resolver must still encode it and let the PLC decide.
+    resolved = resolve_device("P1-D1000", profile="toyopuc:plus:standard")
+
+    assert resolved.scheme == "program-word"
+    assert resolved.area == "D"
+    assert resolved.index == 0x1000
 
 
 def test_resolve_with_profile_area_absent() -> None:

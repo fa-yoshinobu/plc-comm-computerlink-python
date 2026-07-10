@@ -13,7 +13,7 @@ Naming used by this project:
 
 - GitHub repository: `plc-comm-computerlink-python`
 - GitHub URL: `https://github.com/fa-yoshinobu/plc-comm-computerlink-python`
-- Docs site: `https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/`
+- Docs site: `https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/GETTING_STARTED/`
 - package name: `plc-comm-toyopuc`
 - import name: `toyopuc`
 
@@ -59,11 +59,13 @@ Decide whether any current helpers should remain internal-only.
 
 ## 3. Versioning
 
-Decide release version before packaging.
+Decide the semantic version before packaging and tagging.
 
-- choose `0.x` if API may still change
-- choose `1.0.0` only if public API is intended to be stable
-- update version in `pyproject.toml`
+- increment the major version for incompatible public API changes
+- increment the minor version for backward-compatible features
+- increment the patch version for backward-compatible fixes
+- keep `pyproject.toml` and `toyopuc/__init__.py` synchronized
+- never retarget a published tag; use a new version
 
 ## 4. Package Metadata
 
@@ -160,8 +162,12 @@ python -m twine check dist/*
 
 Recommended release order:
 
-1. `python -m build`
-2. `python -m twine check dist/*`
+1. `release_check.bat`
+2. `python -m build`
+3. `python -m twine check dist/*`
+4. create and push the matching immutable version tag
+5. let the tag workflow rebuild, test, and attach the checked distributions
+6. publish the same checked files to PyPI
 
 ## 10. Final Git Check
 
@@ -198,7 +204,7 @@ Prepare a short release note in `CHANGELOG.md` and the GitHub Releases body with
 
 After release:
 
-- update tag / version
+- verify that the immutable tag, package metadata, GitHub Release, and PyPI version all match
 - keep [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) updated when new hardware is tested
 - keep [TODO.md](../../TODO.md) limited to active items
 
