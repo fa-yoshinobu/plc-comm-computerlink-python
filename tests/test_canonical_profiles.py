@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from toyopuc import ToyopucPlcProfiles, display_name
+from toyopuc import ToyopucPlcProfiles, display_name, plc_profile_descriptors
 
 
 def _range_to_dict(value) -> dict[str, int]:
@@ -52,3 +52,16 @@ def test_embedded_toyopuc_profiles_match_canonical_fixture() -> None:
         actual = ToyopucPlcProfiles.from_name(profile_id)
         assert _options_to_dict(actual.addressing_options) == expected_profile["addressing_options"]
         assert [_area_to_dict(area) for area in actual.areas] == expected_profile["areas"]
+
+
+def test_profile_descriptors_match_canonical_profile_metadata() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "toyopuc_profiles.json"
+    expected = json.loads(fixture.read_text(encoding="utf-8"))["profiles"]
+
+    descriptors = plc_profile_descriptors()
+    assert [descriptor.canonical_name for descriptor in descriptors] == list(expected)
+    for descriptor, expected_profile in zip(descriptors, expected.values(), strict=True):
+        assert descriptor.display_name == expected_profile["display_name"]
+        assert descriptor.connectable is True
+        assert "base_profile" not in expected_profile
+        assert descriptor.base_profile is None

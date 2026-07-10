@@ -218,6 +218,16 @@ class ToyopucPlcProfile:
 
 
 @dataclass(frozen=True)
+class ToyopucPlcProfileDescriptor:
+    """Metadata used to present and select one canonical TOYOPUC PLC profile."""
+
+    canonical_name: str
+    display_name: str
+    connectable: bool
+    base_profile: str | None
+
+
+@dataclass(frozen=True)
 class ToyopucDeviceMatrixRow:
     """One review row in the maintained profile/device addressing matrix."""
 
@@ -746,6 +756,20 @@ class ToyopucPlcProfiles:
         return [p.name for p in cls._all()]
 
     @classmethod
+    def profile_descriptors(cls) -> tuple[ToyopucPlcProfileDescriptor, ...]:
+        """Return presentation and connection metadata for every canonical PLC profile."""
+
+        return tuple(
+            ToyopucPlcProfileDescriptor(
+                canonical_name=profile.name,
+                display_name=profile.display_name,
+                connectable=True,
+                base_profile=None,
+            )
+            for profile in cls._all()
+        )
+
+    @classmethod
     def from_name(cls, profile: str | None) -> ToyopucPlcProfile:
         """Resolve a canonical PLC profile name to its profile object."""
 
@@ -798,6 +822,12 @@ def display_name(profile: str | None) -> str:
     """Return the canonical human-readable display name for a PLC profile."""
 
     return ToyopucPlcProfiles.display_name(profile)
+
+
+def plc_profile_descriptors() -> tuple[ToyopucPlcProfileDescriptor, ...]:
+    """Return presentation and connection metadata for every canonical PLC profile."""
+
+    return ToyopucPlcProfiles.profile_descriptors()
 
 
 class ToyopucDeviceCatalog:

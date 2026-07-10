@@ -52,7 +52,7 @@ workflows.
 
 | Operation | Public API |
 | --- | --- |
-| Profile lookup | `ToyopucPlcProfiles`, `ToyopucPlcProfile`, `ToyopucAddressingOptions`, `display_name` |
+| Profile lookup | `ToyopucPlcProfiles`, `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucAddressingOptions`, `plc_profile_descriptors`, `display_name` |
 | Device range catalog | `ToyopucDeviceCatalog`, `ToyopucAreaDescriptor`, `ToyopucAddressRange`, `ToyopucDeviceMatrixRow` |
 | Relay helpers | `RelayLayer`, `parse_relay_hops`, `normalize_relay_hops`, `format_relay_hop` |
 | Parsed payload types | `ClockData`, `CpuStatusData` |
@@ -67,7 +67,7 @@ The package exports these public names from `toyopuc.__all__`:
 `ToyopucAddressRange`, `ToyopucAddressingOptions`, `ToyopucAreaDescriptor`,
 `ToyopucClient`, `ToyopucConnectionOptions`, `ToyopucDeviceCatalog`,
 `ToyopucDeviceClient`, `ToyopucDeviceMatrixRow`, `ToyopucError`,
-`ToyopucPlcProfile`, `ToyopucPlcProfiles`, `ToyopucProtocolError`,
+`ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucPlcProfiles`, `ToyopucProtocolError`,
 `ToyopucTimeoutError`, `ToyopucTraceDirection`, `ToyopucTraceFrame`,
 `display_name`, `encode_bit_address`, `encode_byte_address`,
 `encode_exno_bit_u32`, `encode_exno_byte_u32`, `encode_ext_no_address`,
@@ -76,7 +76,7 @@ The package exports these public names from `toyopuc.__all__`:
 `encode_word_address`, `format_device_address`, `format_relay_hop`,
 `fr_block_ex_no`, `normalize_address`, `normalize_relay_hops`,
 `open_and_connect`, `parse_address`, `parse_device_address`,
-`parse_prefixed_address`, `parse_relay_hops`, `poll`, `read_dwords`,
+`parse_prefixed_address`, `parse_relay_hops`, `plc_profile_descriptors`, `poll`, `read_dwords`,
 `read_dwords_chunked`, `read_dwords_single_request`, `read_named`,
 `read_typed`, `read_words`, `read_words_chunked`,
 `read_words_single_request`, `resolve_device`, `split_u32_words`,
