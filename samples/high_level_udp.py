@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -31,7 +32,7 @@ def main() -> int:
         plc_profile=args.profile,
     ) as plc:
         plc.write("P1-D0000", 0x1234)
-        print("P1-D0000 =", hex(plc.read_one("P1-D0000")))
+        print("P1-D0000 =", hex(cast(int, plc.read_one("P1-D0000"))))
 
         plc.write("P1-M0000", 1)
         print("P1-M0000 =", plc.read_one("P1-M0000"))
