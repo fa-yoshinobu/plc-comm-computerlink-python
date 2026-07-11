@@ -1,4 +1,6 @@
 import asyncio
+from threading import Event
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,17 +16,16 @@ from toyopuc import (
     open_and_connect,
     parse_address,
     parse_device_address,
-    read_dwords_chunked,
     read_dwords_single_request,
     read_named,
-    read_words_chunked,
+    read_typed,
     read_words_single_request,
     try_parse_device_address,
-    write_dwords_chunked,
     write_dwords_single_request,
-    write_words_chunked,
+    write_typed,
     write_words_single_request,
 )
+from toyopuc.protocol import build_fr_register
 
 GENERIC_PROFILE = "toyopuc:generic"
 
@@ -35,7 +36,7 @@ def _word_addr(text: str) -> int:
 
 class _DummyWordClient(ToyopucClient):
     def __init__(self) -> None:
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, transport="tcp")
         self.next_words: list[int] = []
         self.word_reads: list[tuple[int, int]] = []
         self.word_writes: list[tuple[int, list[int]]] = []
@@ -52,7 +53,7 @@ class _DummyWordClient(ToyopucClient):
 
 class _DummyHighLevelClient(ToyopucDeviceClient):
     def __init__(self) -> None:
-        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.word_map: dict[int, int] = {}
         self.word_reads: list[tuple[int, int]] = []
         self.word_writes: list[tuple[int, list[int]]] = []
@@ -74,8 +75,7 @@ class _DummyUtilitySyncClient:
     def __init__(self) -> None:
         self.values: dict[str, int] = {}
 
-    def read(self, device: str, count: int = 1) -> int:
-        assert count == 1
+    def read_one(self, device: str) -> int:
         return self.values[device]
 
 
@@ -88,18 +88,18 @@ class _DummySurfaceSyncClient(_DummyHighLevelClient):
     def __init__(self) -> None:
         super().__init__()
         self.read_dword_map: dict[str, list[int]] = {}
-        self.write_dword_calls: list[tuple[str, list[int], bool]] = []
+        self.write_dword_calls: list[tuple[str, list[int]]] = []
 
     def resolve_device(self, device: str):
         return super().resolve_device(device)
 
-    def read_dwords(self, device: int | str, count: int, *, atomic_transfer: bool = False):
+    def read_dwords(self, device: int | str, count: int):
         assert isinstance(device, str)
         return self.read_dword_map[device][:count]
 
-    def write_dwords(self, device: int | str, values, *, atomic_transfer: bool = False):
+    def write_dwords(self, device: int | str, values):
         assert isinstance(device, str)
-        self.write_dword_calls.append((device, list(values), atomic_transfer))
+        self.write_dword_calls.append((device, list(values)))
 
 
 class _DummyAsyncSurfaceClient(AsyncToyopucDeviceClient):
@@ -108,6 +108,26 @@ class _DummyAsyncSurfaceClient(AsyncToyopucDeviceClient):
 
     async def _run_sync_in_worker(self, func, /, *args, **kwargs):
         return func(*args, **kwargs)
+
+
+class _NoIoHighLevelClient(ToyopucDeviceClient):
+    def __init__(self) -> None:
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
+        self.send_count = 0
+
+    def _send_and_recv(self, payload: bytes, *, retryable: bool = False):
+        self.send_count += 1
+        raise AssertionError("validation must reject before transport")
+
+
+class _CommitCaptureClient(ToyopucDeviceClient):
+    def __init__(self) -> None:
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
+        self.payloads: list[bytes] = []
+
+    def _send_and_recv(self, payload: bytes, *, retryable: bool = False):
+        self.payloads.append(payload)
+        return SimpleNamespace(cmd=0xCA)
 
 
 def test_low_level_32bit_helpers_use_low_word_first() -> None:
@@ -225,28 +245,88 @@ def test_public_device_address_helpers_return_none_on_invalid_input() -> None:
     assert try_parse_device_address("P1-D0100:BIT_IN_WORD", profile="toyopuc:generic") is None
 
 
+def test_named_addresses_require_explicit_dtype_and_preserve_dot_d_bit_meaning() -> None:
+    with pytest.raises(ValueError, match="requires explicit dtype"):
+        parse_device_address("P1-D0100", profile=GENERIC_PROFILE)
+    assert parse_device_address("P1-D0100:U", profile=GENERIC_PROFILE).text == "P1-D0100:U"
+    assert parse_device_address("P1-D0100:D", profile=GENERIC_PROFILE).dtype == "D"
+    bit = parse_device_address("P1-D0100.D", profile=GENERIC_PROFILE)
+    assert bit.dtype == "BIT_IN_WORD"
+    assert bit.bit_index == 13
+
+
+def test_typed_helpers_reject_unknown_dtype_and_out_of_range_values() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.read_value = 0
+            self.writes: list[tuple[str, object]] = []
+
+        async def read_one(self, device: str) -> int:
+            return self.read_value
+
+        async def write(self, device: str, value: int) -> None:
+            self.writes.append((device, value))
+
+        async def read_dwords(self, device: str, count: int) -> list[int]:
+            return [self.read_value]
+
+        async def write_dwords(self, device: str, values: list[int]) -> None:
+            self.writes.append((device, values))
+
+        async def read_float32s(self, device: str, count: int) -> list[float]:
+            return [float(self.read_value)]
+
+        async def write_float32s(self, device: str, values: list[float]) -> None:
+            self.writes.append((device, values))
+
+    async def run() -> None:
+        client = FakeClient()
+        with pytest.raises(ValueError, match="Unsupported dtype"):
+            await read_typed(client, "P1-D0100", "UNKNOWN")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="Unsupported dtype"):
+            await write_typed(client, "P1-D0100", "UNKNOWN", 1)  # type: ignore[arg-type]
+        for dtype, value in [("U", -1), ("U", 65_536), ("S", -32_769), ("D", 0x100000000), ("L", 0x80000000)]:
+            with pytest.raises(ValueError, match="range"):
+                await write_typed(client, "P1-D0100", dtype, value)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="integer"):
+            await write_typed(client, "P1-D0100", "U", 1.5)  # type: ignore[arg-type]
+        assert client.writes == []
+
+        client.read_value = 65_536
+        with pytest.raises(ToyopucProtocolError, match="outside"):
+            await read_typed(client, "P1-D0100", "U")  # type: ignore[arg-type]
+
+    asyncio.run(run())
+
+
 def test_connection_options_requires_explicit_profile() -> None:
-    with pytest.raises(ValueError, match="PLC profile is required"):
+    with pytest.raises(TypeError):
         ToyopucConnectionOptions("127.0.0.1")
 
 
 def test_connection_options_validates_factory_level_network_options() -> None:
     with pytest.raises(ValueError, match="Host must not be empty"):
-        ToyopucConnectionOptions(" ", plc_profile=GENERIC_PROFILE)
+        ToyopucConnectionOptions(" ", 1025, "tcp", GENERIC_PROFILE)
     with pytest.raises(ValueError, match="Port must be in the range 1-65535"):
-        ToyopucConnectionOptions("127.0.0.1", port=0, plc_profile=GENERIC_PROFILE)
+        ToyopucConnectionOptions("127.0.0.1", 0, "tcp", GENERIC_PROFILE)
     with pytest.raises(ValueError, match="Port must be in the range 1-65535"):
-        ToyopucConnectionOptions("127.0.0.1", port=65_536, plc_profile=GENERIC_PROFILE)
+        ToyopucConnectionOptions("127.0.0.1", 65_536, "tcp", GENERIC_PROFILE)
     with pytest.raises(ValueError, match="LocalPort must be in the range 0-65535"):
-        ToyopucConnectionOptions("127.0.0.1", local_port=-1, plc_profile=GENERIC_PROFILE)
+        ToyopucConnectionOptions("127.0.0.1", 1025, "udp", GENERIC_PROFILE, local_port=-1)
     with pytest.raises(ValueError, match="LocalPort must be in the range 0-65535"):
-        ToyopucConnectionOptions("127.0.0.1", local_port=65_536, plc_profile=GENERIC_PROFILE)
-    with pytest.raises(ValueError, match="RecvBufsize must be 1 or greater"):
-        ToyopucConnectionOptions("127.0.0.1", recv_bufsize=0, plc_profile=GENERIC_PROFILE)
+        ToyopucConnectionOptions("127.0.0.1", 1025, "udp", GENERIC_PROFILE, local_port=65_536)
+    with pytest.raises(ValueError, match="only valid for UDP"):
+        ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE, local_port=12345)
+    with pytest.raises(ValueError, match="positive finite"):
+        ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE, timeout=0)
+    with pytest.raises(ValueError, match="non-negative integer"):
+        ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE, retries=True)
+    with pytest.raises(ValueError, match="non-negative finite"):
+        ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE, retry_delay=float("nan"))
 
 
 def test_connection_options_defaults() -> None:
-    options = ToyopucConnectionOptions("127.0.0.1", plc_profile=GENERIC_PROFILE)
+    options = ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE)
     assert options.port == 1025
     assert options.local_port == 0
     assert options.transport == "tcp"
@@ -269,7 +349,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("toyopuc.async_client.AsyncToyopucDeviceClient", _FakeAsyncClient, raising=False)
 
     async def run() -> None:
-        client = await open_and_connect(ToyopucConnectionOptions("127.0.0.1", retries=2, plc_profile=GENERIC_PROFILE))
+        client = await open_and_connect(ToyopucConnectionOptions("127.0.0.1", 1025, "tcp", GENERIC_PROFILE, retries=2))
         assert isinstance(client, _FakeAsyncClient)
 
     asyncio.run(run())
@@ -283,9 +363,7 @@ def test_open_and_connect_accepts_options(monkeypatch: pytest.MonkeyPatch) -> No
                 "timeout": 3.0,
                 "retries": 2,
                 "retry_delay": 0.2,
-                "recv_bufsize": 65535,
                 "plc_profile": GENERIC_PROFILE,
-                "trace_hook": None,
             },
         )
     ]
@@ -303,23 +381,111 @@ def test_explicit_word_and_dword_surface() -> None:
     async def run_checks() -> None:
         assert await read_words_single_request(client, "B0000", 2) == [1, 2]
         assert await read_dwords_single_request(client, "B0000", 1) == [0x12345678]
-        assert await read_words_chunked(client, "B0000", 4, max_words_per_request=2) == [1, 2, 3, 4]
-        assert await read_dwords_chunked(client, "B0000", 2, max_dwords_per_request=1) == [0x12345678, 0xCAFEBABE]
-
         await write_words_single_request(client, "B0000", [10, 11])
         await write_dwords_single_request(client, "B0000", [0x12345678])
-        await write_words_chunked(client, "B0000", [20, 21, 22], max_words_per_request=2)
-        await write_dwords_chunked(client, "B0000", [0x11111111, 0x22222222], max_dwords_per_request=1)
 
     asyncio.run(run_checks())
 
     assert client.word_writes == [
         (addr0, [10, 11]),
-        (addr0, [20, 21]),
-        (addr2, [22]),
     ]
     assert client.write_dword_calls == [
-        ("B0000", [0x12345678], True),
-        ("B0000", [0x11111111], True),
-        ("B0002", [0x22222222], True),
+        ("B0000", [0x12345678]),
     ]
+
+
+def test_read_one_and_contiguous_read_have_stable_return_shapes() -> None:
+    client = _DummyHighLevelClient()
+    addr = _word_addr("B0000")
+    client.word_map = {addr: 0x1234}
+
+    assert client.read_one("B0000") == 0x1234
+    assert client.read("B0000", 1) == [0x1234]
+    with pytest.raises(TypeError):
+        client.read("B0000")  # type: ignore[call-arg]
+    for invalid in (True, 0, -1, 1.5):
+        with pytest.raises(ValueError, match="integer >= 1"):
+            client.read("B0000", invalid)  # type: ignore[arg-type]
+
+
+def test_single_request_ranges_reject_boundaries_and_limits_before_transport() -> None:
+    client = _NoIoHighLevelClient()
+
+    with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+        client.read("FR007FFF", 2)
+    with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+        client.read_dwords("FR007FFF", 1)
+    with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+        client.write_dwords("FR007FFF", [0x12345678])
+    with pytest.raises(ValueError, match="CMD=1C word-read"):
+        client.read("B0000", 513)
+
+    assert client.send_count == 0
+
+
+def test_dword_and_float_array_counts_are_strict() -> None:
+    client = _NoIoHighLevelClient()
+    for invalid in (True, 0, -1, 1.5):
+        with pytest.raises(ValueError, match="integer >= 1"):
+            client.read_dwords("B0000", invalid)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="integer >= 1"):
+            client.read_float32s("B0000", invalid)  # type: ignore[arg-type]
+    assert client.send_count == 0
+
+
+def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
+    client = _CommitCaptureClient()
+
+    client.commit_fr("FR000000")
+    assert client.payloads == [build_fr_register(0x40)]
+
+    invalid = _NoIoHighLevelClient()
+    with pytest.raises(ValueError, match="first word"):
+        invalid.commit_fr("FR000001")
+    with pytest.raises(ValueError, match="within one"):
+        invalid.write_fr("FR007FFF", [1, 2])
+    with pytest.raises(ValueError, match="single-request limit"):
+        invalid.write_fr("FR000000", [0] * 505)
+    assert invalid.send_count == 0
+
+
+def test_removed_fr_combined_and_range_surfaces_are_not_public() -> None:
+    client = _NoIoHighLevelClient()
+    for name in (
+        "write_fr_words_ex",
+        "write_fr_words_committed",
+        "commit_fr_range",
+        "wait_fr_write_complete",
+        "relay_write_fr_words_ex",
+        "relay_commit_fr_range",
+        "relay_wait_fr_write_complete",
+        "fr_register",
+        "relay_fr_register",
+    ):
+        assert not hasattr(client, name)
+
+
+def test_async_cancellation_stops_worker_before_returning() -> None:
+    client = AsyncToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile=GENERIC_PROFILE,
+    )
+    started = Event()
+
+    def blocking_operation() -> None:
+        started.set()
+        client._client._cancel_event.wait()
+        client._client._raise_if_cancelled()
+
+    async def run() -> None:
+        task = asyncio.create_task(client._run_sync_in_worker(blocking_operation))
+        await asyncio.to_thread(started.wait, 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not client._client._cancel_event.is_set()
+        assert await client._run_sync_in_worker(lambda: 42) == 42
+
+    asyncio.run(run())

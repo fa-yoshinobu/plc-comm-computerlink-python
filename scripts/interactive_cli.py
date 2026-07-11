@@ -450,7 +450,7 @@ def main() -> int:
 
                 tx_hex = _hex(payload)
                 print(f"TX: {tx_hex}")
-                resp = plc.send_payload(payload)
+                resp = plc._send_payload(payload)
                 length = len(resp.data) + 1
                 ll = length & 0xFF
                 lh = (length >> 8) & 0xFF

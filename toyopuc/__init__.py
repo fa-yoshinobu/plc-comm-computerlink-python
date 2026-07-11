@@ -5,7 +5,6 @@ The primary user-facing entry points are:
 - ``ToyopucConnectionOptions`` / ``open_and_connect``
 - ``read_typed`` / ``write_typed``
 - ``read_words_single_request`` / ``read_dwords_single_request``
-- ``read_words_chunked`` / ``read_dwords_chunked``
 - ``write_bit_in_word``
 - ``read_named`` / ``poll``
 
@@ -33,11 +32,10 @@ from .address import (
     split_u32_words,
 )
 from .async_client import AsyncToyopucClient, AsyncToyopucDeviceClient
-from .client import ToyopucClient, ToyopucTraceDirection, ToyopucTraceFrame
+from .client import ToyopucClient
 from .errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
 from .high_level import ResolvedDevice, ToyopucDeviceClient, resolve_device
 from .profiles import (
-    ToyopucAddressingOptions,
     ToyopucAddressRange,
     ToyopucAreaDescriptor,
     ToyopucDeviceCatalog,
@@ -59,19 +57,15 @@ from .utils import (
     parse_device_address,
     poll,
     read_dwords,
-    read_dwords_chunked,
     read_dwords_single_request,
     read_named,
     read_typed,
     read_words,
-    read_words_chunked,
     read_words_single_request,
     try_parse_device_address,
     write_bit_in_word,
-    write_dwords_chunked,
     write_dwords_single_request,
     write_typed,
-    write_words_chunked,
     write_words_single_request,
 )
 
@@ -87,8 +81,6 @@ __all__ = [
     "ToyopucError",
     "ToyopucProtocolError",
     "ToyopucTimeoutError",
-    "ToyopucTraceDirection",
-    "ToyopucTraceFrame",
     "ToyopucConnectionOptions",
     "ToyopucAddress",
     "format_device_address",
@@ -97,18 +89,14 @@ __all__ = [
     "parse_device_address",
     "poll",
     "read_dwords",
-    "read_dwords_chunked",
     "read_dwords_single_request",
     "read_named",
     "read_typed",
     "read_words",
-    "read_words_chunked",
     "read_words_single_request",
     "write_bit_in_word",
-    "write_dwords_chunked",
     "write_dwords_single_request",
     "write_typed",
-    "write_words_chunked",
     "write_words_single_request",
     "try_parse_device_address",
     "parse_address",
@@ -130,7 +118,6 @@ __all__ = [
     "format_relay_hop",
     "resolve_device",
     "ToyopucAddressRange",
-    "ToyopucAddressingOptions",
     "ToyopucAreaDescriptor",
     "ToyopucDeviceCatalog",
     "ToyopucDeviceMatrixRow",

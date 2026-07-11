@@ -75,15 +75,17 @@ def main() -> int:
         retries=args.retries,
         plc_profile=args.profile,
     ) as plc:
-        # FR writes are RAM-only unless commit=True or commit_fr() is used.
+        # FR work-area update and flash commit are deliberately separate.
         print("scenario: FR read / write with optional flash commit")
-        before = plc.read_fr(args.target)
+        before = plc.read_fr_one(args.target)
         print("target =", args.target)
         print("before =", hex(before))
         print("write  =", hex(args.value & 0xFFFF))
         print("commit =", args.commit)
-        plc.write_fr(args.target, args.value, commit=args.commit)
-        after = plc.read_fr(args.target)
+        plc.write_fr(args.target, args.value)
+        if args.commit:
+            plc.commit_fr(args.target)
+        after = plc.read_fr_one(args.target)
         print("after  =", hex(after))
 
     return 0

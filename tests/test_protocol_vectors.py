@@ -6,6 +6,7 @@ frame. The same JSON is consumed by the .NET test suite, ensuring Python and
 .NET produce identical bytes on the wire.
 """
 
+import inspect
 import json
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,12 @@ from typing import Any
 import pytest
 
 from toyopuc.protocol import (
+    ClockData,
     build_bit_read,
     build_bit_write,
     build_byte_read,
     build_clock_read,
+    build_command,
     build_cpu_status_read,
     build_cpu_status_read_a0,
     build_ext_multi_read,
@@ -39,6 +42,36 @@ _DATA = json.loads(_VECTORS_PATH.read_text())
 _FRAME_VECTORS = _DATA["frame_vectors"]
 _RESPONSE_VECTORS = _DATA["response_vectors"]
 _BCD_VECTORS = _DATA["bcd_vectors"]
+
+
+def test_clock_datetime_conversion_requires_explicit_century() -> None:
+    clock = ClockData(second=3, minute=2, hour=1, day=15, month=3, year_2digit=26, weekday=0)
+    assert "year_base" in inspect.signature(clock.as_datetime).parameters
+    with pytest.raises(TypeError):
+        clock.as_datetime()  # type: ignore[call-arg]
+    assert clock.as_datetime(year_base=1900).year == 1926
+    assert clock.as_datetime(year_base=2000).year == 2026
+    assert clock.as_datetime(year_base=2100).year == 2126
+    for invalid in (True, -100, 1950):
+        with pytest.raises(ValueError, match="year_base"):
+            clock.as_datetime(year_base=invalid)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("cmd", [-1, 256, 0x11C, True, 1.5])
+def test_build_command_rejects_invalid_command_code(cmd: object) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        build_command(cmd, b"")  # type: ignore[arg-type]
+
+
+def test_build_command_requires_explicit_bytes_and_valid_length() -> None:
+    with pytest.raises(TypeError):
+        build_command(0x00, None)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        build_command(0x00, 3)  # type: ignore[arg-type]
+    assert build_command(0x00, b"") == bytes.fromhex("0000010000")
+    assert len(build_command(0xFF, bytes(65_534))) == 65_539
+    with pytest.raises(ValueError, match="too large"):
+        build_command(0xFF, bytes(65_535))
 
 
 def _build_frame(vec: dict[str, Any]) -> bytes:

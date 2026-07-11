@@ -99,6 +99,7 @@ def main() -> int:
     parser.add_argument("--local-port", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--retries", type=int, default=0)
+    parser.add_argument("--profile", required=True, help="Canonical PLC profile used to resolve device routes")
     parser.add_argument("--hops", required=True)
     parser.add_argument(
         "--clock-value",
@@ -195,7 +196,7 @@ def main() -> int:
                 return f"D0000L,D0001L values={readback}"
 
             def ext_word_case() -> str:
-                dev = resolve_device("ES0000")
+                dev = resolve_device("ES0000", profile=args.profile)
                 original = unpack_u16_le(plc.send_via_relay(args.hops, build_ext_word_read(dev.no, dev.addr, 1)).data)[
                     0
                 ]
@@ -210,7 +211,7 @@ def main() -> int:
                 return f"ES0000 write=0x{target:04X} read=0x{readback:04X}"
 
             def ext_byte_case() -> str:
-                dev = resolve_device("EX0000L")
+                dev = resolve_device("EX0000L", profile=args.profile)
                 original = plc.send_via_relay(args.hops, build_ext_byte_read(dev.no, dev.addr, 1)).data[0]
                 target = original ^ 0xFF
                 plc.send_via_relay(args.hops, build_ext_byte_write(dev.no, dev.addr, [target]))
@@ -221,9 +222,9 @@ def main() -> int:
                 return f"EX0000L write=0x{target:02X} read=0x{readback:02X}"
 
             def ext_multi_case() -> str:
-                bit_dev = resolve_device("EX0000")
-                byte_dev = resolve_device("EX0008L")
-                word_dev = resolve_device("ES0000")
+                bit_dev = resolve_device("EX0000", profile=args.profile)
+                byte_dev = resolve_device("EX0008L", profile=args.profile)
+                word_dev = resolve_device("ES0000", profile=args.profile)
                 bit_original = (
                     plc.send_via_relay(
                         args.hops,
@@ -273,7 +274,7 @@ def main() -> int:
                 return f"bit={bit_target} byte=0x{byte_target:02X} word=0x{word_target:04X}"
 
             def pc10_word_case() -> str:
-                dev = resolve_device("U08000")
+                dev = resolve_device("U08000", profile=args.profile)
                 original = unpack_u16_le(plc.send_via_relay(args.hops, build_pc10_block_read(dev.addr32, 2)).data)[0]
                 target = original ^ 0xFFFF
                 plc.send_via_relay(
@@ -293,13 +294,13 @@ def main() -> int:
                 if args.clock_value is None:
                     raise ValueError("--clock-value is required for clock-write")
                 original = plc.relay_read_clock(args.hops)
-                original_dt = original.as_datetime()
-                plc.relay_write_clock(args.hops, args.clock_value)
+                original_dt = original.as_datetime(year_base=2000)
+                plc.relay_write_clock(args.hops, args.clock_value, year_base=2000)
                 readback = plc.relay_read_clock(args.hops)
-                readback_dt = readback.as_datetime()
+                readback_dt = readback.as_datetime(year_base=2000)
                 try:
-                    plc.relay_write_clock(args.hops, original_dt)
-                    restored_dt = plc.relay_read_clock(args.hops).as_datetime()
+                    plc.relay_write_clock(args.hops, original_dt, year_base=2000)
+                    restored_dt = plc.relay_read_clock(args.hops).as_datetime(year_base=2000)
                 except Exception:
                     restored_dt = original_dt
                 delta = abs((readback_dt - args.clock_value).total_seconds())
@@ -329,7 +330,7 @@ def main() -> int:
             )
             run(
                 "clock-read",
-                lambda: (lambda clock: f"datetime={clock.as_datetime().isoformat(sep=' ')}")(
+                lambda: (lambda clock: f"datetime={clock.as_datetime(year_base=2000).isoformat(sep=' ')}")(
                     plc.relay_read_clock(args.hops)
                 ),
             )

@@ -1,9 +1,18 @@
+import inspect
+
 import pytest
 
 from toyopuc.address import parse_address, parse_prefixed_address
 from toyopuc.high_level import resolve_device as _resolve_device
 
 GENERIC_PROFILE = "toyopuc:generic"
+
+
+def test_address_parsers_use_fixed_hexadecimal_grammar() -> None:
+    assert "radix" not in inspect.signature(parse_address).parameters
+    assert "radix" not in inspect.signature(parse_prefixed_address).parameters
+    assert parse_address("D0010", "word").index == 0x10
+    assert parse_address("D0100", "word").index == 0x100
 
 
 def resolve_device(device: str, **kwargs):

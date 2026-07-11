@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import math
 import socket
 import struct
-import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from queue import Full, Queue
+from threading import Event, Thread
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
@@ -115,40 +117,30 @@ _FR_IO_CHUNK_WORDS = 0x01F8
 
 
 def _validate_fr_index(index: int) -> int:
-    idx = int(index)
-    if idx < 0 or idx > _FR_MAX_INDEX:
+    if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index > _FR_MAX_INDEX:
         raise ValueError("FR index out of range (0x000000-0x1FFFFF)")
-    return idx
+    return index
 
 
-def _iter_fr_segments(start_index: int, word_count: int) -> Iterator[tuple[int, int]]:
+def _validate_fr_single_request(start_index: int, word_count: int) -> tuple[int, int]:
     index = _validate_fr_index(start_index)
-    remaining = int(word_count)
-    if remaining < 1:
-        raise ValueError("word_count must be >= 1")
-    while remaining > 0:
-        block_offset = index % _FR_BLOCK_WORDS
-        chunk = min(remaining, _FR_BLOCK_WORDS - block_offset)
-        yield index, chunk
-        index += chunk
-        remaining -= chunk
+    if isinstance(word_count, bool) or not isinstance(word_count, int) or word_count < 1:
+        raise ValueError("word_count must be an integer >= 1")
+    end = index + word_count - 1
+    if end > _FR_MAX_INDEX:
+        raise ValueError("FR range exceeds 0x1FFFFF")
+    if index // _FR_BLOCK_WORDS != end // _FR_BLOCK_WORDS:
+        raise ValueError("FR operation must stay within one 0x8000-word block")
+    if word_count > _FR_IO_CHUNK_WORDS:
+        raise ValueError(f"FR operation exceeds the single-request limit of {_FR_IO_CHUNK_WORDS} words")
+    return index, word_count
 
 
-def _iter_fr_io_segments(
-    start_index: int, word_count: int, max_chunk_words: int = _FR_IO_CHUNK_WORDS
-) -> Iterator[tuple[int, int]]:
-    if int(max_chunk_words) < 1:
-        raise ValueError("max_chunk_words must be >= 1")
-    for block_index, block_words in _iter_fr_segments(start_index, word_count):
-        offset = 0
-        while offset < block_words:
-            chunk = min(block_words - offset, int(max_chunk_words))
-            yield block_index + offset, chunk
-            offset += chunk
-
-
-def _fr_commit_blocks(start_index: int, word_count: int) -> list[int]:
-    return [segment_start for segment_start, _ in _iter_fr_segments(start_index, word_count)]
+def _validate_fr_block_start(index: int) -> int:
+    block_start = _validate_fr_index(index)
+    if block_start % _FR_BLOCK_WORDS != 0:
+        raise ValueError("FR commit index must be the first word of a 0x8000-word block")
+    return block_start
 
 
 def _unpack_uint32_low_word_first_words(words: Iterable[int]) -> list[int]:
@@ -261,29 +253,54 @@ class ToyopucClient:
         host: str,
         port: int,
         *,
+        transport: str,
         local_port: int = 0,
-        transport: str = "tcp",
         timeout: float = 3.0,
         retries: int = 0,
         retry_delay: float = 0.2,
-        recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
-        trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
     ) -> None:
-        self.host = host
+        if not isinstance(host, str) or not host.strip():
+            raise ValueError("host must be a non-empty string")
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65_535:
+            raise ValueError("port must be an integer in the range 1..65535")
+        if not isinstance(transport, str) or transport.strip().lower() not in {"tcp", "udp"}:
+            raise ValueError("transport must be 'tcp' or 'udp'")
+        if isinstance(local_port, bool) or not isinstance(local_port, int) or not 0 <= local_port <= 65_535:
+            raise ValueError("local_port must be an integer in the range 0..65535")
+        normalized_transport = transport.strip().lower()
+        if normalized_transport == "tcp" and local_port != 0:
+            raise ValueError("local_port is only valid when transport='udp'")
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("timeout must be a positive finite number")
+        if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+            raise ValueError("retries must be a non-negative integer")
+        if (
+            isinstance(retry_delay, bool)
+            or not isinstance(retry_delay, (int, float))
+            or not math.isfinite(retry_delay)
+            or retry_delay < 0
+        ):
+            raise ValueError("retry_delay must be a non-negative finite number")
+
+        self.host = host.strip()
         self.port = port
-        self.local_port = int(local_port)
-        self.transport = transport.lower()
-        self.timeout = timeout
-        self.retries = max(0, int(retries))
+        self.local_port = local_port
+        self.transport = normalized_transport
+        self.timeout = float(timeout)
+        self.retries = retries
         self.retry_delay = float(retry_delay)
-        self.recv_bufsize = recv_bufsize
         self._sock: socket.socket | None = None
         self._last_tx: bytes | None = None
         self._last_rx: bytes | None = None
-        self._fr_wait_prefers_a0: bool | None = None
-        self._relay_fr_wait_prefers_a0: bool | None = None
         self._relay_hops_cache: dict[str, tuple[tuple[int, int], ...]] = {}
-        self.trace_hook = trace_hook
+        self._maintainer_trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
+        self._trace_queue: Queue[tuple[Callable[[ToyopucTraceFrame], None], ToyopucTraceFrame]] | None = None
+        self._cancel_event = Event()
 
     def __enter__(self) -> ToyopucClient:
         self.connect()
@@ -297,17 +314,28 @@ class ToyopucClient:
 
         if self._sock:
             return
-        if self.transport == "tcp":
-            sock = socket.create_connection((self.host, self.port), self.timeout)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        elif self.transport == "udp":
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            if self.local_port:
-                sock.bind(("", self.local_port))
-            sock.settimeout(self.timeout)
-        else:
-            raise ValueError("transport must be 'tcp' or 'udp'")
-        self._sock = sock
+        attempt = 0
+        while attempt <= self.retries:
+            attempt += 1
+            self._raise_if_cancelled()
+            sock: socket.socket | None = None
+            try:
+                if self.transport == "tcp":
+                    sock = socket.create_connection((self.host, self.port), self.timeout)
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                else:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.bind(("", self.local_port))
+                    sock.settimeout(self.timeout)
+                self._sock = sock
+                return
+            except (OSError, TimeoutError) as exc:
+                if sock is not None:
+                    sock.close()
+                if attempt <= self.retries:
+                    self._wait_retry_delay()
+                    continue
+                raise ToyopucError("Socket connection failed") from exc
 
     def close(self) -> None:
         """Close the current socket and clear transport state."""
@@ -320,10 +348,61 @@ class ToyopucClient:
         self._last_tx = None
         self._last_rx = None
 
+    def _cancel_pending_operation(self) -> None:
+        self._cancel_event.set()
+        sock = self._sock
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _clear_operation_cancel(self) -> None:
+        self._cancel_event.clear()
+        if self._sock is not None and self._sock.fileno() < 0:
+            self._sock = None
+
+    def _raise_if_cancelled(self) -> None:
+        if self._cancel_event.is_set():
+            raise ToyopucError("Operation cancelled")
+
+    def _wait_retry_delay(self) -> None:
+        if self._cancel_event.wait(self.retry_delay):
+            raise ToyopucError("Operation cancelled")
+
+    @staticmethod
+    def _run_trace_queue(
+        trace_queue: Queue[tuple[Callable[[ToyopucTraceFrame], None], ToyopucTraceFrame]],
+    ) -> None:
+        while True:
+            hook, frame = trace_queue.get()
+            try:
+                hook(frame)
+            except Exception:
+                pass
+            finally:
+                trace_queue.task_done()
+
     def _fire_trace(self, direction: ToyopucTraceDirection, data: bytes) -> None:
-        if self.trace_hook is not None:
-            payload = data if isinstance(data, bytes) else bytes(data)
-            self.trace_hook(ToyopucTraceFrame(direction, payload, datetime.now(timezone.utc)))
+        hook = self._maintainer_trace_hook
+        if hook is None:
+            return
+        trace_queue = self._trace_queue
+        if trace_queue is None:
+            trace_queue = Queue(maxsize=1024)
+            self._trace_queue = trace_queue
+            Thread(
+                target=self._run_trace_queue,
+                args=(trace_queue,),
+                name=f"{type(self).__name__}-trace",
+                daemon=True,
+            ).start()
+        frame = ToyopucTraceFrame(direction, bytes(data), datetime.now(timezone.utc))
+        try:
+            trace_queue.put_nowait((hook, frame))
+        except Full:
+            # Diagnostics must never block transport; saturated traces are dropped.
+            pass
 
     @property
     def last_tx(self) -> bytes | None:
@@ -357,11 +436,13 @@ class ToyopucClient:
         self._recv_exact_into(buffer)
         return bytes(buffer)
 
-    def _send_and_recv(self, payload: bytes) -> ResponseFrame:
+    def _send_and_recv(self, payload: bytes, *, retryable: bool = False) -> ResponseFrame:
         attempt = 0
         last_err: Exception | None = None
-        while attempt <= self.retries:
+        allowed_retries = self.retries if retryable else 0
+        while attempt <= allowed_retries:
             attempt += 1
+            self._raise_if_cancelled()
             if not self._sock:
                 self.connect()
             assert self._sock is not None
@@ -382,28 +463,30 @@ class ToyopucClient:
                     frame = bytes(frame_buffer)
                 else:
                     self._sock.sendto(payload, (self.host, self.port))
-                    frame, _ = self._sock.recvfrom(max(self.recv_bufsize, UDP_RECEIVE_BUFFER_SIZE))
+                    frame, _ = self._sock.recvfrom(UDP_RECEIVE_BUFFER_SIZE)
             except TimeoutError as e:
                 last_err = ToyopucTimeoutError("Send/receive timeout")
-                if attempt <= self.retries:
+                if attempt <= allowed_retries:
                     try:
                         self.close()
                     except Exception:
                         pass
 
-                    time.sleep(self.retry_delay)
+                    self._wait_retry_delay()
                     continue
+                self.close()
                 raise last_err from e
             except OSError as e:
                 last_err = ToyopucError("Socket error")
-                if attempt <= self.retries:
+                if attempt <= allowed_retries:
                     try:
                         self.close()
                     except Exception:
                         pass
 
-                    time.sleep(self.retry_delay)
+                    self._wait_retry_delay()
                     continue
+                self.close()
                 raise last_err from e
 
             self._fire_trace(ToyopucTraceDirection.RECEIVE, frame)
@@ -413,8 +496,8 @@ class ToyopucClient:
                 raise ToyopucProtocolError(f"Unexpected frame type: 0x{resp.ft:02X}")
             if resp.rc != 0x00:
                 last_err = ToyopucError(format_response_error(resp))
-                if _is_retryable_response_error(resp) and attempt <= self.retries:
-                    time.sleep(self.retry_delay)
+                if retryable and _is_retryable_response_error(resp) and attempt <= allowed_retries:
+                    self._wait_retry_delay()
                     continue
                 raise last_err
             return resp
@@ -423,19 +506,19 @@ class ToyopucClient:
             raise last_err
         raise ToyopucError("Send/receive failed")
 
-    def send_raw(self, cmd: int, data: bytes = b"") -> ResponseFrame:
-        """Send one raw command code and payload, returning the parsed response frame."""
+    def _send_raw(self, cmd: int, data: bytes) -> ResponseFrame:
+        """Maintainer-only raw command path."""
 
         payload = build_command(cmd, data)
         return self._send_and_recv(payload)
 
-    def send_payload(self, payload: bytes) -> ResponseFrame:
-        """Send a fully-built command payload and return the parsed response."""
+    def _send_payload(self, payload: bytes) -> ResponseFrame:
+        """Maintainer-only prebuilt-payload path."""
         return self._send_and_recv(payload)
 
     def read_words(self, addr: int, count: int) -> list[int]:
         """Read one or more basic-area words with `CMD=1C`."""
-        resp = self._send_and_recv(build_word_read(addr, count))
+        resp = self._send_and_recv(build_word_read(addr, count), retryable=True)
         if resp.cmd != 0x1C:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return unpack_u16_le(resp.data)
@@ -448,7 +531,7 @@ class ToyopucClient:
 
     def read_bytes(self, addr: int, count: int) -> bytes:
         """Read one or more basic-area bytes with `CMD=1E`."""
-        resp = self._send_and_recv(build_byte_read(addr, count))
+        resp = self._send_and_recv(build_byte_read(addr, count), retryable=True)
         if resp.cmd != 0x1E:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -461,7 +544,7 @@ class ToyopucClient:
 
     def read_bit(self, addr: int) -> bool:
         """Read one basic-area bit with `CMD=20`."""
-        resp = self._send_and_recv(build_bit_read(addr))
+        resp = self._send_and_recv(build_bit_read(addr), retryable=True)
         if resp.cmd != 0x20:
             raise ToyopucProtocolError("Unexpected CMD in response")
         if len(resp.data) != 1:
@@ -484,9 +567,9 @@ class ToyopucClient:
 
     def read_dwords(self, addr: int, count: int) -> list[int]:
         """Read one or more 32-bit values from consecutive words."""
-        points = int(count)
-        if points < 1:
-            raise ValueError("count must be >= 1")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError("count must be an integer >= 1")
+        points = count
         return _unpack_uint32_low_word_first_words(self.read_words(addr, points * 2))
 
     def write_dwords(self, addr: int, values: Iterable[int]) -> None:
@@ -503,9 +586,9 @@ class ToyopucClient:
 
     def read_float32s(self, addr: int, count: int) -> list[float]:
         """Read one or more IEEE-754 float32 values from consecutive words."""
-        points = int(count)
-        if points < 1:
-            raise ValueError("count must be >= 1")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError("count must be an integer >= 1")
+        points = count
         return _unpack_float32_low_word_first_words(self.read_words(addr, points * 2))
 
     def write_float32s(self, addr: int, values: Iterable[float]) -> None:
@@ -514,7 +597,7 @@ class ToyopucClient:
 
     def read_words_multi(self, addrs: Iterable[int]) -> list[int]:
         """Read multiple non-contiguous basic-area words with `CMD=22`."""
-        resp = self._send_and_recv(build_multi_word_read(addrs))
+        resp = self._send_and_recv(build_multi_word_read(addrs), retryable=True)
         if resp.cmd != 0x22:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return unpack_u16_le(resp.data)
@@ -527,7 +610,7 @@ class ToyopucClient:
 
     def read_bytes_multi(self, addrs: Iterable[int]) -> bytes:
         """Read multiple non-contiguous basic-area bytes with `CMD=24`."""
-        resp = self._send_and_recv(build_multi_byte_read(addrs))
+        resp = self._send_and_recv(build_multi_byte_read(addrs), retryable=True)
         if resp.cmd != 0x24:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -540,7 +623,7 @@ class ToyopucClient:
 
     def read_ext_words(self, no: int, addr: int, count: int) -> list[int]:
         """Read extended-area words with `CMD=94` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_word_read(no, addr, count))
+        resp = self._send_and_recv(build_ext_word_read(no, addr, count), retryable=True)
         if resp.cmd != 0x94:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return unpack_u16_le(resp.data)
@@ -553,7 +636,7 @@ class ToyopucClient:
 
     def read_ext_bytes(self, no: int, addr: int, count: int) -> bytes:
         """Read extended-area bytes with `CMD=96` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_byte_read(no, addr, count))
+        resp = self._send_and_recv(build_ext_byte_read(no, addr, count), retryable=True)
         if resp.cmd != 0x96:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -580,7 +663,9 @@ class ToyopucClient:
         (manual: "byte address N"). A `CMD=94` word address must be doubled
         before it is used as a `word_points` address.
         """
-        resp = self._send_and_recv(build_ext_multi_read(list(bit_points), list(byte_points), list(word_points)))
+        resp = self._send_and_recv(
+            build_ext_multi_read(list(bit_points), list(byte_points), list(word_points)), retryable=True
+        )
         if resp.cmd != 0x98:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -602,7 +687,7 @@ class ToyopucClient:
 
     def pc10_block_read(self, addr32: int, count: int) -> bytes:
         """Read PC10 block data with `CMD=C2` from a 32-bit byte address."""
-        resp = self._send_and_recv(build_pc10_block_read(addr32, count))
+        resp = self._send_and_recv(build_pc10_block_read(addr32, count), retryable=True)
         if resp.cmd != 0xC2:
             raise ToyopucProtocolError("Unexpected CMD in response")
         if len(resp.data) != count:
@@ -619,7 +704,7 @@ class ToyopucClient:
 
     def pc10_multi_read(self, payload: bytes) -> bytes:
         """Read PC10 multi-point data with `CMD=C4` using a prebuilt payload."""
-        resp = self._send_and_recv(build_pc10_multi_read(payload))
+        resp = self._send_and_recv(build_pc10_multi_read(payload), retryable=True)
         if resp.cmd != 0xC4:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -631,108 +716,36 @@ class ToyopucClient:
             raise ToyopucProtocolError("Unexpected CMD in response")
 
     def read_fr_words(self, index: int, count: int) -> list[int]:
-        """Read FR words via PC10 block read (`CMD=C2`).
+        """Read FR words via exactly one PC10 block-read request (`CMD=C2`).
 
         `FR` real-hardware access uses 32-bit PC10 addressing with
         `Ex No.=0x40-0x7F`, not `CMD=94`.
         """
-        values: list[int] = []
-        for chunk_index, chunk_words in _iter_fr_io_segments(index, count):
-            data = self.pc10_block_read(encode_fr_word_addr32(chunk_index), chunk_words * 2)
-            values.extend(unpack_u16_le(data))
-        return values
+        start, word_count = _validate_fr_single_request(index, count)
+        data = self.pc10_block_read(encode_fr_word_addr32(start), word_count * 2)
+        return unpack_u16_le(data)
 
-    def write_fr_words(self, index: int, values: Iterable[int], *, commit: bool = False) -> None:
-        """Write FR words via PC10 block write (`CMD=C3`).
+    def write_fr_words(self, index: int, values: Iterable[int]) -> None:
+        """Update the FR work area with exactly one PC10 block-write request.
 
-        This updates the FR work area. Persisting the block to flash requires
-        `CMD=CA`. Set `commit=True` to commit every affected FR block after the
-        write completes.
-        """
-        self.write_fr_words_ex(index, values, commit=commit, wait=commit)
-
-    def write_fr_words_ex(
-        self,
-        index: int,
-        values: Iterable[int],
-        *,
-        commit: bool = False,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> None:
-        """Write FR words, with optional commit and completion wait.
-
-        When ``commit=True``, this follows the manual's 64-kbyte block unit:
-        each affected FR block is written with `C3`, committed with `CA`, and
-        optionally waited on before moving to the next block.
+        This method never commits flash. Call :meth:`commit_fr_block`
+        separately with an explicit block-start index when persistence is
+        intended.
         """
         vals = [int(v) & 0xFFFF for v in values]
         if not vals:
             raise ValueError("values must contain at least one word")
-        offset = 0
-        for block_index, block_words in _iter_fr_segments(index, len(vals)):
-            block_offset = 0
-            while block_offset < block_words:
-                chunk_words = min(block_words - block_offset, _FR_IO_CHUNK_WORDS)
-                chunk_vals = vals[offset : offset + chunk_words]
-                data = b"".join(v.to_bytes(2, "little") for v in chunk_vals)
-                self.pc10_block_write(encode_fr_word_addr32(block_index + block_offset), data)
-                offset += chunk_words
-                block_offset += chunk_words
-            if commit:
-                self.commit_fr_block(
-                    block_index,
-                    wait=wait,
-                    timeout=timeout,
-                    poll_interval=poll_interval,
-                )
+        start, _ = _validate_fr_single_request(index, len(vals))
+        data = b"".join(v.to_bytes(2, "little") for v in vals)
+        self.pc10_block_write(encode_fr_word_addr32(start), data)
 
     def commit_fr_block(
         self,
-        index: int,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> CpuStatusData | None:
-        """Commit the FR block containing `index` via `CMD=CA`.
-
-        By default this waits until `Data7.bit4` (`under_writing_flash_register`)
-        clears and raises on `Data7.bit5` (`abnormal_write_flash_register`).
-        """
-        self.fr_register(fr_block_ex_no(index))
-        if wait:
-            return self.wait_fr_write_complete(timeout=timeout, poll_interval=poll_interval)
-        return None
-
-    def commit_fr_range(
-        self,
-        index: int,
-        count: int = 1,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> CpuStatusData | None:
-        """Commit every FR block touched by a contiguous word range."""
-        last_status: CpuStatusData | None = None
-        for block_index in _fr_commit_blocks(index, count):
-            last_status = self.commit_fr_block(
-                block_index,
-                wait=wait,
-                timeout=timeout,
-                poll_interval=poll_interval,
-            )
-        return last_status
-
-    def write_fr_words_committed(self, index: int, values: Iterable[int]) -> None:
-        """Write FR words and commit every affected FR block."""
-        self.write_fr_words_ex(index, values, commit=True, wait=True)
-
-    def fr_register(self, ex_no: int) -> None:
-        """Issue the FR-register command `CMD=CA`."""
-        resp = self._send_and_recv(build_fr_register(ex_no))
+        block_start_index: int,
+    ) -> None:
+        """Commit exactly one explicitly selected FR block with `CMD=CA`."""
+        block_start = _validate_fr_block_start(block_start_index)
+        resp = self._send_and_recv(build_fr_register(fr_block_ex_no(block_start)))
         if resp.cmd != 0xCA:
             raise ToyopucProtocolError("Unexpected CMD in response")
 
@@ -790,8 +803,15 @@ class ToyopucClient:
         except Exception as e:
             raise ToyopucProtocolError(f"Failed to parse relay clock response data={resp.data.hex()}") from e
 
-    def relay_write_clock(self, hops: str | Iterable[tuple[int, int]], value: datetime) -> None:
+    def relay_write_clock(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        value: datetime,
+        *,
+        year_base: int,
+    ) -> None:
         """Set the CPU clock through relay hops via `CMD=32 / 71 00`."""
+        self._validate_clock_write(value, year_base)
         weekday = (value.weekday() + 1) % 7
         resp = self.send_via_relay(
             hops,
@@ -801,7 +821,7 @@ class ToyopucClient:
                 value.hour,
                 value.day,
                 value.month,
-                value.year % 100,
+                value.year - year_base,
                 weekday,
             ),
         )
@@ -869,132 +889,31 @@ class ToyopucClient:
         hops: str | Iterable[tuple[int, int]],
         index: int,
         values: Iterable[int],
-        *,
-        commit: bool = False,
     ) -> None:
-        """Write FR words through relay hops, optionally committing touched blocks."""
-        self.relay_write_fr_words_ex(hops, index, values, commit=commit, wait=commit)
-
-    def relay_write_fr_words_ex(
-        self,
-        hops: str | Iterable[tuple[int, int]],
-        index: int,
-        values: Iterable[int],
-        *,
-        commit: bool = False,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> None:
-        """Write FR words through relay hops, with optional commit and completion wait."""
+        """Update the remote FR work area with exactly one request."""
         vals = [int(v) & 0xFFFF for v in values]
         if not vals:
             raise ValueError("values must contain at least one word")
-        offset = 0
-        for block_index, block_words in _iter_fr_segments(index, len(vals)):
-            block_offset = 0
-            while block_offset < block_words:
-                chunk_words = min(block_words - block_offset, _FR_IO_CHUNK_WORDS)
-                chunk_vals = vals[offset : offset + chunk_words]
-                data = b"".join(v.to_bytes(2, "little") for v in chunk_vals)
-                resp = self.send_via_relay(
-                    hops,
-                    build_pc10_block_write(encode_fr_word_addr32(block_index + block_offset), data),
-                )
-                if resp.cmd != 0xC3:
-                    raise ToyopucProtocolError("Unexpected CMD in relay FR block-write response")
-                offset += chunk_words
-                block_offset += chunk_words
-            if commit:
-                self.relay_commit_fr_block(
-                    hops,
-                    block_index,
-                    wait=wait,
-                    timeout=timeout,
-                    poll_interval=poll_interval,
-                )
-
-    def relay_fr_register(self, hops: str | Iterable[tuple[int, int]], ex_no: int) -> None:
-        """Issue the FR-register command `CMD=CA` through relay hops."""
-        resp = self.send_via_relay(hops, build_fr_register(ex_no))
-        if resp.cmd != 0xCA:
-            raise ToyopucProtocolError("Unexpected CMD in relay FR-register response")
+        start, _ = _validate_fr_single_request(index, len(vals))
+        data = b"".join(v.to_bytes(2, "little") for v in vals)
+        resp = self.send_via_relay(hops, build_pc10_block_write(encode_fr_word_addr32(start), data))
+        if resp.cmd != 0xC3:
+            raise ToyopucProtocolError("Unexpected CMD in relay FR block-write response")
 
     def relay_commit_fr_block(
         self,
         hops: str | Iterable[tuple[int, int]],
-        index: int,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> CpuStatusData | None:
-        """Commit the remote FR block containing `index` via relay `CMD=CA`."""
-        self.relay_fr_register(hops, fr_block_ex_no(index))
-        if wait:
-            return self.relay_wait_fr_write_complete(hops, timeout=timeout, poll_interval=poll_interval)
-        return None
-
-    def relay_commit_fr_range(
-        self,
-        hops: str | Iterable[tuple[int, int]],
-        index: int,
-        count: int = 1,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> CpuStatusData | None:
-        """Commit every FR block touched by a contiguous relay FR range."""
-        last_status: CpuStatusData | None = None
-        for block_index in _fr_commit_blocks(index, count):
-            last_status = self.relay_commit_fr_block(
-                hops,
-                block_index,
-                wait=wait,
-                timeout=timeout,
-                poll_interval=poll_interval,
-            )
-        return last_status
-
-    def relay_wait_fr_write_complete(
-        self,
-        hops: str | Iterable[tuple[int, int]],
-        *,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
-    ) -> CpuStatusData:
-        """Poll remote FR flash-write completion status through relay hops."""
-        deadline = time.monotonic() + max(0.0, float(timeout))
-        interval = max(0.01, float(poll_interval))
-        while True:
-            use_a0 = self._relay_fr_wait_prefers_a0 is not False
-            if use_a0:
-                try:
-                    status = self.relay_read_cpu_status_a0(hops)
-                    self._relay_fr_wait_prefers_a0 = True
-                except (ToyopucError, ToyopucProtocolError):
-                    err = _extract_response_error_code(self.last_rx)
-                    if err is None:
-                        err = _extract_relay_nak_error_code(self.last_rx)
-                    if err in (0x23, 0x24, 0x25, 0x26):
-                        self._relay_fr_wait_prefers_a0 = False
-                        status = self.relay_read_cpu_status(hops)
-                    else:
-                        raise
-            else:
-                status = self.relay_read_cpu_status(hops)
-            if status.abnormal_write_flash_register:
-                raise ToyopucError("FR flash write failed: abnormal_write_flash_register=1")
-            if not status.under_writing_flash_register:
-                return status
-            if time.monotonic() >= deadline:
-                raise ToyopucTimeoutError("Timed out waiting for relay FR flash write completion")
-            time.sleep(interval)
+        block_start_index: int,
+    ) -> None:
+        """Commit exactly one explicitly selected remote FR block."""
+        block_start = _validate_fr_block_start(block_start_index)
+        resp = self.send_via_relay(hops, build_fr_register(fr_block_ex_no(block_start)))
+        if resp.cmd != 0xCA:
+            raise ToyopucProtocolError("Unexpected CMD in relay FR-register response")
 
     def read_clock(self) -> ClockData:
         """Read the CPU clock via `CMD=32 / 70 00`."""
-        resp = self._send_and_recv(build_clock_read())
+        resp = self._send_and_recv(build_clock_read(), retryable=True)
         if resp.cmd != 0x32:
             raise ToyopucProtocolError("Unexpected CMD in response")
         try:
@@ -1037,41 +956,18 @@ class ToyopucClient:
         except Exception as e:
             raise ToyopucProtocolError(f"Failed to parse A0 CPU status response data={resp.data.hex()}") from e
 
-    def wait_fr_write_complete(self, *, timeout: float = 30.0, poll_interval: float = 0.2) -> CpuStatusData:
-        """Poll FR flash-write completion status.
+    @staticmethod
+    def _validate_clock_write(value: datetime, year_base: int) -> None:
+        if isinstance(year_base, bool) or not isinstance(year_base, int) or year_base < 0 or year_base % 100 != 0:
+            raise ValueError("year_base must be a non-negative century boundary")
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            raise ValueError("clock write requires a timezone-naive PLC local datetime")
+        if not year_base <= value.year <= year_base + 99:
+            raise ValueError("clock year must be within year_base..year_base+99")
 
-        Prefer `CMD=A0 / 00 11 00` when available. If the target rejects `A0`
-        with an invalid-subcommand style error, fall back to normal CPU status
-        `CMD=32 / 11 00`, which exposes the same `Data7` flash-write bits on
-        the Nano 10GX tested in this project.
-        """
-        deadline = time.monotonic() + max(0.0, float(timeout))
-        interval = max(0.01, float(poll_interval))
-        while True:
-            use_a0 = self._fr_wait_prefers_a0 is not False
-            if use_a0:
-                try:
-                    status = self.read_cpu_status_a0()
-                    self._fr_wait_prefers_a0 = True
-                except (ToyopucError, ToyopucProtocolError):
-                    err = _extract_response_error_code(self.last_rx)
-                    if err in (0x23, 0x24, 0x25):
-                        self._fr_wait_prefers_a0 = False
-                        status = self.read_cpu_status()
-                    else:
-                        raise
-            else:
-                status = self.read_cpu_status()
-            if status.abnormal_write_flash_register:
-                raise ToyopucError("FR flash write failed: abnormal_write_flash_register=1")
-            if not status.under_writing_flash_register:
-                return status
-            if time.monotonic() >= deadline:
-                raise ToyopucTimeoutError("Timed out waiting for FR flash write completion")
-            time.sleep(interval)
-
-    def write_clock(self, value: datetime) -> None:
+    def write_clock(self, value: datetime, *, year_base: int) -> None:
         """Set the CPU clock via `CMD=32 / 71 00`."""
+        self._validate_clock_write(value, year_base)
         weekday = (value.weekday() + 1) % 7  # Python Monday=0, PLC Sunday=0
         resp = self._send_and_recv(
             build_clock_write(
@@ -1080,7 +976,7 @@ class ToyopucClient:
                 value.hour,
                 value.day,
                 value.month,
-                value.year % 100,
+                value.year - year_base,
                 weekday,
             )
         )

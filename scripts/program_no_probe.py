@@ -124,13 +124,14 @@ def _make_case(
     key: str,
     label: str,
     *,
+    profile: str,
     bit_device: str | None = None,
     byte_device: str | None = None,
     word_device: str | None = None,
 ) -> ProbeCase:
-    bit = resolve_device(bit_device) if bit_device else None
-    byte = resolve_device(byte_device) if byte_device else None
-    word = resolve_device(word_device) if word_device else None
+    bit = resolve_device(bit_device, profile=profile) if bit_device else None
+    byte = resolve_device(byte_device, profile=profile) if byte_device else None
+    word = resolve_device(word_device, profile=profile) if word_device else None
     expected_values: list[int] = []
     for device in (bit, byte, word):
         if device is None:
@@ -144,11 +145,12 @@ def _make_case(
     return ProbeCase(key=key, label=label, expected_no=expected_no, bit=bit, byte=byte, word=word)
 
 
-def _build_cases() -> dict[str, ProbeCase]:
+def _build_cases(profile: str) -> dict[str, ProbeCase]:
     return {
         "ext00": _make_case(
             "ext00",
             "EX/ES current no=0x00",
+            profile=profile,
             bit_device="EX0000",
             byte_device="ES0000L",
             word_device="ES0000",
@@ -156,12 +158,14 @@ def _build_cases() -> dict[str, ProbeCase]:
         "gx07": _make_case(
             "gx07",
             "GX shared-byte current no=0x07",
+            profile=profile,
             bit_device="GX0000",
             byte_device="GX0000L",
         ),
         "p1": _make_case(
             "p1",
             "P1 current no=0x01",
+            profile=profile,
             bit_device="P1-M0000",
             byte_device="P1-D0000L",
             word_device="P1-D0000",
@@ -169,6 +173,7 @@ def _build_cases() -> dict[str, ProbeCase]:
         "p2": _make_case(
             "p2",
             "P2 current no=0x02",
+            profile=profile,
             bit_device="P2-M0000",
             byte_device="P2-D0000L",
             word_device="P2-D0000",
@@ -176,6 +181,7 @@ def _build_cases() -> dict[str, ProbeCase]:
         "p3": _make_case(
             "p3",
             "P3 current no=0x03",
+            profile=profile,
             bit_device="P3-M0000",
             byte_device="P3-D0000L",
             word_device="P3-D0000",
@@ -328,8 +334,6 @@ def _run_case(plc: ToyopucClient, case: ProbeCase, candidate_nos: Sequence[int],
 
 
 def main() -> int:
-    cases = _build_cases()
-
     p = argparse.ArgumentParser(
         description="Probe CMD=98/99 program-number interpretation by comparing current mapping against candidate no values"  # noqa: E501
     )
@@ -339,6 +343,7 @@ def main() -> int:
     p.add_argument("--local-port", type=int, default=0)
     p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--retries", type=int, default=0)
+    p.add_argument("--profile", required=True, help="Canonical PLC profile used to resolve device routes")
     p.add_argument(
         "--cases",
         default="ext00,gx07,p1",
@@ -351,6 +356,7 @@ def main() -> int:
     )
     p.add_argument("--log", default="")
     args = p.parse_args()
+    cases = _build_cases(args.profile)
 
     selected_keys = [item.strip().lower() for item in args.cases.split(",") if item.strip()]
     if not selected_keys:

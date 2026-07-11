@@ -45,7 +45,7 @@ def main() -> int:
     ) as plc:
         try:
             if args.mode == "read":
-                value = plc.read_fr(args.target)
+                value = plc.read_fr_one(args.target)
                 print(f"target = {args.target}")
                 print(f"value = {hex(value)}")
                 if args.try_a0:
@@ -56,17 +56,13 @@ def main() -> int:
                         print(f"read A0: unavailable ({e})")
                 return 0
 
-            before = plc.read_fr(args.target)
+            before = plc.read_fr_one(args.target)
             print(f"target = {args.target}")
             print(f"before = {hex(before)}")
             print(f"write  = {hex(args.value & 0xFFFF)}")
-            plc.write_fr(
-                args.target,
-                args.value,
-                commit=True,
-                wait=True,
-            )
-            after = plc.read_fr(args.target)
+            plc.write_fr(args.target, args.value)
+            plc.commit_fr(args.target)
+            after = plc.read_fr_one(args.target)
             print(f"after  = {hex(after)}")
             if args.try_a0:
                 try:

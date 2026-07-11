@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from ._shared import _validate_relay_hop
 from .errors import ToyopucProtocolError
 
 FT_COMMAND = 0x00
@@ -97,11 +98,20 @@ class ClockData:
     year_2digit: int
     weekday: int
 
-    def as_datetime(self, *, year_base: int = 2000) -> datetime:
+    def as_datetime(self, *, year_base: int) -> datetime:
         """Convert the PLC clock fields into a Python ``datetime``."""
 
+        _require_year_base(year_base)
         year = year_base + self.year_2digit
+        if not 1 <= year <= 9999:
+            raise ValueError("year_base + year_2digit must be in the range 1..9999")
         return datetime(year, self.month, self.day, self.hour, self.minute, self.second)
+
+
+def _require_year_base(year_base: int) -> int:
+    if isinstance(year_base, bool) or not isinstance(year_base, int) or year_base < 0 or year_base % 100 != 0:
+        raise ValueError("year_base must be a non-negative century boundary such as 1900, 2000, or 2100")
+    return year_base
 
 
 @dataclass(frozen=True)
@@ -393,10 +403,17 @@ class CpuStatusData:
 
 def build_command(cmd: int, data: bytes) -> bytes:
     """Build a generic TOYOPUC command frame."""
-    length = 1 + len(data)  # CMD + data
+    if isinstance(cmd, bool) or not isinstance(cmd, int) or not 0 <= cmd <= 0xFF:
+        raise ValueError("cmd must be an integer in the range 0..255")
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("data must be an explicit bytes-like value")
+    payload = bytes(data)
+    length = 1 + len(payload)  # CMD + data
+    if length > 0xFFFF:
+        raise ValueError("command payload is too large for the 16-bit frame length")
     ll = length & 0xFF
-    lh = (length >> 8) & 0xFF
-    return bytes([FT_COMMAND, 0x00, ll, lh, cmd]) + data
+    lh = length >> 8
+    return bytes([FT_COMMAND, 0x00, ll, lh, cmd]) + payload
 
 
 def parse_response(frame: bytes) -> ResponseFrame:
@@ -800,16 +817,17 @@ def _frame_to_inner_payload(frame: bytes) -> bytes:
     return frame[2:]
 
 
-def build_relay_command(link_no: int, station_no: int, inner_payload: bytes, *, enq: int = 0x05) -> bytes:
+def build_relay_command(link_no: int, station_no: int, inner_payload: bytes) -> bytes:
     """Build a single-hop relay command (`CMD=60`)."""
+    link_no, station_no = _validate_relay_hop(link_no, station_no)
     inner = _normalize_inner_payload(inner_payload)
     data = (
         bytes(
             [
-                link_no & 0xFF,
+                link_no,
                 station_no & 0xFF,
-                (station_no >> 8) & 0xFF,
-                enq & 0xFF,
+                station_no >> 8,
+                0x05,
             ]
         )
         + inner
@@ -824,9 +842,10 @@ def build_relay_nested(hops: Sequence[tuple[int, int]], inner_payload: bytes) ->
     hops = list(hops)
     if not hops:
         raise ValueError("at least one relay hop is required")
+    validated_hops = [_validate_relay_hop(link, station) for link, station in hops]
     inner = _normalize_inner_payload(inner_payload)
     frame: bytes | None = None
-    for link_no, station_no in reversed(hops):
+    for link_no, station_no in reversed(validated_hops):
         frame = build_relay_command(link_no, station_no, inner)
         inner = _frame_to_inner_payload(frame)
     assert frame is not None

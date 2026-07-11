@@ -124,14 +124,14 @@ def _run_bit_case(plc: ToyopucDeviceClient, case: BitCase, log_f) -> bool:
         log_f,
     )
 
-    original = 1 if bool(plc.read(case.device)) else 0
+    original = 1 if bool(plc.read_one(case.device)) else 0
     phase1 = 1 - original
     restored = False
     alias_same_point: bool | None = None
 
     try:
         plc.write(case.device, phase1)
-        current1 = 1 if bool(plc.read(case.device)) else 0
+        current1 = 1 if bool(plc.read_one(case.device)) else 0
         ok1 = current1 == phase1
         _print_line(f"phase1 current write={phase1} read={current1} ok={ok1}", log_f)
         if not ok1:
@@ -150,7 +150,7 @@ def _run_bit_case(plc: ToyopucDeviceClient, case: BitCase, log_f) -> bool:
 
         try:
             plc.write_bit(basic_addr, bool(original))
-            current2 = 1 if bool(plc.read(case.device)) else 0
+            current2 = 1 if bool(plc.read_one(case.device)) else 0
             alias_same_point = current2 == original
             _print_line(
                 f"phase2 alt basic write={original} current read={current2} alias_same_point={alias_same_point}",
@@ -162,7 +162,7 @@ def _run_bit_case(plc: ToyopucDeviceClient, case: BitCase, log_f) -> bool:
     finally:
         try:
             plc.write(case.device, original)
-            restored_read = 1 if bool(plc.read(case.device)) else 0
+            restored_read = 1 if bool(plc.read_one(case.device)) else 0
             restored = restored_read == original
             _print_line(f"restore expected={original} read={restored_read} ok={restored}", log_f)
         except ToyopucError as exc:
@@ -189,13 +189,13 @@ def _run_word_case(plc: ToyopucDeviceClient, case: WordCase, log_f) -> bool:
         log_f,
     )
 
-    original = int(plc.read(case.device)) & 0xFFFF
+    original = int(plc.read_one(case.device)) & 0xFFFF
     phase1, phase2 = _next_word_values(original)
     restored = False
 
     try:
         plc.write(case.device, phase1)
-        current1 = int(plc.read(case.device)) & 0xFFFF
+        current1 = int(plc.read_one(case.device)) & 0xFFFF
         ok1 = current1 == phase1
         _print_line(
             f"phase1 current write={_fmt_value(phase1, 'word')} read={_fmt_value(current1, 'word')} ok={ok1}",
@@ -219,7 +219,7 @@ def _run_word_case(plc: ToyopucDeviceClient, case: WordCase, log_f) -> bool:
 
         try:
             _pc10_multi_write_word(plc, addr32, phase2)
-            current2 = int(plc.read(case.device)) & 0xFFFF
+            current2 = int(plc.read_one(case.device)) & 0xFFFF
             alias_ok = current2 == phase2
             _print_line(
                 f"phase2 alt C5 write={_fmt_value(phase2, 'word')} current read={_fmt_value(current2, 'word')} alias_ok={alias_ok}",  # noqa: E501
@@ -233,7 +233,7 @@ def _run_word_case(plc: ToyopucDeviceClient, case: WordCase, log_f) -> bool:
     finally:
         try:
             plc.write(case.device, original)
-            restored_read = int(plc.read(case.device)) & 0xFFFF
+            restored_read = int(plc.read_one(case.device)) & 0xFFFF
             restored = restored_read == original
             _print_line(
                 f"restore expected={_fmt_value(original, 'word')} read={_fmt_value(restored_read, 'word')} ok={restored}",  # noqa: E501

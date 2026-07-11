@@ -49,13 +49,13 @@ def main() -> int:
                     f"year={current.year_2digit:02d} weekday={current.weekday}"
                 )
                 try:
-                    print(f"datetime: {current.as_datetime().isoformat(sep=' ')}")
+                    print(f"datetime: {current.as_datetime(year_base=2000).isoformat(sep=' ')}")
                 except Exception as e:
                     print(f"datetime: unavailable ({e})")
                 return 0
 
             print(f"setting: {dt_to_set.isoformat(sep=' ')}")
-            plc.write_clock(dt_to_set)
+            plc.write_clock(dt_to_set, year_base=2000)
             current = plc.read_clock()
             print(
                 f"readback raw: second={current.second:02d} minute={current.minute:02d} "
@@ -63,7 +63,7 @@ def main() -> int:
                 f"year={current.year_2digit:02d} weekday={current.weekday}"
             )
             try:
-                print(f"readback datetime: {current.as_datetime().isoformat(sep=' ')}")
+                print(f"readback datetime: {current.as_datetime(year_base=2000).isoformat(sep=' ')}")
             except Exception as e:
                 print(f"readback datetime: unavailable ({e})")
         except Exception as e:

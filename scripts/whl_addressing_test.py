@@ -42,7 +42,7 @@ def _single_word_case(plc: ToyopucDeviceClient, addr: str, rng: random.Random, l
     values.append(values[0] ^ 0xFFFF)
     for value in values:
         plc.write(addr, value)
-        read_back = int(plc.read(addr))
+        read_back = int(plc.read_one(addr))
         line = f"{addr} [{scheme}] write={_format_value(value, 4)} read={_format_value(read_back, 4)}"
         print(line)
         _write_log(log_f, line)
@@ -59,7 +59,7 @@ def _single_byte_case(plc: ToyopucDeviceClient, addr: str, rng: random.Random, l
     values = [rng.randint(0, 0xFF), rng.randint(0, 0xFF)]
     for value in values:
         plc.write(addr, value)
-        read_back = int(plc.read(addr))
+        read_back = int(plc.read_one(addr))
         line = f"{addr} [{scheme}] write={_format_value(value, 2)} read={_format_value(read_back, 2)}"
         print(line)
         _write_log(log_f, line)
@@ -81,9 +81,9 @@ def _paired_word_byte_case(
     expected_low = value & 0xFF
     expected_high = (value >> 8) & 0xFF
     plc.write(word_addr, value)
-    read_word = int(plc.read(word_addr))
-    read_low = int(plc.read(low_addr))
-    read_high = int(plc.read(high_addr))
+    read_word = int(plc.read_one(word_addr))
+    read_low = int(plc.read_one(low_addr))
+    read_high = int(plc.read_one(high_addr))
     line = (
         f"{word_addr} -> {low_addr}/{high_addr} "
         f"write={_format_value(value, 4)} "

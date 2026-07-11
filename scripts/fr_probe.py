@@ -8,6 +8,7 @@ from toyopuc import (
     encode_fr_word_addr32,
     fr_block_ex_no,
 )
+from toyopuc.protocol import build_fr_register
 
 
 def parse_int_auto(value: str) -> int:
@@ -133,7 +134,7 @@ def probe_ca_only(plc: ToyopucClient, ex_no: int) -> ProbeResult:
     masked_ex_no = ex_no & 0xFF
     label = f"ca=0x{masked_ex_no:02X} (arg=0x{ex_no:X})"
     try:
-        plc.fr_register(ex_no)
+        plc._send_and_recv(build_fr_register(ex_no))
         return ProbeResult(
             label=label,
             ok=True,

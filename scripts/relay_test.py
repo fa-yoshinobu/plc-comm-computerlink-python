@@ -115,7 +115,7 @@ def print_decoded_inner(args, inner_resp, printer: Callable[[str], None]) -> Non
         clock = parse_clock_data(inner_resp.data)
         printer(f"INNER CLOCK raw = {clock}")
         try:
-            printer(f"INNER CLOCK datetime = {clock.as_datetime().isoformat(sep=' ')}")
+            printer(f"INNER CLOCK datetime = {clock.as_datetime(year_base=2000).isoformat(sep=' ')}")
         except Exception as exc:
             printer(f"INNER CLOCK datetime = unavailable ({exc})")
         return
@@ -220,7 +220,7 @@ def main() -> int:
         retries=args.retries,
     )
     try:
-        resp = plc.send_payload(build_relay_nested(args.hops, inner_payload))
+        resp = plc._send_payload(build_relay_nested(args.hops, inner_payload))
         outer_raw = format_frame(resp)
         log("HOPS = " + ", ".join(format_hop(link, station) for link, station in args.hops))
         log(f"INNER_MODE = {args.inner}")

@@ -31,10 +31,10 @@ def main() -> int:
         plc_profile=args.profile,
     ) as plc:
         plc.write("P1-D0000", 0x1234)
-        print("P1-D0000 =", hex(plc.read("P1-D0000")))
+        print("P1-D0000 =", hex(plc.read_one("P1-D0000")))
 
         plc.write("P1-M0000", 1)
-        print("P1-M0000 =", plc.read("P1-M0000"))
+        print("P1-M0000 =", plc.read_one("P1-M0000"))
 
         print("CPU status =", plc.read_cpu_status())
 

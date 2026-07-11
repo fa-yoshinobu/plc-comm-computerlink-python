@@ -3,12 +3,9 @@
 import pytest
 
 import toyopuc
-from toyopuc import (
-    ToyopucAddressingOptions,
-    ToyopucDeviceCatalog,
-    ToyopucPlcProfiles,
-)
+from toyopuc import ToyopucDeviceCatalog, ToyopucPlcProfiles
 from toyopuc.high_level import resolve_device as _resolve_device
+from toyopuc.profiles import ToyopucAddressingOptions
 
 GENERIC_PROFILE = "toyopuc:generic"
 
@@ -239,29 +236,9 @@ def test_resolve_u_area_pc10_enabled() -> None:
     assert r.scheme == "pc10-word"
 
 
-def test_resolve_u_area_pc10_disabled_falls_through_to_ext_word() -> None:
-    opts = ToyopucAddressingOptions(use_upper_u_pc10=False)
-    r = resolve_device("U08000", options=opts, profile="toyopuc:generic")
-    assert r.scheme == "ext-word"
-
-
 def test_resolve_eb_area_pc10_enabled() -> None:
     r = resolve_device("EB00000", profile="toyopuc:generic")
     assert r.scheme == "pc10-word"
-
-
-def test_resolve_eb_area_pc10_disabled_falls_through_to_ext_word() -> None:
-    opts = ToyopucAddressingOptions(use_eb_pc10=False)
-    r = resolve_device("EB00000", options=opts, profile="toyopuc:generic")
-    assert r.scheme == "ext-word"
-
-
-def test_resolve_eb_extended_no_stops_at_manual_range_when_pc10_disabled() -> None:
-    assert resolve_device("EB20000", profile="toyopuc:generic").scheme == "pc10-word"
-
-    opts = ToyopucAddressingOptions(use_eb_pc10=False)
-    with pytest.raises(ValueError, match="EB extended-No index out of range"):
-        resolve_device("EB20000", options=opts, profile="toyopuc:generic")
 
 
 def test_resolve_fr_area_pc10_enabled() -> None:
@@ -269,10 +246,10 @@ def test_resolve_fr_area_pc10_enabled() -> None:
     assert r.scheme == "pc10-word"
 
 
-def test_resolve_fr_area_pc10_disabled_falls_through_to_ext_word() -> None:
-    opts = ToyopucAddressingOptions(use_fr_pc10=False)
-    r = resolve_device("FR000000", options=opts, profile="toyopuc:generic")
-    assert r.scheme == "ext-word"
+def test_public_resolver_rejects_addressing_option_override() -> None:
+    opts = ToyopucAddressingOptions(use_upper_u_pc10=False)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'options'"):
+        resolve_device("U08000", options=opts, profile="toyopuc:generic")
 
 
 # ---------------------------------------------------------------------------
@@ -310,12 +287,18 @@ def test_resolve_with_profile_derives_options() -> None:
     assert r.scheme == "pc10-word"
 
 
-def test_resolve_profile_and_options_together_options_take_precedence() -> None:
-    # Profile "toyopuc:generic" has use_upper_u_pc10=True, but explicitly passed options override it.
-    # U08000 is within Generic's U range (0x1FFFF), so profile validation passes.
-    opts = ToyopucAddressingOptions(use_upper_u_pc10=False)
-    r = resolve_device("U08000", options=opts, profile="toyopuc:generic")
-    assert r.scheme == "ext-word"
+def test_resolved_device_is_bound_to_canonical_profile() -> None:
+    resolved = resolve_device("P1-D0100", profile="toyopuc:generic")
+    assert resolved.plc_profile == "toyopuc:generic"
+
+    client = toyopuc.ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile="toyopuc:plus:standard",
+    )
+    with pytest.raises(ValueError, match="profile mismatch"):
+        client.read_one(resolved)
 
 
 def test_resolve_with_unknown_profile_raises() -> None:

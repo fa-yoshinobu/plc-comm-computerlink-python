@@ -60,6 +60,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
