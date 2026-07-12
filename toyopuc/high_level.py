@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from ._batching import (
     _batch_key,
@@ -44,6 +44,9 @@ from .address import (
 )
 from .client import (
     ToyopucClient,
+    _normalize_bit_value,
+    _normalize_byte_values,
+    _normalize_word_values,
     _pack_float32_low_word_first_words,
     _pack_uint32_low_word_first_words,
     _unpack_float32_low_word_first_words,
@@ -154,6 +157,7 @@ class ResolvedDevice:
     addr: int | None = None
     bit_no: int | None = None
     addr32: int | None = None
+    plc_profile: str = ""
 
 
 def _infer_unit_and_area(device: str) -> tuple[str | None, str, str]:
@@ -333,7 +337,7 @@ def _validate_profile_access(
         )
 
 
-def resolve_device(
+def _resolve_device_unbound(
     device: str,
     options: ToyopucAddressingOptions | None = None,
     profile: str | None = None,
@@ -553,8 +557,33 @@ def resolve_device(
     )
 
 
+def resolve_device(device: str, *, profile: str) -> ResolvedDevice:
+    """Resolve an address and bind the result to one canonical PLC profile."""
+    canonical_profile = ToyopucPlcProfiles.from_name(profile).name
+    return replace(
+        _resolve_device_unbound(device, profile=canonical_profile),
+        plc_profile=canonical_profile,
+    )
+
+
 def _raise_generic_fr_write_error() -> None:
-    raise ValueError("Generic FR writes are disabled; use write_fr(..., commit=False|True) or commit_fr() explicitly")
+    raise ValueError("Generic FR writes are disabled; use write_fr() for the work area and commit_fr() separately")
+
+
+def _require_positive_count(count: int, label: str = "count") -> int:
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ValueError(f"{label} must be an integer >= 1")
+    return count
+
+
+def _normalize_device_value(resolved: ResolvedDevice, value: object) -> int:
+    if resolved.unit == "bit":
+        return _normalize_bit_value(value)
+    if resolved.unit == "byte":
+        return _normalize_byte_values([value])[0]  # type: ignore[list-item]
+    if resolved.unit == "word":
+        return _normalize_word_values([value])[0]  # type: ignore[list-item]
+    raise ValueError(f"Unsupported device unit: {resolved.unit}")
 
 
 class ToyopucDeviceClient(ToyopucClient):
@@ -563,13 +592,11 @@ class ToyopucDeviceClient(ToyopucClient):
     def __init__(
         self,
         *args: Any,
-        addressing_options: ToyopucAddressingOptions | None = None,
-        plc_profile: str | None = None,
+        plc_profile: str,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.plc_profile = ToyopucPlcProfiles.from_name(plc_profile).name
-        self.addressing_options = addressing_options or ToyopucAddressingOptions.from_profile(self.plc_profile)
         self._resolved_device_cache: dict[str, ResolvedDevice] = {}
         self._run_plan_cache: dict[tuple[bool, tuple[ResolvedDevice, ...]], tuple[int, ...]] = {}
 
@@ -594,14 +621,18 @@ class ToyopucDeviceClient(ToyopucClient):
         return plan
 
     def _require_single_read_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
-        if len(devices) <= 1:
+        if not devices:
+            raise ValueError(f"{operation} requires at least one device")
+        if len(devices) == 1:
             return
         plan = self._get_run_plan(devices, split_pc10)
         if len(plan) != 1 or not self._can_read_as_single_request(devices):
             self._raise_implicit_split_error(operation)
 
     def _require_single_write_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
-        if len(devices) <= 1:
+        if not devices:
+            raise ValueError(f"{operation} requires at least one value")
+        if len(devices) == 1:
             return
         plan = self._get_run_plan(devices, split_pc10)
         if len(plan) != 1 or not self._can_write_as_single_request(devices):
@@ -611,7 +642,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _raise_implicit_split_error(operation: str) -> None:
         raise ToyopucProtocolError(
             f"{operation} requires one compatible protocol request. "
-            "Split the operation into explicit calls or use chunked helpers when multiple requests are intentional."
+            "Split the operation into explicit calls when multiple requests are intentional."
         )
 
     @staticmethod
@@ -653,25 +684,41 @@ class ToyopucDeviceClient(ToyopucClient):
         key = device.strip().upper()
         resolved = self._resolved_device_cache.get(key)
         if resolved is None:
-            resolved = resolve_device(key, options=self.addressing_options, profile=self.plc_profile)
+            resolved = resolve_device(key, profile=self.plc_profile)
             if len(self._resolved_device_cache) >= _DEVICE_CACHE_MAX:
                 self._resolved_device_cache.clear()
             self._resolved_device_cache[key] = resolved
         return resolved
 
+    def _coerce_device(self, device: str | ResolvedDevice) -> ResolvedDevice:
+        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        if resolved.plc_profile != self.plc_profile:
+            raise ValueError(
+                f"ResolvedDevice profile mismatch: expected {self.plc_profile!r}, received {resolved.plc_profile!r}"
+            )
+        return resolved
+
+    def relay_read_one(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+    ) -> object:
+        """Read exactly one item through relay hops and return a scalar."""
+        resolved = self._coerce_device(device)
+        return self._relay_read_resolved_device(hops, resolved)
+
     def relay_read(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
-        count: int = 1,
-    ) -> object:
-        """Read one item or a contiguous sequence through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        if count == 1:
-            return self._relay_read_resolved_device(hops, resolved)
-        return self._relay_read_runs(hops, self._seq_devices(resolved, count), split_pc10=True)
+        count: int,
+    ) -> list[object]:
+        """Read a contiguous sequence through relay hops using one request."""
+        _require_positive_count(count)
+        resolved = self._coerce_device(device)
+        devices = self._seq_devices(resolved, count)
+        self._require_single_read_request(devices, split_pc10=True, operation="relay_read")
+        return self._relay_read_runs(hops, devices, split_pc10=True)
 
     def relay_write(
         self,
@@ -680,22 +727,12 @@ class ToyopucDeviceClient(ToyopucClient):
         value: Any,
     ) -> None:
         """Write one item or a contiguous sequence through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
-        if resolved.unit == "bit":
-            if isinstance(value, (list, tuple)):
-                for i, item in enumerate(value):
-                    self._relay_write_resolved_device(hops, self._offset_resolved_device(resolved, i), item)
-                return
-            self._relay_write_resolved_device(hops, resolved, value)
-            return
-
-        if isinstance(value, (bytes, bytearray)):
-            for i, item in enumerate(value):
-                self._relay_write_resolved_device(hops, self._offset_resolved_device(resolved, i), item)
-            return
-        if isinstance(value, (list, tuple)):
-            for i, item in enumerate(value):
-                self._relay_write_resolved_device(hops, self._offset_resolved_device(resolved, i), item)
+        resolved = self._coerce_device(device)
+        if isinstance(value, (bytes, bytearray, list, tuple)):
+            devices = self._seq_devices(resolved, len(value))
+            normalized = [_normalize_device_value(device, item) for device, item in zip(devices, value, strict=True)]
+            self._require_single_write_request(devices, split_pc10=True, operation="relay_write")
+            self._relay_write_runs(hops, devices, normalized, split_pc10=True)
             return
         self._relay_write_resolved_device(hops, resolved, value)
 
@@ -703,18 +740,16 @@ class ToyopucDeviceClient(ToyopucClient):
         self,
         hops: str | Iterable[tuple[int, int]],
         device: int | str | ResolvedDevice,
-        count: int = 1,
+        count: int,
     ) -> list[int]:
         """Read one or more word devices through relay hops."""
+        _require_positive_count(count)
         if isinstance(device, int):
             return super().relay_read_words(hops, device, count)
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         if resolved.unit != "word":
             raise ValueError("relay_read_words() requires a word device")
-        values = self.relay_read(hops, resolved, count)
-        if isinstance(values, list):
-            return [int(item) for item in values]
-        return [int(values)]  # type: ignore
+        return [int(cast(Any, item)) for item in self.relay_read(hops, resolved, count)]
 
     def relay_write_words(
         self,
@@ -729,19 +764,19 @@ class ToyopucDeviceClient(ToyopucClient):
             else:
                 super().relay_write_words(hops, device, value)
             return
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         if resolved.unit != "word":
             raise ValueError("relay_write_words() requires a word device")
         self.relay_write(hops, resolved, value)
 
-    def relay_read_many(
+    def relay_read_devices(
         self,
         hops: str | Iterable[tuple[int, int]],
         devices: Sequence[str | ResolvedDevice],
     ) -> list[object]:
         """Read multiple devices through relay hops as one compatible protocol request."""
-        resolved = [self.resolve_device(d) if isinstance(d, str) else d for d in devices]
-        self._require_single_read_request(resolved, split_pc10=False, operation="relay_read_many")
+        resolved = [self._coerce_device(d) for d in devices]
+        self._require_single_read_request(resolved, split_pc10=False, operation="relay_read_devices")
         return self._relay_read_runs(hops, resolved, split_pc10=False)
 
     def relay_write_many(
@@ -752,10 +787,8 @@ class ToyopucDeviceClient(ToyopucClient):
         """Write multiple devices through relay hops as one compatible protocol request."""
         resolved_items = []
         for device, value in items.items():
-            resolved = self.resolve_device(device) if isinstance(device, str) else device
-            resolved_items.append((resolved, value))
-        if not resolved_items:
-            return
+            resolved = self._coerce_device(device)
+            resolved_items.append((resolved, _normalize_device_value(resolved, value)))
         self._require_single_write_request(
             [resolved for resolved, _ in resolved_items],
             split_pc10=True,
@@ -768,176 +801,131 @@ class ToyopucDeviceClient(ToyopucClient):
             split_pc10=True,
         )
 
-    def read_fr(self, device: str | ResolvedDevice, count: int = 1) -> Any:
-        """Read one or more FR words using the dedicated FR path."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+    def read_fr_one(self, device: str | ResolvedDevice) -> int:
+        """Read exactly one FR word and return a scalar."""
+        return self.read_fr(device, 1)[0]
+
+    def read_fr(self, device: str | ResolvedDevice, count: int) -> list[int]:
+        """Read contiguous FR words using exactly one PC10 block request."""
+        _require_positive_count(count)
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("read_fr() requires an FR word device such as FR000000")
-        values = self.read_fr_words(resolved.index, count)
-        return values[0] if count == 1 else values
+        return self._read_resolved_word_values(resolved, count)
+
+    def relay_read_fr_one(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+    ) -> int:
+        """Read exactly one FR word through relay hops and return a scalar."""
+        return self.relay_read_fr(hops, device, 1)[0]
 
     def relay_read_fr(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
-        count: int = 1,
-    ) -> Any:
-        """Read one or more FR words through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        count: int,
+    ) -> list[int]:
+        """Read contiguous FR words through relay hops using one request."""
+        _require_positive_count(count)
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("relay_read_fr() requires an FR word device such as FR000000")
-        return self.relay_read(hops, resolved, count)
+        return [int(cast(Any, value)) for value in self.relay_read(hops, resolved, count)]
 
     def write_fr(
         self,
         device: str | ResolvedDevice,
         value: Any,
-        *,
-        commit: bool = False,
-        wait: bool | None = None,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
     ) -> None:
-        """Write one or more FR words, optionally committing and waiting."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        """Update FR work-area words with exactly one request; never commit."""
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("write_fr() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
-            values = [int(item) for item in value]
+            values = list(value)
         else:
-            values = [int(value)]
-        should_wait = bool(commit) if wait is None else bool(wait)
-        self.write_fr_words_ex(
-            resolved.index,
-            values,
-            commit=commit,
-            wait=should_wait,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+            values = [value]
+        self.write_fr_words(resolved.index, values)
 
     def relay_write_fr(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
         value: Any,
-        *,
-        commit: bool = False,
-        wait: bool | None = None,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
     ) -> None:
-        """Write one or more FR words through relay hops, optionally committing."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        """Update remote FR work-area words with one request; never commit."""
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("relay_write_fr() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
-            values = [int(item) for item in value]
+            values = list(value)
         else:
-            values = [int(value)]
-        should_wait = bool(commit) if wait is None else bool(wait)
-        self.relay_write_fr_words_ex(
-            hops,
-            resolved.index,
-            values,
-            commit=commit,
-            wait=should_wait,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+            values = [value]
+        self.relay_write_fr_words(hops, resolved.index, values)
 
     def commit_fr(
         self,
         device: str | ResolvedDevice,
-        count: int = 1,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
     ) -> None:
-        """Commit every FR block touched by the given FR word range."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        """Commit the one FR block whose first word is explicitly specified."""
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("commit_fr() requires an FR word device such as FR000000")
-        self.commit_fr_range(
-            resolved.index,
-            count,
-            wait=wait,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+        self.commit_fr_block(resolved.index)
 
     def relay_commit_fr(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
-        count: int = 1,
-        *,
-        wait: bool = False,
-        timeout: float = 30.0,
-        poll_interval: float = 0.2,
     ) -> None:
-        """Commit every FR block touched by the given FR word range through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        """Commit one explicitly selected remote FR block."""
+        resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("relay_commit_fr() requires an FR word device such as FR000000")
-        self.relay_commit_fr_range(
-            hops,
-            resolved.index,
-            count,
-            wait=wait,
-            timeout=timeout,
-            poll_interval=poll_interval,
-        )
+        self.relay_commit_fr_block(hops, resolved.index)
 
-    def read(self, device: str | ResolvedDevice, count: int = 1) -> Any:
-        """Read one item or a contiguous sequence from a device address."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        if count == 1:
-            return self._read_resolved_device(resolved)
-        return self._read_runs(self._seq_devices(resolved, count), split_pc10=True)
+    def read_one(self, device: str | ResolvedDevice) -> object:
+        """Read exactly one item and return a scalar."""
+        resolved = self._coerce_device(device)
+        return self._read_resolved_device(resolved)
+
+    def read(self, device: str | ResolvedDevice, count: int) -> list[object]:
+        """Read a contiguous sequence using exactly one protocol request."""
+        _require_positive_count(count)
+        resolved = self._coerce_device(device)
+        devices = self._seq_devices(resolved, count)
+        self._require_single_read_request(devices, split_pc10=True, operation="read")
+        return self._read_runs(devices, split_pc10=True)
 
     def write(self, device: str | ResolvedDevice, value: Any) -> None:
         """Write one item or a contiguous sequence to a device address."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         if resolved.area == "FR":
             _raise_generic_fr_write_error()
-        if resolved.unit == "bit":
-            if isinstance(value, (list, tuple)):
-                for i, item in enumerate(value):
-                    self._write_resolved_device(self._offset_resolved_device(resolved, i), item)
-                return
-            self._write_resolved_device(resolved, value)
-            return
-
-        if isinstance(value, (bytes, bytearray)):
-            for i, item in enumerate(value):
-                self._write_resolved_device(self._offset_resolved_device(resolved, i), item)
-            return
-        if isinstance(value, (list, tuple)):
-            for i, item in enumerate(value):
-                self._write_resolved_device(self._offset_resolved_device(resolved, i), item)
+        if isinstance(value, (bytes, bytearray, list, tuple)):
+            devices = self._seq_devices(resolved, len(value))
+            normalized = [_normalize_device_value(device, item) for device, item in zip(devices, value, strict=True)]
+            self._require_single_write_request(devices, split_pc10=True, operation="write")
+            self._write_runs(devices, normalized, split_pc10=True)
             return
         self._write_resolved_device(resolved, value)
 
-    def read_many(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
+    def read_devices(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
         """Read multiple devices as one compatible protocol request and preserve input order."""
-        resolved = [self.resolve_device(d) if isinstance(d, str) else d for d in devices]
-        self._require_single_read_request(resolved, split_pc10=False, operation="read_many")
+        resolved = [self._coerce_device(d) for d in devices]
+        self._require_single_read_request(resolved, split_pc10=False, operation="read_devices")
         return self._read_runs(resolved, split_pc10=False)
 
     def write_many(self, items: Mapping[str | ResolvedDevice, object]) -> None:
         """Write multiple devices as one compatible protocol request in mapping iteration order."""
         resolved_items = []
         for device, value in items.items():
-            resolved = self.resolve_device(device) if isinstance(device, str) else device
+            resolved = self._coerce_device(device)
             if resolved.area == "FR":
                 _raise_generic_fr_write_error()
-            resolved_items.append((resolved, value))
-        if not resolved_items:
-            return
+            resolved_items.append((resolved, _normalize_device_value(resolved, value)))
         self._require_single_write_request(
             [resolved for resolved, _ in resolved_items],
             split_pc10=True,
@@ -957,30 +945,23 @@ class ToyopucDeviceClient(ToyopucClient):
         """Write one 32-bit value to two consecutive word devices."""
         self.write_dwords(device, [value])
 
-    def read_dwords(
-        self, device: int | str | ResolvedDevice, count: int, *, atomic_transfer: bool = False
-    ) -> list[int]:
+    def read_dwords(self, device: int | str | ResolvedDevice, count: int) -> list[int]:
         """Read one or more 32-bit values from consecutive word devices."""
         if isinstance(device, int):
             return super().read_dwords(device, count)
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "read_dwords()")
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        words = self._read_resolved_word_values(resolved, count * 2, split_pc10=not atomic_transfer)
+        _require_positive_count(count)
+        words = self._read_resolved_word_values(resolved, count * 2)
         return _unpack_uint32_low_word_first_words(words)
 
-    def write_dwords(
-        self, device: int | str | ResolvedDevice, values: Iterable[int], *, atomic_transfer: bool = False
-    ) -> None:
+    def write_dwords(self, device: int | str | ResolvedDevice, values: Iterable[int]) -> None:
         """Write one or more 32-bit values to consecutive word devices."""
         if isinstance(device, int):
             return super().write_dwords(device, values)
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "write_dwords()")
-        self._write_resolved_word_values(
-            resolved, _pack_uint32_low_word_first_words(values), split_pc10=not atomic_transfer
-        )
+        self._write_resolved_word_values(resolved, _pack_uint32_low_word_first_words(values))
 
     def read_float32(self, device: int | str | ResolvedDevice) -> float:
         """Read one IEEE-754 float32 from two consecutive word devices."""
@@ -990,30 +971,23 @@ class ToyopucDeviceClient(ToyopucClient):
         """Write one IEEE-754 float32 to two consecutive word devices."""
         self.write_float32s(device, [value])
 
-    def read_float32s(
-        self, device: int | str | ResolvedDevice, count: int, *, atomic_transfer: bool = False
-    ) -> list[float]:
+    def read_float32s(self, device: int | str | ResolvedDevice, count: int) -> list[float]:
         """Read one or more IEEE-754 float32 values from consecutive word devices."""
         if isinstance(device, int):
             return super().read_float32s(device, count)
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "read_float32s()")
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        words = self._read_resolved_word_values(resolved, count * 2, split_pc10=not atomic_transfer)
+        _require_positive_count(count)
+        words = self._read_resolved_word_values(resolved, count * 2)
         return _unpack_float32_low_word_first_words(words)
 
-    def write_float32s(
-        self, device: int | str | ResolvedDevice, values: Iterable[float], *, atomic_transfer: bool = False
-    ) -> None:
+    def write_float32s(self, device: int | str | ResolvedDevice, values: Iterable[float]) -> None:
         """Write one or more IEEE-754 float32 values to consecutive word devices."""
         if isinstance(device, int):
             return super().write_float32s(device, values)
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "write_float32s()")
-        self._write_resolved_word_values(
-            resolved, _pack_float32_low_word_first_words(values), split_pc10=not atomic_transfer
-        )
+        self._write_resolved_word_values(resolved, _pack_float32_low_word_first_words(values))
 
     def relay_read_dword(
         self,
@@ -1037,15 +1011,12 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
         count: int,
-        *,
-        atomic_transfer: bool = False,
     ) -> list[int]:
         """Read one or more 32-bit values through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_read_dwords()")
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        words = self._relay_read_resolved_word_values(hops, resolved, count * 2, split_pc10=not atomic_transfer)
+        _require_positive_count(count)
+        words = self._relay_read_resolved_word_values(hops, resolved, count * 2)
         return _unpack_uint32_low_word_first_words(words)
 
     def relay_write_dwords(
@@ -1053,15 +1024,11 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
         values: Iterable[int],
-        *,
-        atomic_transfer: bool = False,
     ) -> None:
         """Write one or more 32-bit values through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_write_dwords()")
-        self._relay_write_resolved_word_values(
-            hops, resolved, _pack_uint32_low_word_first_words(values), split_pc10=not atomic_transfer
-        )
+        self._relay_write_resolved_word_values(hops, resolved, _pack_uint32_low_word_first_words(values))
 
     def relay_read_float32(
         self,
@@ -1085,15 +1052,12 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
         count: int,
-        *,
-        atomic_transfer: bool = False,
     ) -> list[float]:
         """Read one or more IEEE-754 float32 values through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_read_float32s()")
-        if count < 1:
-            raise ValueError("count must be >= 1")
-        words = self._relay_read_resolved_word_values(hops, resolved, count * 2, split_pc10=not atomic_transfer)
+        _require_positive_count(count)
+        words = self._relay_read_resolved_word_values(hops, resolved, count * 2)
         return _unpack_float32_low_word_first_words(words)
 
     def relay_write_float32s(
@@ -1101,68 +1065,56 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
         values: Iterable[float],
-        *,
-        atomic_transfer: bool = False,
     ) -> None:
         """Write one or more IEEE-754 float32 values through relay hops."""
-        resolved = self.resolve_device(device) if isinstance(device, str) else device
+        resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_write_float32s()")
-        self._relay_write_resolved_word_values(
-            hops, resolved, _pack_float32_low_word_first_words(values), split_pc10=not atomic_transfer
-        )
+        self._relay_write_resolved_word_values(hops, resolved, _pack_float32_low_word_first_words(values))
 
     def _ensure_word_device(self, resolved: ResolvedDevice, method_name: str) -> None:
         if resolved.unit != "word":
             raise ValueError(f"{method_name} requires a word device")
 
-    def _read_resolved_word_values(
-        self, resolved: ResolvedDevice, word_count: int, split_pc10: bool = True
-    ) -> list[int]:
-        if word_count < 1:
-            raise ValueError("word_count must be >= 1")
-        if word_count == 1:
-            return [int(self._read_resolved_device(resolved)) & 0xFFFF]
-        return [int(v) & 0xFFFF for v in self._read_runs(self._seq_devices(resolved, word_count), split_pc10)]
+    def _read_resolved_word_values(self, resolved: ResolvedDevice, word_count: int) -> list[int]:
+        _require_positive_count(word_count, "word_count")
+        devices = self._seq_devices(resolved, word_count)
+        self._require_single_read_request(devices, split_pc10=True, operation="word read")
+        return [int(v) & 0xFFFF for v in self._read_runs(devices, split_pc10=True)]
 
     def _relay_read_resolved_word_values(
         self,
         hops: str | Iterable[tuple[int, int]],
         resolved: ResolvedDevice,
         word_count: int,
-        split_pc10: bool = True,
     ) -> list[int]:
-        if word_count < 1:
-            raise ValueError("word_count must be >= 1")
-        if word_count == 1:
-            return [int(self._relay_read_resolved_device(hops, resolved)) & 0xFFFF]
-        runs = self._relay_read_runs(hops, self._seq_devices(resolved, word_count), split_pc10)
+        _require_positive_count(word_count, "word_count")
+        devices = self._seq_devices(resolved, word_count)
+        self._require_single_read_request(devices, split_pc10=True, operation="relay word read")
+        runs = self._relay_read_runs(hops, devices, split_pc10=True)
         return [int(v) & 0xFFFF for v in runs]
 
-    def _write_resolved_word_values(
-        self, resolved: ResolvedDevice, word_values: Iterable[int], split_pc10: bool = True
-    ) -> None:
-        values = [int(value) & 0xFFFF for value in word_values]
-        if not values:
-            raise ValueError("values must not be empty")
+    def _write_resolved_word_values(self, resolved: ResolvedDevice, word_values: Iterable[int]) -> None:
+        values = _normalize_word_values(word_values)
+        devices = self._seq_devices(resolved, len(values))
+        self._require_single_write_request(devices, split_pc10=True, operation="word write")
         if resolved.area == "FR":
-            self.write_fr(resolved, values)
+            self.write_fr_words(resolved.index, values)
             return
-        self._write_runs(self._seq_devices(resolved, len(values)), values, split_pc10)
+        self._write_runs(devices, values, split_pc10=True)
 
     def _relay_write_resolved_word_values(
         self,
         hops: str | Iterable[tuple[int, int]],
         resolved: ResolvedDevice,
         word_values: Iterable[int],
-        split_pc10: bool = True,
     ) -> None:
-        values = [int(value) & 0xFFFF for value in word_values]
-        if not values:
-            raise ValueError("values must not be empty")
+        values = _normalize_word_values(word_values)
+        devices = self._seq_devices(resolved, len(values))
+        self._require_single_write_request(devices, split_pc10=True, operation="relay word write")
         if resolved.area == "FR":
-            self.relay_write_fr(hops, resolved, values)
+            self.relay_write_fr_words(hops, resolved.index, values)
             return
-        self._relay_write_runs(hops, self._seq_devices(resolved, len(values)), values, split_pc10)
+        self._relay_write_runs(hops, devices, values, split_pc10=True)
 
     def _read_resolved_device(self, resolved: ResolvedDevice) -> Any:
         if resolved.scheme == "basic-bit":
@@ -1350,11 +1302,10 @@ class ToyopucDeviceClient(ToyopucClient):
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
     def _write_resolved_device(self, resolved: ResolvedDevice, value: Any) -> None:
-        if resolved.area == "FR":
-            _raise_generic_fr_write_error()
+        value = _normalize_device_value(resolved, value)
         if resolved.scheme == "basic-bit":
             addr = _require(resolved.basic_addr, "basic_addr")
-            self.write_bit(addr, bool(value))
+            self.write_bit(addr, value == 1)
             return
         if resolved.scheme == "basic-word":
             addr = _require(resolved.basic_addr, "basic_addr")
@@ -1368,7 +1319,7 @@ class ToyopucDeviceClient(ToyopucClient):
             no = _require(resolved.no, "program number")
             bit_no = _require(resolved.bit_no, "program bit")
             addr = _require(resolved.addr, "program addr")
-            self.write_ext_multi([(no, bit_no, addr, int(value) & 0x01)], [], [])
+            self.write_ext_multi([(no, bit_no, addr, value)], [], [])
             return
         if resolved.scheme == "program-word":
             no = _require(resolved.no, "program number")
@@ -1384,7 +1335,7 @@ class ToyopucDeviceClient(ToyopucClient):
             no = _require(resolved.no, "extended number")
             bit_no = _require(resolved.bit_no, "extended bit")
             addr = _require(resolved.addr, "extended addr")
-            self.write_ext_multi([(no, bit_no, addr, int(value) & 0x01)], [], [])
+            self.write_ext_multi([(no, bit_no, addr, value)], [], [])
             return
         if resolved.scheme == "ext-word":
             no = _require(resolved.no, "extended number")
@@ -1398,7 +1349,7 @@ class ToyopucDeviceClient(ToyopucClient):
             return
         if resolved.scheme == "pc10-bit":
             addr32 = _require(resolved.addr32, "pc10 addr32")
-            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, int(value) & 0x01)]))
+            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, value)]))
             return
         if resolved.scheme == "pc10-word":
             addr32 = _require(resolved.addr32, "pc10 addr32")
@@ -1406,7 +1357,7 @@ class ToyopucDeviceClient(ToyopucClient):
             return
         if resolved.scheme == "pc10-byte":
             addr32 = _require(resolved.addr32, "pc10 addr32")
-            self.pc10_block_write(addr32, bytes([int(value) & 0xFF]))
+            self.pc10_block_write(addr32, bytes([value]))
             return
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
@@ -1416,10 +1367,11 @@ class ToyopucDeviceClient(ToyopucClient):
         resolved: ResolvedDevice,
         value: Any,
     ) -> None:
+        value = _normalize_device_value(resolved, value)
         if resolved.scheme == "basic-bit":
             resp = self.send_via_relay(
                 hops,
-                build_bit_write(_require(resolved.basic_addr, "basic_addr"), int(value) & 0x01),
+                build_bit_write(_require(resolved.basic_addr, "basic_addr"), value),
             )
             if resp.cmd != 0x21:
                 raise ToyopucProtocolError("Unexpected CMD in relay bit-write response")
@@ -1449,7 +1401,7 @@ class ToyopucDeviceClient(ToyopucClient):
                             _require(resolved.no, "program number"),
                             _require(resolved.bit_no, "program bit"),
                             _require(resolved.addr, "program addr"),
-                            int(value) & 0x01,
+                            value,
                         )
                     ],
                     [],
@@ -1492,7 +1444,7 @@ class ToyopucDeviceClient(ToyopucClient):
                             _require(resolved.no, "extended number"),
                             _require(resolved.bit_no, "extended bit"),
                             _require(resolved.addr, "extended addr"),
-                            int(value) & 0x01,
+                            value,
                         )
                     ],
                     [],
@@ -1530,7 +1482,7 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(
                 hops,
                 build_pc10_multi_write(
-                    _pack_pc10_multi_bit_payload([(_require(resolved.addr32, "pc10 addr32"), int(value) & 0x01)])
+                    _pack_pc10_multi_bit_payload([(_require(resolved.addr32, "pc10 addr32"), value)])
                 ),
             )
             if resp.cmd != 0xC5:
@@ -1541,7 +1493,7 @@ class ToyopucDeviceClient(ToyopucClient):
                 hops,
                 build_pc10_block_write(
                     _require(resolved.addr32, "pc10 addr32"),
-                    (int(value) & 0xFFFF).to_bytes(2, "little"),
+                    value.to_bytes(2, "little"),
                 ),
             )
             if resp.cmd != 0xC3:
@@ -1550,7 +1502,7 @@ class ToyopucDeviceClient(ToyopucClient):
         if resolved.scheme == "pc10-byte":
             resp = self.send_via_relay(
                 hops,
-                build_pc10_block_write(_require(resolved.addr32, "pc10 addr32"), bytes([int(value) & 0xFF])),
+                build_pc10_block_write(_require(resolved.addr32, "pc10 addr32"), bytes([value])),
             )
             if resp.cmd != 0xC3:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-write response")
@@ -1867,7 +1819,7 @@ class ToyopucDeviceClient(ToyopucClient):
 
     def _write_basic_byte_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         self.write_bytes_multi(
-            [(_require(d.basic_addr, "basic_addr"), v & 0xFF) for d, v in zip(devices, values, strict=False)]
+            [(_require(d.basic_addr, "basic_addr"), v) for d, v in zip(devices, values, strict=False)]
         )
 
     def _write_ext_word_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
@@ -1901,7 +1853,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _write_ext_bit_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         self.write_ext_multi(
             [
-                (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v & 0x01)
+                (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v)
                 for d, v in zip(devices, values, strict=False)
             ],
             [],
@@ -1911,7 +1863,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _write_pc10_word_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         if _is_consecutive_pc10_word(devices):
             addr32 = _require(devices[0].addr32, "pc10 addr32")
-            data = b"".join((int(v) & 0xFFFF).to_bytes(2, "little") for v in values)
+            data = b"".join(v.to_bytes(2, "little") for v in values)
             self.pc10_block_write(addr32, data)
             return
         self.pc10_multi_write(
@@ -1923,14 +1875,14 @@ class ToyopucDeviceClient(ToyopucClient):
     def _write_pc10_bit_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         self.pc10_multi_write(
             _pack_pc10_multi_bit_payload(
-                [(_require(d.addr32, "pc10 addr32"), v & 0x01) for d, v in zip(devices, values, strict=False)]
+                [(_require(d.addr32, "pc10 addr32"), v) for d, v in zip(devices, values, strict=False)]
             )
         )
 
     def _write_pc10_byte_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         addrs32 = [_require(d.addr32, "pc10 addr32") for d in devices]
         if all(a == addrs32[0] + i for i, a in enumerate(addrs32)):
-            self.pc10_block_write(addrs32[0], bytes(v & 0xFF for v in values))
+            self.pc10_block_write(addrs32[0], bytes(values))
             return
         for d, v in zip(devices, values, strict=False):
             self._write_resolved_device(d, v)
@@ -1938,30 +1890,31 @@ class ToyopucDeviceClient(ToyopucClient):
     def _write_batch(self, devices: list[ResolvedDevice], values: list[Any]) -> None:
         if not devices:
             return
+        values = [_normalize_device_value(device, value) for device, value in zip(devices, values, strict=True)]
         key = _batch_key(devices[0])
         if key == "basic-word":
-            self._write_basic_word_batch(devices, [int(v) & 0xFFFF for v in values])
+            self._write_basic_word_batch(devices, values)
             return
         if key == "basic-byte":
-            self._write_basic_byte_batch(devices, [int(v) & 0xFF for v in values])
+            self._write_basic_byte_batch(devices, values)
             return
         if key == "ext-word":
-            self._write_ext_word_batch(devices, [int(v) & 0xFFFF for v in values])
+            self._write_ext_word_batch(devices, values)
             return
         if key == "ext-byte":
-            self._write_ext_byte_batch(devices, [int(v) & 0xFF for v in values])
+            self._write_ext_byte_batch(devices, values)
             return
         if key == "ext-bit":
-            self._write_ext_bit_batch(devices, [int(v) & 0x01 for v in values])
+            self._write_ext_bit_batch(devices, values)
             return
         if key == "pc10-word":
-            self._write_pc10_word_batch(devices, [int(v) & 0xFFFF for v in values])
+            self._write_pc10_word_batch(devices, values)
             return
         if key == "pc10-bit":
-            self._write_pc10_bit_batch(devices, [int(v) & 0x01 for v in values])
+            self._write_pc10_bit_batch(devices, values)
             return
         if key == "pc10-byte":
-            self._write_pc10_byte_batch(devices, [int(v) & 0xFF for v in values])
+            self._write_pc10_byte_batch(devices, values)
             return
         for d, v in zip(devices, values, strict=False):
             self._write_resolved_device(d, v)
@@ -2049,7 +2002,7 @@ class ToyopucDeviceClient(ToyopucClient):
             hops,
             build_ext_multi_write(
                 [
-                    (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v & 0x01)
+                    (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v)
                     for d, v in zip(devices, values, strict=False)
                 ],
                 [],
@@ -2062,7 +2015,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _relay_write_pc10_word_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[int]) -> None:
         if _is_consecutive_pc10_word(devices):
             addr32 = _require(devices[0].addr32, "pc10 addr32")
-            data = b"".join((int(v) & 0xFFFF).to_bytes(2, "little") for v in values)
+            data = b"".join(v.to_bytes(2, "little") for v in values)
             resp = self.send_via_relay(hops, build_pc10_block_write(addr32, data))
             if resp.cmd != 0xC3:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-write response")
@@ -2083,7 +2036,7 @@ class ToyopucDeviceClient(ToyopucClient):
             hops,
             build_pc10_multi_write(
                 _pack_pc10_multi_bit_payload(
-                    [(_require(d.addr32, "pc10 addr32"), v & 0x01) for d, v in zip(devices, values, strict=False)]
+                    [(_require(d.addr32, "pc10 addr32"), v) for d, v in zip(devices, values, strict=False)]
                 )
             ),
         )
@@ -2093,7 +2046,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _relay_write_pc10_byte_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[int]) -> None:
         addrs32 = [_require(d.addr32, "pc10 addr32") for d in devices]
         if all(a == addrs32[0] + i for i, a in enumerate(addrs32)):
-            resp = self.send_via_relay(hops, build_pc10_block_write(addrs32[0], bytes(v & 0xFF for v in values)))
+            resp = self.send_via_relay(hops, build_pc10_block_write(addrs32[0], bytes(values)))
             if resp.cmd != 0xC3:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-write response")
             return
@@ -2103,30 +2056,31 @@ class ToyopucDeviceClient(ToyopucClient):
     def _relay_write_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[Any]) -> None:
         if not devices:
             return
+        values = [_normalize_device_value(device, value) for device, value in zip(devices, values, strict=True)]
         key = _batch_key(devices[0])
         if key == "basic-word":
-            self._relay_write_basic_word_batch(hops, devices, [int(v) & 0xFFFF for v in values])
+            self._relay_write_basic_word_batch(hops, devices, values)
             return
         if key == "basic-byte":
-            self._relay_write_basic_byte_batch(hops, devices, [int(v) & 0xFF for v in values])
+            self._relay_write_basic_byte_batch(hops, devices, values)
             return
         if key == "ext-word":
-            self._relay_write_ext_word_batch(hops, devices, [int(v) & 0xFFFF for v in values])
+            self._relay_write_ext_word_batch(hops, devices, values)
             return
         if key == "ext-byte":
-            self._relay_write_ext_byte_batch(hops, devices, [int(v) & 0xFF for v in values])
+            self._relay_write_ext_byte_batch(hops, devices, values)
             return
         if key == "ext-bit":
-            self._relay_write_ext_bit_batch(hops, devices, [int(v) & 0x01 for v in values])
+            self._relay_write_ext_bit_batch(hops, devices, values)
             return
         if key == "pc10-word":
-            self._relay_write_pc10_word_batch(hops, devices, [int(v) & 0xFFFF for v in values])
+            self._relay_write_pc10_word_batch(hops, devices, values)
             return
         if key == "pc10-bit":
-            self._relay_write_pc10_bit_batch(hops, devices, [int(v) & 0x01 for v in values])
+            self._relay_write_pc10_bit_batch(hops, devices, values)
             return
         if key == "pc10-byte":
-            self._relay_write_pc10_byte_batch(hops, devices, [int(v) & 0xFF for v in values])
+            self._relay_write_pc10_byte_batch(hops, devices, values)
             return
         for d, v in zip(devices, values, strict=False):
             self._relay_write_resolved_device(hops, d, v)

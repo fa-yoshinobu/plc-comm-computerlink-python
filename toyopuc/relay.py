@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from ._shared import _validate_relay_hop
 from .errors import ToyopucProtocolError
 from .protocol import ResponseFrame, parse_response
 
@@ -34,20 +35,18 @@ def parse_relay_hops(text: str) -> list[tuple[int, int]]:
         if m:
             link = (int(m.group(1), 16) << 4) | int(m.group(2), 16)
             station = int(m.group(3), 0)
-            if station < 1:
-                raise ValueError("N number must be >= 1")
-            hops.append((link, station))
+            hops.append(_validate_relay_hop(link, station))
             continue
         m = re.fullmatch(r"([0-9A-Fa-f])[-:]([0-9A-Fa-f]):([0-9A-Fa-fx]+)", item)
         if m:
             link = (int(m.group(1), 16) << 4) | int(m.group(2), 16)
             station = int(m.group(3), 0)
-            hops.append((link, station))
+            hops.append(_validate_relay_hop(link, station))
             continue
         if ":" not in item:
             raise ValueError("each hop must be LINK:STATION or P1-L2:N2")
         link_text, station_text = item.split(":", 1)
-        hops.append((int(link_text, 0), int(station_text, 0)))
+        hops.append(_validate_relay_hop(int(link_text, 0), int(station_text, 0)))
     if not hops:
         raise ValueError("at least one hop is required")
     return hops
@@ -59,7 +58,7 @@ def normalize_relay_hops(
     """Normalize relay hops from text or `(link, station)` pairs."""
     if isinstance(hops, str):
         return parse_relay_hops(hops)
-    normalized = [(int(link) & 0xFF, int(station) & 0xFFFF) for link, station in hops]
+    normalized = [_validate_relay_hop(link, station) for link, station in hops]
     if not normalized:
         raise ValueError("at least one hop is required")
     return normalized
@@ -67,7 +66,8 @@ def normalize_relay_hops(
 
 def format_relay_hop(link: int, station: int) -> str:
     """Format one relay hop in the preferred `P1-L2:N2` style."""
-    return f"P{(link >> 4) & 0x0F:X}-L{link & 0x0F:X}:N{station} (0x{link:02X}:0x{station:04X})"
+    link, station = _validate_relay_hop(link, station)
+    return f"P{link >> 4:X}-L{link & 0x0F:X}:N{station} (0x{link:02X}:0x{station:04X})"
 
 
 def parse_relay_inner_response(inner_raw: bytes) -> tuple[ResponseFrame, bytes]:

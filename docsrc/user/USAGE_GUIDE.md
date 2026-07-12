@@ -9,7 +9,6 @@
 | `read_typed` / `write_typed` | Read or write one typed value. |
 | `read_named` | Read one named word, typed, or bit-in-word address. |
 | `read_words_single_request` / `read_dwords_single_request` | Keep a contiguous read as one logical request. |
-| `read_words_chunked` / `read_dwords_chunked` | Split a large contiguous read deliberately. |
 | `write_bit_in_word` | Change one bit inside a word with read-modify-write. |
 | `poll` | Repeatedly yield one named address. |
 | `ToyopucDeviceClient` | Use the synchronous high-level API. |
@@ -88,6 +87,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -113,6 +113,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -142,6 +143,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -155,11 +157,11 @@ asyncio.run(main())
 
 ## Batching and request boundaries
 
-`ToyopucDeviceClient.read_many` and `ToyopucDeviceClient.write_many` execute only when all requested devices can be represented by one compatible protocol request. They raise `ToyopucProtocolError` before communication when the request would need multiple protocol requests, such as incompatible protocol groups, PC10 block boundary crossings, or helper paths that would fall back to individual requests.
+`ToyopucDeviceClient.read` reads a contiguous range. Its `count` is required and it always returns a list. Use `read_one` only when a scalar is intended. `read_devices` and `write_many` execute only when all requested devices can be represented by one compatible protocol request. These APIs raise before communication when a request would need incompatible protocol groups, a PC10 block boundary crossing, or an individual-request fallback.
 
 Async `read_named` accepts one named address per call. Use explicit repeated calls when multiple named reads are intentional.
 
-For contiguous word ranges, use `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, or `write_dwords_single_request`. These helpers also fail if the requested range cannot be represented as one compatible protocol request. Use the `*_chunked` helpers, or separate explicit calls, only when splitting is intentional and partial completion is acceptable.
+For contiguous word ranges, use `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, or `write_dwords_single_request`. These helpers fail before communication if the range cannot be represented as one compatible protocol request. There are no public chunking helpers. Write separate explicit calls only when different acquisition times or partial completion are acceptable.
 
 ## Block reads
 
@@ -169,9 +171,7 @@ import asyncio
 from toyopuc import (
     ToyopucConnectionOptions,
     open_and_connect,
-    read_dwords_chunked,
     read_dwords_single_request,
-    read_words_chunked,
     read_words_single_request,
 )
 
@@ -180,15 +180,14 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
     async with await open_and_connect(options) as client:
         words = await read_words_single_request(client, "P1-D0000", 10)
         dwords = await read_dwords_single_request(client, "P1-D0100", 4)
-        large_words = await read_words_chunked(client, "P1-D1000", 128)
-        large_dwords = await read_dwords_chunked(client, "P1-D1200", 32)
-        print(words, dwords, large_words[:4], large_dwords[:4])
+        print(words, dwords)
 
 
 asyncio.run(main())
@@ -208,6 +207,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -237,6 +237,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -285,24 +286,27 @@ def main() -> None:
     with ToyopucDeviceClient(
         "192.168.250.100",
         1025,
+        transport="tcp",
         plc_profile="toyopuc:pc10g:pc10",
     ) as client:
-        before = client.read_fr("FR000000")
+        before = client.read_fr_one("FR000000")
         try:
-            client.write_fr("FR000000", 0x1234, commit=False)
-            after = client.read_fr("FR000000")
+            client.write_fr("FR000000", 0x1234)
+            after = client.read_fr_one("FR000000")
             print(before, after)
         finally:
-            client.write_fr("FR000000", before, commit=False)
+            client.write_fr("FR000000", before)
 
         # Call commit_fr only when the staged FR value is intentionally
         # persistent. Committed FR writes survive PLC power cycles.
-        # client.commit_fr("FR000000", wait=True)
+        # client.commit_fr("FR000000")
 
 
 if __name__ == "__main__":
     main()
 ```
+
+FR work-area values must be integers in `0..65535`. The library rejects negative, overflowing, Boolean, fractional, and string values instead of masking or converting them.
 
 ## Relay helpers
 
@@ -316,6 +320,7 @@ def main() -> None:
     with ToyopucDeviceClient(
         "192.168.250.100",
         1025,
+        transport="tcp",
         plc_profile="toyopuc:nano-10gx:compatible",
     ) as client:
         hops = "P1-L2:N2"

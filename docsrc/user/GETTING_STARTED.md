@@ -57,6 +57,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -82,6 +83,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
 
@@ -117,4 +119,4 @@ Use the shared [Computerlink Troubleshooting & Codes](https://fa-yoshinobu.githu
 | Profile error | Use only exact canonical strings from [profiles](./PROFILES.md). |
 | Address error | Use `P1-D0000`, not `D0000`, for basic area families. |
 | Dword reads look wrong | Use `P1-D0100:D` or dtype `"D"`; `P1-D0100.D` means bit 13. |
-| FR write does not persist | Use `write_fr(..., commit=True)` or call `commit_fr()`. |
+| FR work-area write does not persist | Call `commit_fr()` separately with the first address of the intended FR block. |

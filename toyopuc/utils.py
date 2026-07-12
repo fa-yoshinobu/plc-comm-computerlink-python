@@ -2,14 +2,15 @@
 
 These helpers provide the user-facing surface that samples and maintained
 documentation should point to first. They wrap the lower-level async client
-with typed reads and writes, named snapshots, polling, and explicit
-single-request or chunked contiguous access helpers.
+with typed reads and writes, named snapshots, polling, and contiguous access
+helpers that each use exactly one protocol request.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+import math
+from collections.abc import AsyncIterator
 from dataclasses import KW_ONLY, dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -17,9 +18,6 @@ from .errors import ToyopucProtocolError
 
 if TYPE_CHECKING:
     from .async_client import AsyncToyopucDeviceClient
-    from .client import ToyopucTraceFrame
-
-UDP_RECEIVE_BUFFER_SIZE = 65_535
 
 
 # ---------------------------------------------------------------------------
@@ -44,24 +42,20 @@ class ToyopucConnectionOptions:
         timeout: Socket timeout in seconds.
         retries: Number of retry attempts performed by the async client.
         retry_delay: Delay between retry attempts, in seconds.
-        recv_bufsize: Socket receive buffer size used by the sync client.
         plc_profile: Canonical PLC profile name such as
             ``"toyopuc:pc10g:pc10"``. Required when creating a high-level
             device client.
-        trace_hook: Optional callback invoked for sent and received frames.
     """
 
     host: str
+    port: int
+    transport: str
+    plc_profile: str
     _: KW_ONLY
-    plc_profile: str = ""
-    port: int = 1025
     local_port: int = 0
-    transport: str = "tcp"
     timeout: float = 3.0
     retries: int = 0
     retry_delay: float = 0.2
-    recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE
-    trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
 
     def __post_init__(self) -> None:
         from .profiles import ToyopucPlcProfiles
@@ -70,9 +64,29 @@ class ToyopucConnectionOptions:
             raise ValueError("Host must not be empty")
         _validate_int_range(self.port, "Port", 1, 65_535)
         _validate_int_range(self.local_port, "LocalPort", 0, 65_535)
-        if isinstance(self.recv_bufsize, bool) or not isinstance(self.recv_bufsize, int) or self.recv_bufsize < 1:
-            raise ValueError("RecvBufsize must be 1 or greater")
+        if not isinstance(self.transport, str) or self.transport.strip().lower() not in {"tcp", "udp"}:
+            raise ValueError("Transport must be 'tcp' or 'udp'")
+        normalized_transport = self.transport.strip().lower()
+        if normalized_transport == "tcp" and self.local_port != 0:
+            raise ValueError("LocalPort is only valid for UDP transport")
+        if (
+            isinstance(self.timeout, bool)
+            or not isinstance(self.timeout, (int, float))
+            or not math.isfinite(self.timeout)
+            or self.timeout <= 0
+        ):
+            raise ValueError("Timeout must be a positive finite number")
+        if isinstance(self.retries, bool) or not isinstance(self.retries, int) or self.retries < 0:
+            raise ValueError("Retries must be a non-negative integer")
+        if (
+            isinstance(self.retry_delay, bool)
+            or not isinstance(self.retry_delay, (int, float))
+            or not math.isfinite(self.retry_delay)
+            or self.retry_delay < 0
+        ):
+            raise ValueError("RetryDelay must be a non-negative finite number")
 
+        object.__setattr__(self, "transport", normalized_transport)
         object.__setattr__(self, "plc_profile", ToyopucPlcProfiles.from_name(self.plc_profile).name)
 
 
@@ -88,9 +102,10 @@ class ToyopucAddress:
     base_device: str
     dtype: str
     bit_index: int | None = None
+    plc_profile: str = ""
 
 
-def normalize_address(device: str, *, profile: str | None = None) -> str:
+def normalize_address(device: str, *, profile: str) -> str:
     """Return the canonical TOYOPUC device string.
 
     Args:
@@ -108,12 +123,12 @@ def normalize_address(device: str, *, profile: str | None = None) -> str:
     return resolve_device(device, profile=profile).text
 
 
-def parse_device_address(device: str, *, profile: str | None = None) -> ToyopucAddress:
+def parse_device_address(device: str, *, profile: str) -> ToyopucAddress:
     """Parse user-facing TOYOPUC address notation.
 
     Supported forms match :func:`read_named`:
 
-    - ``"P1-D0100"`` as unsigned 16-bit word notation
+    - ``"P1-D0100:U"`` as unsigned 16-bit word notation
     - ``"P1-D0100:F"`` with explicit dtype ``U/S/D/L/F``
     - ``"P1-D0100.A"`` for one bit inside a word
     """
@@ -127,20 +142,22 @@ def parse_device_address(device: str, *, profile: str | None = None) -> ToyopucA
             base_device=canonical_base,
             dtype=dtype,
             bit_index=bit_index,
+            plc_profile=profile,
         )
 
     if dtype not in {"U", "S", "D", "L", "F"}:
         raise ValueError(f"Unsupported dtype {dtype!r}; expected one of U/S/D/L/F")
-    suffix = "" if dtype == "U" else f":{dtype}"
+    suffix = f":{dtype}"
     return ToyopucAddress(
         text=f"{canonical_base}{suffix}",
         base_device=canonical_base,
         dtype=dtype,
         bit_index=None,
+        plc_profile=profile,
     )
 
 
-def try_parse_device_address(device: str, *, profile: str | None = None) -> ToyopucAddress | None:
+def try_parse_device_address(device: str, *, profile: str) -> ToyopucAddress | None:
     """Return parsed address information, or ``None`` when parsing fails."""
 
     try:
@@ -153,15 +170,20 @@ def format_device_address(address: ToyopucAddress | str, *, profile: str | None 
     """Return canonical public address text for a parsed address or string."""
 
     if isinstance(address, str):
+        if profile is None:
+            raise ValueError("profile is required when formatting address text")
         return parse_device_address(address, profile=profile).text
-    base = normalize_address(address.base_device, profile=profile) if profile else address.base_device
+    effective_profile = address.plc_profile if profile is None else profile
+    if not effective_profile:
+        raise ValueError("ToyopucAddress is not bound to a PLC profile")
+    if profile is not None and address.plc_profile and profile != address.plc_profile:
+        raise ValueError("ToyopucAddress profile does not match the requested profile")
+    base = normalize_address(address.base_device, profile=effective_profile)
     if address.dtype == "BIT_IN_WORD":
         if address.bit_index is None or not 0 <= address.bit_index <= 15:
             raise ValueError("bit-in-word address requires bit_index 0-F")
         return f"{base}.{address.bit_index:X}"
-    if address.dtype == "U":
-        return base
-    if address.dtype not in {"S", "D", "L", "F"}:
+    if address.dtype not in {"U", "S", "D", "L", "F"}:
         raise ValueError(f"Unsupported dtype {address.dtype!r}; expected one of U/S/D/L/F")
     return f"{base}:{address.dtype}"
 
@@ -173,8 +195,8 @@ async def read_words_single_request(
 ) -> list[int]:
     """Read contiguous word values using one high-level logical operation.
 
-    This is the explicit atomic path for a contiguous word range. If the
-    caller wants multiple protocol requests, use :func:`read_words_chunked`.
+    This name is retained as an explicit statement of the operation's
+    single-request contract.
     """
 
     return await read_words(client, device, count)
@@ -187,11 +209,11 @@ async def read_dwords_single_request(
 ) -> list[int]:
     """Read contiguous dword values using one high-level logical operation.
 
-    The helper requests dwords through the client with ``atomic_transfer=True``
-    so each logical 32-bit value stays intact.
+    Dword arrays always use one protocol request; there is no switch that can
+    silently enable splitting.
     """
 
-    values = await client.read_dwords(device, count, atomic_transfer=True)
+    values = await client.read_dwords(device, count)
     return [int(value) & 0xFFFFFFFF for value in values]
 
 
@@ -209,7 +231,7 @@ async def write_words_single_request(
     sync_client = cast(Any, client._client)
     runner = cast(Any, client._run_sync_in_worker)
     resolved = sync_client.resolve_device(device)
-    await runner(sync_client._write_resolved_word_values, resolved, [int(v) & 0xFFFF for v in values], False)
+    await runner(sync_client._write_resolved_word_values, resolved, values)
 
 
 async def write_dwords_single_request(
@@ -219,119 +241,11 @@ async def write_dwords_single_request(
 ) -> None:
     """Write contiguous dword values using one high-level logical operation.
 
-    The helper uses ``atomic_transfer=True`` so the logical dword range is
-    written through the dedicated dword API instead of implicit word pairs.
+    Dword arrays always use one protocol request; there is no switch that can
+    silently enable splitting.
     """
 
-    await client.write_dwords(device, [int(value) & 0xFFFFFFFF for value in values], atomic_transfer=True)
-
-
-async def read_words_chunked(
-    client: AsyncToyopucDeviceClient,
-    device: str,
-    count: int,
-    max_words_per_request: int = 64,
-) -> list[int]:
-    """Read contiguous word values across multiple logical operations.
-
-    Chunking is explicit here. Use this helper only when the caller accepts
-    multi-request read semantics.
-    """
-
-    if max_words_per_request <= 0:
-        raise ValueError("max_words_per_request must be at least 1")
-
-    sync_client = cast(Any, client._client)
-    start = sync_client.resolve_device(device)
-    result: list[int] = []
-    remaining = count
-    offset = 0
-    while remaining > 0:
-        chunk = min(remaining, max_words_per_request)
-        chunk_device = sync_client._offset_resolved_device(start, offset).text
-        result.extend(await read_words_single_request(client, chunk_device, chunk))
-        offset += chunk
-        remaining -= chunk
-    return result
-
-
-async def read_dwords_chunked(
-    client: AsyncToyopucDeviceClient,
-    device: str,
-    count: int,
-    max_dwords_per_request: int = 32,
-) -> list[int]:
-    """Read contiguous dword values across multiple logical operations.
-
-    Chunk boundaries are aligned to full dwords so a 32-bit value is never
-    torn across requests.
-    """
-
-    if max_dwords_per_request <= 0:
-        raise ValueError("max_dwords_per_request must be at least 1")
-
-    sync_client = cast(Any, client._client)
-    start = sync_client.resolve_device(device)
-    result: list[int] = []
-    remaining = count
-    offset = 0
-    while remaining > 0:
-        chunk = min(remaining, max_dwords_per_request)
-        chunk_device = sync_client._offset_resolved_device(start, offset * 2).text
-        result.extend(await read_dwords_single_request(client, chunk_device, chunk))
-        offset += chunk
-        remaining -= chunk
-    return result
-
-
-async def write_words_chunked(
-    client: AsyncToyopucDeviceClient,
-    device: str,
-    values: list[int],
-    max_words_per_request: int = 64,
-) -> None:
-    """Write contiguous word values across multiple logical operations.
-
-    Use this helper only when multiple write operations are acceptable to the
-    caller.
-    """
-
-    if max_words_per_request <= 0:
-        raise ValueError("max_words_per_request must be at least 1")
-
-    sync_client = cast(Any, client._client)
-    start = sync_client.resolve_device(device)
-    offset = 0
-    while offset < len(values):
-        chunk = min(len(values) - offset, max_words_per_request)
-        chunk_device = sync_client._offset_resolved_device(start, offset).text
-        await write_words_single_request(client, chunk_device, values[offset : offset + chunk])
-        offset += chunk
-
-
-async def write_dwords_chunked(
-    client: AsyncToyopucDeviceClient,
-    device: str,
-    values: list[int],
-    max_dwords_per_request: int = 32,
-) -> None:
-    """Write contiguous dword values across multiple logical operations.
-
-    Each chunk boundary is aligned to full dwords so one logical value remains
-    intact inside one request.
-    """
-
-    if max_dwords_per_request <= 0:
-        raise ValueError("max_dwords_per_request must be at least 1")
-
-    sync_client = cast(Any, client._client)
-    start = sync_client.resolve_device(device)
-    offset = 0
-    while offset < len(values):
-        chunk = min(len(values) - offset, max_dwords_per_request)
-        chunk_device = sync_client._offset_resolved_device(start, offset * 2).text
-        await write_dwords_single_request(client, chunk_device, values[offset : offset + chunk])
-        offset += chunk
+    await client.write_dwords(device, values)
 
 
 async def read_words(
@@ -350,8 +264,6 @@ async def read_words(
         List of unsigned 16-bit integers.
     """
     result = await client.read(device, count)
-    if count == 1:
-        return [int(result) & 0xFFFF]
     return [int(v) & 0xFFFF for v in result]
 
 
@@ -376,55 +288,16 @@ async def read_dwords(
     return [(words[i] | (words[i + 1] << 16)) for i in range(0, count * 2, 2)]
 
 
-async def open_and_connect(
-    host: str | ToyopucConnectionOptions,
-    port: int = 1025,
-    timeout: float = 3.0,
-    retries: int = 0,
-    *,
-    local_port: int = 0,
-    transport: str = "tcp",
-    retry_delay: float = 0.2,
-    recv_bufsize: int = UDP_RECEIVE_BUFFER_SIZE,
-    plc_profile: str = "",
-    trace_hook: Callable[[ToyopucTraceFrame], None] | None = None,
-) -> AsyncToyopucDeviceClient:
+async def open_and_connect(options: ToyopucConnectionOptions) -> AsyncToyopucDeviceClient:
     """Create and connect an AsyncToyopucDeviceClient.
 
     Args:
-        host: PLC IP address, hostname, or a
-            :class:`ToyopucConnectionOptions` instance.
-        port: TOYOPUC computer-link port. Defaults to 1025.
-        local_port: UDP source port. Leave zero for an ephemeral port.
-        transport: ``"tcp"`` or ``"udp"``.
-        timeout: Socket timeout in seconds.
-        retries: Retry count used by the async client.
-        retry_delay: Delay between retry attempts, in seconds.
-        recv_bufsize: Socket receive buffer size.
-        plc_profile: Canonical PLC profile name required by the high-level
-            device client.
-        trace_hook: Optional callback invoked for sent and received frames.
+        options: Validated explicit connection options.
 
     Returns:
         A connected AsyncToyopucDeviceClient.
     """
     from .async_client import AsyncToyopucDeviceClient
-
-    if isinstance(host, ToyopucConnectionOptions):
-        options = host
-    else:
-        options = ToyopucConnectionOptions(
-            host,
-            port=port,
-            local_port=local_port,
-            transport=transport,
-            timeout=timeout,
-            retries=retries,
-            retry_delay=retry_delay,
-            recv_bufsize=recv_bufsize,
-            plc_profile=plc_profile,
-            trace_hook=trace_hook,
-        )
 
     client = AsyncToyopucDeviceClient(
         options.host,
@@ -434,9 +307,7 @@ async def open_and_connect(
         timeout=options.timeout,
         retries=options.retries,
         retry_delay=options.retry_delay,
-        recv_bufsize=options.recv_bufsize,
         plc_profile=options.plc_profile,
-        trace_hook=options.trace_hook,
     )
     await client.connect()
     return client
@@ -471,20 +342,31 @@ async def read_typed(
     Returns:
         Converted value as int or float.
     """
-    key = dtype.upper()
+    key = _normalize_dtype(dtype)
     if key == "F":
         values = await client.read_float32s(device, 1)
-        return cast(float, values[0])
+        value = cast(float, values[0])
+        if not math.isfinite(value):
+            raise ToyopucProtocolError("PLC returned a non-finite float32 value")
+        return value
     if key == "D":
         values = await client.read_dwords(device, 1)
-        return cast(int, values[0])
+        value = cast(int, values[0])
+        if not 0 <= value <= 0xFFFFFFFF:
+            raise ToyopucProtocolError("PLC returned a Dword value outside 0..4294967295")
+        return value
     if key == "L":
         values = await client.read_dwords(device, 1)
-        return cast(int, (values[0] ^ 0x80000000) - 0x80000000)  # reinterpret as signed
-    raw = int(await client.read(device))
+        value = cast(int, values[0])
+        if not 0 <= value <= 0xFFFFFFFF:
+            raise ToyopucProtocolError("PLC returned a Dword value outside 0..4294967295")
+        return (value ^ 0x80000000) - 0x80000000  # reinterpret as signed
+    raw = int(await client.read_one(device))
+    if not 0 <= raw <= 0xFFFF:
+        raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
     if key == "S":
-        return (raw & 0xFFFF) - 0x10000 if raw & 0x8000 else raw & 0xFFFF
-    return raw & 0xFFFF  # "U"
+        return raw - 0x10000 if raw & 0x8000 else raw
+    return raw
 
 
 async def write_typed(
@@ -505,14 +387,29 @@ async def write_typed(
         dtype: Type code accepted by :func:`read_typed`.
         value: Value to write.
     """
-    key = dtype.upper()
+    key = _normalize_dtype(dtype)
     if key == "F":
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError("F value must be a finite number")
         await client.write_float32s(device, [float(value)])
         return
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} value must be an integer")
+    limits = {
+        "U": (0, 0xFFFF),
+        "S": (-0x8000, 0x7FFF),
+        "D": (0, 0xFFFFFFFF),
+        "L": (-0x80000000, 0x7FFFFFFF),
+    }
+    low, high = limits[key]
+    if not low <= value <= high:
+        raise ValueError(f"{key} value must be in the range {low}..{high}")
     if key in ("D", "L"):
-        await client.write_dwords(device, [int(value) & 0xFFFFFFFF])
+        encoded = value if value >= 0 else value + 0x100000000
+        await client.write_dwords(device, [encoded])
         return
-    await client.write(device, int(value) & 0xFFFF)
+    encoded = value if value >= 0 else value + 0x10000
+    await client.write(device, encoded)
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +437,7 @@ async def write_bit_in_word(
     """
     if not 0 <= bit_index <= 15:
         raise ValueError(f"bit_index must be 0-15, got {bit_index}")
-    current = int(await client.read(device)) & 0xFFFF
+    current = int(await client.read_one(device)) & 0xFFFF
     if value:
         current |= 1 << bit_index
     else:
@@ -560,13 +457,15 @@ def _parse_address(address: str) -> tuple[str, str, int | None]:
     :func:`poll`.
 
     Supported formats:
-    - ``"D100"``: device as unsigned 16-bit word (dtype ``"U"``)
+    - ``"D100:U"``: device as unsigned 16-bit word
     - ``"D100:F"``: device with explicit dtype code
     - ``"D100.3"``: bit 3 within one word device (dtype ``"BIT_IN_WORD"``)
     """
     if ":" in address:
         base, dtype = address.split(":", 1)
         normalized_dtype = dtype.strip().upper()
+        if not normalized_dtype:
+            raise ValueError(f"dtype is required after ':' in {address!r}")
         if normalized_dtype == "BIT_IN_WORD":
             raise ValueError(f"bit-in-word address requires explicit bit index 0-F: {address!r}")
         return base.strip(), normalized_dtype, None
@@ -576,7 +475,16 @@ def _parse_address(address: str) -> tuple[str, str, int | None]:
         if len(bit_text) == 1 and bit_text.upper() in "0123456789ABCDEF":
             return base.strip(), "BIT_IN_WORD", int(bit_text, 16)
         raise ValueError(f"Invalid bit-in-word index {bit_str!r}; use one hex digit 0-F or ':' for dtype.")
-    return address.strip(), "U", None
+    raise ValueError(f"named address requires explicit dtype ':U/:S/:D/:L/:F' or bit index '.0'..'.F': {address!r}")
+
+
+def _normalize_dtype(dtype: str) -> str:
+    if not isinstance(dtype, str):
+        raise ValueError("dtype must be one of U/S/D/L/F")
+    key = dtype.strip().upper()
+    if key not in {"U", "S", "D", "L", "F"}:
+        raise ValueError(f"Unsupported dtype {dtype!r}; expected one of U/S/D/L/F")
+    return key
 
 
 def _require_bit_in_word_index(address: str, bit_index: int | None) -> int:
@@ -599,7 +507,7 @@ async def read_named(
 
     Address format examples:
 
-    - ``"P1-D0100"``: unsigned 16-bit int
+    - ``"P1-D0100:U"``: unsigned 16-bit int
     - ``"P1-D0100:F"``: float32
     - ``"P1-D0100:S"``: signed 16-bit int
     - ``"P1-D0100:D"``: unsigned 32-bit int
@@ -624,7 +532,7 @@ async def read_named(
         base, dtype, bit_idx = _parse_address(address)
         if dtype == "BIT_IN_WORD":
             bit_idx = _require_bit_in_word_index(address, bit_idx)
-            raw = int(await client.read(base)) & 0xFFFF
+            raw = int(await client.read_one(base)) & 0xFFFF
             result[address] = bool((raw >> bit_idx) & 1)
         else:
             result[address] = await read_typed(client, base, dtype)
@@ -653,7 +561,7 @@ async def poll(
 
     Usage::
 
-        async for snapshot in poll(client, ["P1-D0100"], interval=1.0):
+        async for snapshot in poll(client, ["P1-D0100:U"], interval=1.0):
             print(snapshot)
     """
     while True:

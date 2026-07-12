@@ -20,6 +20,7 @@ Examples:
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -59,9 +60,9 @@ def main() -> int:
     ) as plc:
         # Basic areas such as D require an explicit P1-/P2-/P3- prefix.
         print("scenario: read one word, write one word, read it back")
-        print("before:", hex(plc.read("P1-D0000")))
+        print("before:", hex(cast(int, plc.read_one("P1-D0000"))))
         plc.write("P1-D0000", 0x1234)
-        print("after :", hex(plc.read("P1-D0000")))
+        print("after :", hex(cast(int, plc.read_one("P1-D0000"))))
 
     return 0
 

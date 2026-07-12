@@ -5,9 +5,11 @@ import functools
 import weakref
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from typing import Any
 
 from .client import ToyopucClient
+from .errors import ToyopucOperationOutcomeUnknownError
 from .high_level import ToyopucDeviceClient
 
 
@@ -26,7 +28,7 @@ def _install_async_wrapper(async_cls: type, method_name: str) -> None:
 
 
 class _AsyncToyopucClientBase:
-    _sync_client_cls = ToyopucClient
+    _sync_client_cls: type[Any] = ToyopucClient
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         object.__setattr__(self, "_client", self._sync_client_cls(*args, **kwargs))
@@ -37,10 +39,40 @@ class _AsyncToyopucClientBase:
     async def _run_sync_in_worker(self, func: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
         loop = asyncio.get_running_loop()
         call = functools.partial(func, *args, **kwargs)
+        started = Event()
+
+        def invoke() -> Any:
+            started.set()
+            return call()
+
         executor = self.__dict__.get("_executor")
+        owns_executor = False
         if executor is None:
-            return await loop.run_in_executor(None, call)
-        return await loop.run_in_executor(executor, call)
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=type(self).__name__)
+            owns_executor = True
+        concurrent_future = executor.submit(invoke)
+        future = asyncio.wrap_future(concurrent_future, loop=loop)
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError:
+            if concurrent_future.cancel():
+                raise
+            if concurrent_future.done():
+                raise
+            self._client._cancel_pending_operation()
+            worker_error: Exception | None = None
+            try:
+                await asyncio.shield(future)
+            except Exception as exc:
+                worker_error = exc
+            finally:
+                self._client._clear_operation_cancel()
+            if isinstance(worker_error, ToyopucOperationOutcomeUnknownError):
+                raise worker_error from None
+            raise
+        finally:
+            if owns_executor:
+                executor.shutdown(wait=False, cancel_futures=True)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
@@ -74,8 +106,6 @@ class AsyncToyopucDeviceClient(_AsyncToyopucClientBase):
 _CLIENT_ASYNC_METHODS = [
     "connect",
     "close",
-    "send_raw",
-    "send_payload",
     "read_words",
     "write_words",
     "read_bytes",
@@ -106,11 +136,7 @@ _CLIENT_ASYNC_METHODS = [
     "pc10_multi_write",
     "read_fr_words",
     "write_fr_words",
-    "write_fr_words_ex",
     "commit_fr_block",
-    "commit_fr_range",
-    "write_fr_words_committed",
-    "fr_register",
     "relay_command",
     "relay_nested",
     "send_via_relay",
@@ -125,16 +151,11 @@ _CLIENT_ASYNC_METHODS = [
     "relay_read_cpu_status_a0_raw",
     "relay_read_cpu_status_a0",
     "relay_write_fr_words",
-    "relay_write_fr_words_ex",
-    "relay_fr_register",
     "relay_commit_fr_block",
-    "relay_commit_fr_range",
-    "relay_wait_fr_write_complete",
     "read_clock",
     "read_cpu_status",
     "read_cpu_status_a0_raw",
     "read_cpu_status_a0",
-    "wait_fr_write_complete",
     "write_clock",
     "resume_scan",
     "stop_scan",
@@ -143,21 +164,25 @@ _CLIENT_ASYNC_METHODS = [
 
 _HIGH_LEVEL_ASYNC_METHODS = [
     "resolve_device",
+    "relay_read_one",
     "relay_read",
     "relay_write",
     "relay_read_words",
     "relay_write_words",
-    "relay_read_many",
+    "relay_read_devices",
     "relay_write_many",
+    "read_fr_one",
     "read_fr",
+    "relay_read_fr_one",
     "relay_read_fr",
     "write_fr",
     "relay_write_fr",
     "commit_fr",
     "relay_commit_fr",
+    "read_one",
     "read",
     "write",
-    "read_many",
+    "read_devices",
     "write_many",
     "read_dword",
     "write_dword",

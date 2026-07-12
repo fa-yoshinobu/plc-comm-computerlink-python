@@ -56,8 +56,8 @@ def _write(plc: ToyopucDeviceClient, hops: str, addr: str, value) -> None:
 
 def _read_many(plc: ToyopucDeviceClient, hops: str, devices: Sequence[str]):
     if hops:
-        return plc.relay_read_many(hops, devices)
-    return plc.read_many(devices)
+        return plc.relay_read_devices(hops, devices)
+    return plc.read_devices(devices)
 
 
 def _write_many(plc: ToyopucDeviceClient, hops: str, items: dict[str, int]) -> None:

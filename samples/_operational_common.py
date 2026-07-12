@@ -46,8 +46,8 @@ class PlcEndpoint:
     name: str
     host: str
     plc_profile: str
-    port: int = 1025
-    transport: str = "tcp"
+    port: int
+    transport: str
     local_port: int = 0
     timeout: float = 3.0
     interval: float = 1.0
@@ -113,8 +113,8 @@ def parse_transport(value: str) -> str:
 def parse_plc_spec(
     value: str,
     *,
-    default_port: int,
-    default_transport: str,
+    default_port: int | None,
+    default_transport: str | None,
     default_local_port: int,
     default_timeout: float,
     default_interval: float,
@@ -132,6 +132,12 @@ def parse_plc_spec(
     port = int(parts[2], 0) if len(parts) >= 3 and parts[2] else default_port
     transport = parse_transport(parts[3]) if len(parts) >= 4 and parts[3] else default_transport
     local_port = int(parts[4], 0) if len(parts) == 5 and parts[4] else default_local_port
+    if port is None:
+        raise argparse.ArgumentTypeError("port is required either in --plc or --port")
+    if isinstance(port, bool) or not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be in range 1..65535")
+    if transport is None:
+        raise argparse.ArgumentTypeError("transport is required either in --plc or --transport")
     return PlcEndpoint(
         name=name,
         host=parts[0],

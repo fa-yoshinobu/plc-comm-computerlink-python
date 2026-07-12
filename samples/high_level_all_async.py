@@ -7,7 +7,7 @@ toyopuc package: ToyopucConnectionOptions, open_and_connect,
 normalize_address, parse_device_address, format_device_address,
 read_typed, write_typed, read_named,
 read_words_single_request, read_dwords_single_request,
-read_words_chunked, read_dwords_chunked, write_bit_in_word, and poll.
+write_bit_in_word, and poll.
 
 Usage
 -----
@@ -32,11 +32,9 @@ from toyopuc import (
     open_and_connect,
     parse_device_address,
     poll,
-    read_dwords_chunked,
     read_dwords_single_request,
     read_named,
     read_typed,
-    read_words_chunked,
     read_words_single_request,
     write_bit_in_word,
     write_typed,
@@ -54,21 +52,22 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 "
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --transport tcp "
             "--profile toyopuc:plus:extended\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 "
-            "--profile toyopuc:plus:extended\n"
-            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 5 "
-            "--profile toyopuc:plus:extended\n"
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --transport tcp "
+            "--poll-count 2 --profile toyopuc:plus:extended\n"
+            "  python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --transport tcp "
+            "--poll-count 5 --profile toyopuc:plus:extended\n"
         ),
     )
     p.add_argument("--host", required=True, help="PLC IP address or hostname")
     p.add_argument(
         "--port",
         type=int,
-        default=1025,
-        help="Computerlink TCP port (default 1025)",
+        required=True,
+        help="Required Computerlink TCP/UDP destination port",
     )
+    p.add_argument("--transport", required=True, choices=("tcp", "udp"), help="Required transport")
     p.add_argument(
         "--poll-count",
         type=int,
@@ -88,22 +87,25 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-async def demo_open_and_connect(host: str, port: int, profile: str) -> None:
+async def demo_open_and_connect(host: str, port: int, transport: str, profile: str) -> None:
     """
     open_and_connect - create an AsyncToyopucDeviceClient and connect.
 
     Parameters:
         host  - TOYOPUC PLC IP / hostname
-        port  - Computerlink port (default 1025 inside open_and_connect)
+        port  - Explicit Computerlink destination port
+        transport - Explicit TCP or UDP selection
 
     Returns a connected AsyncToyopucDeviceClient used as async context manager.
 
     Use case: the simplest way to start an async session without manually
               constructing AsyncToyopucDeviceClient and calling connect().
     """
-    async with await open_and_connect(ToyopucConnectionOptions(host=host, port=port, plc_profile=profile)) as plc:
+    async with await open_and_connect(
+        ToyopucConnectionOptions(host=host, port=port, transport=transport, plc_profile=profile)
+    ) as plc:
         print(f"[open_and_connect] Connected to {host}:{port}")
-        val = await plc.read("P1-D0100")
+        val = await plc.read_one("P1-D0100")
         print(f"[open_and_connect] P1-D0100 = {val}")
 
 
@@ -151,8 +153,8 @@ async def demo_array_reads(plc) -> None:
     """
     Explicit contiguous helpers.
 
-    `*_single_request` keeps one high-level contiguous transfer.
-    `*_chunked` is the explicit opt-in surface for large multi-request reads.
+    Every contiguous helper is one protocol request. An oversized or
+    boundary-crossing range is rejected before communication.
 
     Use case: reading a block of 10 consecutive data registers in one
               Computerlink request for a periodic data logger.
@@ -162,11 +164,6 @@ async def demo_array_reads(plc) -> None:
 
     dwords = await read_dwords_single_request(plc, "P1-D0000", 4)
     print(f"[read_dwords_single_request] P1-D0000-D0007 (as 4 x uint32) = {dwords}")
-
-    large_words = await read_words_chunked(plc, "P1-D1000", 1000)
-    large_dwords = await read_dwords_chunked(plc, "P1-D2000", 120)
-    print(f"[read_words_chunked] P1-D1000 block = {len(large_words)} words")
-    print(f"[read_dwords_chunked] P1-D2000 block = {len(large_dwords)} dwords")
 
 
 async def demo_bit_in_word(plc) -> None:
@@ -236,11 +233,16 @@ async def run(args: argparse.Namespace) -> None:
     demo_normalize_address()
 
     # 1. open_and_connect shortcut
-    await demo_open_and_connect(args.host, args.port, args.profile)
+    await demo_open_and_connect(args.host, args.port, args.transport, args.profile)
 
     # 2-6. connect once, run all remaining demos
     async with await open_and_connect(
-        ToyopucConnectionOptions(host=args.host, port=args.port, plc_profile=args.profile)
+        ToyopucConnectionOptions(
+            host=args.host,
+            port=args.port,
+            transport=args.transport,
+            plc_profile=args.profile,
+        )
     ) as plc:
         await demo_typed_rw(plc)
         await demo_array_reads(plc)

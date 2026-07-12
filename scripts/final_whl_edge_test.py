@@ -72,7 +72,7 @@ def _word_to_bits(value: int) -> list[int]:
 def _read_device(plc: ToyopucDeviceClient, hops: str | None, device: str):
     if hops:
         return plc.relay_read(hops, device)
-    return plc.read(device)
+    return plc.read_one(device)
 
 
 def _write_device(plc: ToyopucDeviceClient, hops: str | None, device: str, value: int) -> None:

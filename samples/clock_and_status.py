@@ -85,7 +85,7 @@ def main() -> int:
 
         print("clock raw =", clock)
         try:
-            print("clock datetime =", clock.as_datetime())
+            print("clock datetime =", clock.as_datetime(year_base=2000))
         except ValueError as exc:
             print("clock datetime unavailable:", exc)
 

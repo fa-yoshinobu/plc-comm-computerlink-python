@@ -291,12 +291,12 @@ def _split_known_area_body(body: str, original_text: str) -> tuple[str, str, str
     raise ValueError(f"Unknown device area in {original_text!r}. Valid areas: {_VALID_AREAS_STR}")
 
 
-def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
+def parse_address(text: str, unit: str) -> ParsedAddress:
     """Parse address strings like 'D0100', 'D0100L', 'M0201'.
 
     Notes:
     - The manual examples use hexadecimal numeric fields (e.g. D0100 -> 0x0100).
-    - Use radix=10 if your PLC uses decimal notation.
+    - Device numeric fields always use canonical hexadecimal notation.
     """
     body = text.strip().upper()
     m = _ADDR_RE.match(body)
@@ -304,7 +304,7 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
         raise ValueError(f"Invalid address format: {text!r}")
 
     area, num_text, suffix = _split_known_area_body(body, text)
-    num = int(num_text, radix)
+    num = int(num_text, 16)
 
     if unit == "byte":
         if suffix not in ("L", "H"):
@@ -332,7 +332,7 @@ def parse_address(text: str, unit: str, *, radix: int = 16) -> ParsedAddress:
     )
 
 
-def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> tuple[int, ParsedAddress]:
+def parse_prefixed_address(text: str, unit: str) -> tuple[int, ParsedAddress]:
     """Parse a prefixed address and return `(program_ex_no, parsed_address)`.
 
     Examples:
@@ -351,7 +351,7 @@ def parse_prefixed_address(text: str, unit: str, *, radix: int = 16) -> tuple[in
     prefix = m.group("prefix")
     body = normalized[len(prefix) + 1 :]
     area, num_text, suffix = _split_known_area_body(body, text)
-    num = int(num_text, radix)
+    num = int(num_text, 16)
 
     if unit == "byte":
         if suffix not in ("L", "H"):

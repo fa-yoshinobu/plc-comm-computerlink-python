@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from toyopuc import (
     ToyopucClient,
     ToyopucDeviceClient,
@@ -30,6 +32,7 @@ from toyopuc.protocol import (
 )
 from toyopuc.relay import (
     format_relay_hop,
+    normalize_relay_hops,
     parse_relay_hops,
     unwrap_relay_response_chain,
 )
@@ -78,7 +81,7 @@ def _pc10_multi_word_write_payload(items):
 
 class _DummyRelayClient(ToyopucClient):
     def __init__(self, response):
-        super().__init__("127.0.0.1", 1025)
+        super().__init__("127.0.0.1", 1025, transport="tcp")
         self.response = response
         self.last_hops = None
         self.last_inner = None
@@ -91,7 +94,7 @@ class _DummyRelayClient(ToyopucClient):
 
 class _DummyRelayHighLevelClient(ToyopucDeviceClient):
     def __init__(self, response):
-        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.response = response
         self.last_hops = None
         self.last_inner = None
@@ -106,7 +109,7 @@ class _DummyRelayHighLevelClient(ToyopucDeviceClient):
 
 class _DummyDirectHighLevelClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.pc10_block_reads = []
         self.pc10_multi_reads = []
 
@@ -121,7 +124,7 @@ class _DummyDirectHighLevelClient(ToyopucDeviceClient):
 
 class _DummyBatchDirectClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.word_reads = []
         self.word_multi_reads = []
         self.word_writes = []
@@ -145,7 +148,7 @@ class _DummyBatchDirectClient(ToyopucDeviceClient):
 
 class _DummyAdvancedBatchDirectClient(ToyopucDeviceClient):
     def __init__(self):
-        super().__init__("127.0.0.1", 1025, plc_profile=GENERIC_PROFILE)
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.ext_multi_reads = []
         self.ext_multi_writes = []
         self.byte_multi_writes = []
@@ -220,6 +223,32 @@ def test_format_hop_uses_p_style():
     assert format_relay_hop(0x12, 0x0002) == "P1-L2:N2 (0x12:0x0002)"
 
 
+@pytest.mark.parametrize(
+    ("link", "station"),
+    [(-1, 1), (256, 1), (True, 1), (1, 0), (1, -1), (1, 65_536), (1, True)],
+)
+def test_relay_hops_reject_invalid_values_without_masking(link: object, station: object):
+    inner = build_command(0x1C, b"")
+    with pytest.raises(ValueError):
+        build_relay_command(link, station, inner)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        normalize_relay_hops([(link, station)])  # type: ignore[list-item]
+
+
+def test_nested_relay_validates_every_hop_before_building():
+    inner = build_command(0x1C, b"")
+    with pytest.raises(ValueError):
+        build_relay_nested([(0x12, 2), (256, 3)], inner)
+
+
+def test_relay_builder_has_fixed_enq_signature_and_wire_value():
+    import inspect
+
+    assert "enq" not in inspect.signature(build_relay_command).parameters
+    frame = build_relay_command(0x12, 2, build_command(0x1C, b""))
+    assert frame[8] == 0x05
+
+
 def test_unwrap_relay_response_handles_nested_success():
     outer = parse_response(bytes.fromhex("80001b006012020006130060120400060b00321100820000000000000e6807"))
     layers, final = unwrap_relay_response_chain(outer)
@@ -261,7 +290,7 @@ def test_client_relay_write_clock_accepts_p_style_hops():
     outer = parse_response(bytes.fromhex("80000a0060120200060300327100"))
     client = _DummyRelayClient(outer)
     value = datetime(2026, 3, 10, 15, 0, 0)
-    client.relay_write_clock("P1-L2:N2", value)
+    client.relay_write_clock("P1-L2:N2", value, year_base=2000)
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_clock_write(0, 0, 15, 10, 3, 26, 2)
 
@@ -269,7 +298,7 @@ def test_client_relay_write_clock_accepts_p_style_hops():
 def test_high_level_relay_read_words_accepts_string_device():
     outer = parse_response(bytes.fromhex("80000b006012020006030094341201"))
     client = _DummyRelayHighLevelClient(outer)
-    value = client.relay_read_words("P1-L2:N2", "P1-D0000")
+    value = client.relay_read_words("P1-L2:N2", "P1-D0000", 1)
     assert client.last_hops == [(0x12, 0x0002)]
     assert value == [0x1234]
     resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
@@ -296,7 +325,7 @@ def test_high_level_relay_write_words_accepts_string_device():
 def test_high_level_relay_read_accepts_basic_bit_device():
     outer = parse_response(bytes.fromhex("80000900601202000602009801"))
     client = _DummyRelayHighLevelClient(outer)
-    value = client.relay_read("P1-L2:N2", "P1-M0000")
+    value = client.relay_read_one("P1-L2:N2", "P1-M0000")
     assert value is True
     assert client.last_hops == [(0x12, 0x0002)]
     resolved = resolve_device("P1-M0000", profile="toyopuc:generic")
@@ -316,7 +345,7 @@ def test_high_level_relay_read_accepts_pc10_word_device():
     outer = parse_response(bytes.fromhex("80000a0060120200060300c23412"))
     client = _DummyRelayHighLevelClient(outer)
     resolved = resolve_device("U08000", profile="toyopuc:generic")
-    value = client.relay_read("P1-L2:N2", resolved)
+    value = client.relay_read_one("P1-L2:N2", resolved)
     assert value == 0x1234
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_pc10_block_read(resolved.addr32, 2)
@@ -326,7 +355,7 @@ def test_high_level_relay_read_accepts_fr_word_device():
     outer = parse_response(bytes.fromhex("80000a0060120200060300c23412"))
     client = _DummyRelayHighLevelClient(outer)
     resolved = resolve_device("FR000000", profile="toyopuc:generic")
-    value = client.relay_read("P1-L2:N2", resolved)
+    value = client.relay_read_one("P1-L2:N2", resolved)
     assert value == 0x1234
     assert client.last_inner == build_pc10_block_read(resolved.addr32, 2)
 
@@ -351,7 +380,7 @@ def test_high_level_relay_commit_fr_uses_ca():
 def test_high_level_relay_read_many_preserves_input_order():
     outer = _relay_success_response(0x94, bytes.fromhex("34127856"))
     client = _DummyRelayHighLevelClient(outer)
-    values = client.relay_read_many("P1-L2:N2", ["P1-D0000", "P1-D0001"])
+    values = client.relay_read_devices("P1-L2:N2", ["P1-D0000", "P1-D0001"])
     assert values == [0x1234, 0x5678]
     resolved = resolve_device("P1-D0000", profile="toyopuc:generic")
     assert client.inner_calls == [build_ext_word_read(resolved.no, resolved.addr, 2)]
@@ -361,7 +390,7 @@ def test_high_level_relay_read_many_preserves_input_order():
 def test_high_level_read_many_ext_word_sparse_uses_ext_multi_read():
     client = _DummyAdvancedBatchDirectClient()
     devices = ["U0000", "U0002"]
-    values = client.read_many(devices)
+    values = client.read_devices(devices)
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
 
     assert values == [0x1234, 0x5678]
@@ -371,7 +400,7 @@ def test_high_level_read_many_ext_word_sparse_uses_ext_multi_read():
 
 def test_high_level_read_many_program_packed_word_sparse_uses_byte_addresses():
     client = _DummyAdvancedBatchDirectClient()
-    values = client.read_many(["P1-V000W", "P1-V002W"])
+    values = client.read_devices(["P1-V000W", "P1-V002W"])
 
     assert values == [0x1234, 0x5678]
     # P1-V000W/P1-V002W resolve to CMD=94 word addresses 0x0050/0x0052; the
@@ -386,7 +415,7 @@ def test_high_level_read_many_ext_bit_sparse_unpacks_packed_multi_read():
     devices = [f"EM{i:04X}" for i in range(10)]
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
 
-    values = client.read_many(devices)
+    values = client.read_devices(devices)
 
     assert values == [True, False, True, False, True, False, True, False, True, True]
     assert client.ext_multi_reads == [([(_r.no, _r.bit_no, _r.addr) for _r in resolved], [], [])]
@@ -396,7 +425,7 @@ def test_high_level_read_many_pc10_word_sparse_uses_multi_read():
     client = _DummyAdvancedBatchDirectClient()
     devices = ["U08000", "U08100"]
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
-    values = client.read_many(devices)
+    values = client.read_devices(devices)
 
     assert values == [0x1234, 0x5678]
     assert client.pc10_multi_reads == [_pc10_multi_word_read_payload([_r.addr32 for _r in resolved])]
@@ -404,7 +433,7 @@ def test_high_level_read_many_pc10_word_sparse_uses_multi_read():
 
 def test_high_level_read_many_basic_words_batches_consecutive_reads():
     client = _DummyBatchDirectClient()
-    values = client.read_many(["B0000", "B0001"])
+    values = client.read_devices(["B0000", "B0001"])
 
     assert values == [0x1000, 0x1001]
     assert client.word_reads == [(_word_addr("B0000"), 2)]
@@ -413,7 +442,7 @@ def test_high_level_read_many_basic_words_batches_consecutive_reads():
 
 def test_high_level_read_many_basic_words_batches_sparse_multi_reads():
     client = _DummyBatchDirectClient()
-    values = client.read_many(["B0000", "B0002"])
+    values = client.read_devices(["B0000", "B0002"])
 
     assert values == [0x2000, 0x2001]
     assert client.word_reads == []
@@ -482,7 +511,7 @@ def test_high_level_relay_read_many_ext_bit_sparse_unpacks_packed_multi_read():
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
     outer = _relay_success_response(0x98, bytes([0b01010101, 0b00000011]))
     client = _DummyRelayHighLevelClient(outer)
-    values = client.relay_read_many("P1-L2:N2", devices)
+    values = client.relay_read_devices("P1-L2:N2", devices)
 
     assert values == [True, False, True, False, True, False, True, False, True, True]
     assert client.inner_calls == [build_ext_multi_read([(_r.no, _r.bit_no, _r.addr) for _r in resolved], [], [])]
@@ -491,7 +520,7 @@ def test_high_level_relay_read_many_ext_bit_sparse_unpacks_packed_multi_read():
 def test_high_level_relay_read_many_program_packed_word_sparse_uses_byte_addresses():
     outer = _relay_success_response(0x98, bytes.fromhex("50004000"))
     client = _DummyRelayHighLevelClient(outer)
-    values = client.relay_read_many("P1-L2:N2", ["P1-V000W", "P1-V002W"])
+    values = client.relay_read_devices("P1-L2:N2", ["P1-V000W", "P1-V002W"])
 
     assert values == [0x0050, 0x0040]
     assert client.inner_calls == [build_ext_multi_read([], [], [(0x01, 0x00A0), (0x01, 0x00A4)])]
@@ -504,7 +533,7 @@ def test_high_level_relay_read_many_pc10_word_sparse_uses_multi_read():
     outer = _relay_success_response(0xC4, b"\x00\x00\x00\x00\x34\x12\x78\x56")
     client = _DummyRelayHighLevelClient(outer)
 
-    values = client.relay_read_many("P1-L2:N2", devices)
+    values = client.relay_read_devices("P1-L2:N2", devices)
 
     assert values == [0x1234, 0x5678]
     assert client.inner_calls == [build_pc10_multi_read(payload)]

@@ -3,7 +3,7 @@
 TOYOPUC Computerlink - High-Level Synchronous API Sample
 =========================================================
 Demonstrates all high-level methods of ToyopucDeviceClient (synchronous):
-read, write, read_many, write_many, read_dword/dwords, read_float32/float32s,
+read_one, read, read_devices, write_many, read_dword/dwords, read_float32/float32s,
 write_dword/float32, and FR file register access.
 
 Usage
@@ -52,14 +52,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--port",
         type=int,
-        default=1025,
-        help="Computerlink TCP port (default 1025)",
+        required=True,
+        help="Required Computerlink port",
     )
     p.add_argument(
         "--transport",
         choices=("tcp", "udp"),
-        default="tcp",
-        help="Transport protocol (default tcp)",
+        required=True,
+        help="Required transport protocol",
     )
     p.add_argument(
         "--timeout",
@@ -105,7 +105,6 @@ def main() -> None:
     #                 giving up; useful for networks with occasional drops
     #   retry_delay - wait time between retries in seconds
     #   local_port  - bind to a specific local UDP port (UDP only, rarely needed)
-    #   trace_hook  - optional callback(ToyopucTraceFrame) for raw frame tracing
     with ToyopucDeviceClient(
         args.host,
         args.port,
@@ -134,7 +133,7 @@ def main() -> None:
         #
         # Use case: reading and writing a single word or bit device.
         # ---------------------------------------------------------------
-        val = plc.read("P1-D0100")
+        val = plc.read_one("P1-D0100")
         print(f"[read]  P1-D0100 = {val}")
 
         try:
@@ -143,7 +142,7 @@ def main() -> None:
         finally:
             plc.write("P1-D0100", val)
 
-        bit = plc.read("P1-M0010")
+        bit = plc.read_one("P1-M0010")
         print(f"[read]  P1-M0010 (bit) = {bit}")
 
         try:
@@ -163,21 +162,21 @@ def main() -> None:
         # Use case: reading 16 relay bits as a single integer for display
         #           on an HMI or for masking operations.
         # ---------------------------------------------------------------
-        packed_word = plc.read("P1-M0010W")
+        packed_word = plc.read_one("P1-M0010W")
         print(f"[read W]  P1-M0010W (packed word) = {packed_word:#06x}")
 
         # ---------------------------------------------------------------
-        # 3. read_many / write_many - batch access
+        # 3. read_devices / write_many - batch access
         #
-        # read_many(devices) - read a compatible list of devices in order.
+        # read_devices(devices) - read a compatible list of devices in order.
         #     Returns list[object] in the same order as input.
         #
         # write_many(items)  - write a mapping of {device: value} in order.
         #
         # Use case: reading or writing one compatible protocol request.
         # ---------------------------------------------------------------
-        values = plc.read_many(["P1-D0100", "P1-D0101"])
-        print(f"[read_many]  P1-D0100={values[0]}  P1-D0101={values[1]}")
+        values = plc.read_devices(["P1-D0100", "P1-D0101"])
+        print(f"[read_devices]  P1-D0100={values[0]}  P1-D0101={values[1]}")
 
         try:
             plc.write_many(
@@ -252,35 +251,27 @@ def main() -> None:
         # 8. read_fr / write_fr - FR file register access
         #
         # FR is a large non-volatile file register area (up to 2 M words).
-        # It requires a dedicated read/write path and optional commit step.
-        #
-        # write_fr options:
-        #   commit       - write AND commit the changed block to flash;
-        #                  False by default (write to RAM only)
-        #   wait         - wait for commit to complete before returning;
-        #                  defaults to True when commit=True
-        #   timeout      - maximum time to wait for commit (seconds)
-        #   poll_interval - how often to poll commit status (seconds)
+        # It requires separate work-area update and explicit block commit.
         #
         # Use case: writing recipe data to non-volatile FR storage so it
         #           survives a PLC power cycle.
         # ---------------------------------------------------------------
-        fr_val = plc.read_fr("FR000000")
+        fr_val = plc.read_fr_one("FR000000")
         print(f"[read_fr]  FR000000 = {fr_val}")
 
         # Write to FR RAM without committing to flash (fast, temporary).
         # Restore the previous value before leaving this sample.
         try:
-            plc.write_fr("FR000000", 999, commit=False)
+            plc.write_fr("FR000000", 999)
             print("[write_fr] Wrote 999 -> FR000000 (RAM only, not committed)")
         finally:
-            plc.write_fr("FR000000", fr_val, commit=False)
+            plc.write_fr("FR000000", fr_val)
             print("[write_fr] Restored original FR000000 value (RAM only)")
 
         # commit_fr explicitly flushes the modified block to flash.
         # Uncomment only when the staged FR value is intentionally persistent.
-        # plc.commit_fr("FR000000", wait=False)
-        # print("[commit_fr] Committed FR000000 block (async, not waiting)")
+        # plc.commit_fr("FR000000")
+        # print("[commit_fr] Issued one commit for the FR000000 block")
 
     print("Done.")
 

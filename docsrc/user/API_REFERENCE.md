@@ -14,10 +14,9 @@ workflows.
 | --- | --- |
 | Open a ready-to-use connection | `open_and_connect`, `ToyopucConnectionOptions` |
 | Low-level sync/async clients | `ToyopucClient`, `AsyncToyopucClient`, `ToyopucDeviceClient`, `AsyncToyopucDeviceClient` |
-| Raw frame exchange | `send_raw`, `send_payload`, `last_tx`, `last_rx` |
+| Last-frame diagnostics | `last_tx`, `last_rx` |
 | Clock and CPU status | `read_clock`, `write_clock`, `read_cpu_status`, `read_cpu_status_a0`, `read_cpu_status_a0_raw` |
 | Scan control | `resume_scan`, `stop_scan`, `release_scan_stop` |
-| Trace capture | `ToyopucTraceDirection`, `ToyopucTraceFrame` |
 
 ## Device Operations
 
@@ -30,9 +29,9 @@ workflows.
 | Multi-point access | `read_words_multi`, `write_words_multi`, `read_bytes_multi`, `write_bytes_multi` |
 | Extended area access | `read_ext_words`, `write_ext_words`, `read_ext_bytes`, `write_ext_bytes`, `read_ext_multi`, `write_ext_multi` |
 | PC10 block and multi access | `pc10_block_read`, `pc10_block_write`, `pc10_multi_read`, `pc10_multi_write` |
-| File register access | `read_fr_words`, `write_fr_words`, `write_fr_words_ex`, `commit_fr_block`, `commit_fr_range`, `write_fr_words_committed`, `fr_register` |
+| File register access | `read_fr_words`, `write_fr_words`, `commit_fr_block` |
 | Relay access | `relay_command`, `relay_nested`, `send_via_relay`, `relay_read_words`, `relay_write_words`, `relay_read_clock`, `relay_write_clock`, `relay_resume_scan`, `relay_stop_scan`, `relay_release_scan_stop`, `relay_read_cpu_status`, `relay_read_cpu_status_a0`, `relay_read_cpu_status_a0_raw` |
-| Relay file register access | `relay_write_fr_words`, `relay_write_fr_words_ex`, `relay_fr_register`, `relay_commit_fr_block`, `relay_commit_fr_range`, `relay_wait_fr_write_complete` |
+| Relay file register access | `relay_write_fr_words`, `relay_commit_fr_block` |
 
 ## High-Level Helpers
 
@@ -45,18 +44,24 @@ workflows.
 | Named snapshots and polling | `read_named`, `poll` |
 | Word/dword reads | `read_words`, `read_dwords` |
 | Single-request reads/writes | `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, `write_dwords_single_request` |
-| Explicit chunked reads/writes | `read_words_chunked`, `read_dwords_chunked`, `write_words_chunked`, `write_dwords_chunked` |
 | Bit-in-word write | `write_bit_in_word` |
+
+`ToyopucDeviceClient.read_one` and `relay_read_one` return one scalar.
+`read`, `relay_read`, `read_fr`, and `relay_read_fr` require an explicit
+positive `count` and always return a list, including when `count == 1`.
+`read_devices` and `relay_read_devices` are the sparse multi-device forms.
+Every array method is one protocol request; no public chunking or
+`atomic_transfer` switch exists.
 
 ## Profiles, Relay, And Diagnostics
 
 | Operation | Public API |
 | --- | --- |
-| Profile lookup | `ToyopucPlcProfiles`, `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucAddressingOptions`, `plc_profile_descriptors`, `display_name` |
+| Profile lookup | `ToyopucPlcProfiles`, `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `plc_profile_descriptors`, `display_name` |
 | Device range catalog | `ToyopucDeviceCatalog`, `ToyopucAreaDescriptor`, `ToyopucAddressRange`, `ToyopucDeviceMatrixRow` |
 | Relay helpers | `RelayLayer`, `parse_relay_hops`, `normalize_relay_hops`, `format_relay_hop` |
 | Parsed payload types | `ClockData`, `CpuStatusData` |
-| Errors | `ToyopucError`, `ToyopucProtocolError`, `ToyopucTimeoutError` |
+| Errors | `ToyopucError`, `ToyopucProtocolError`, `ToyopucTimeoutError`, `ToyopucOperationOutcomeUnknownError` |
 
 ## Public Symbol Index
 
@@ -64,11 +69,12 @@ The package exports these public names from `toyopuc.__all__`:
 
 `AsyncToyopucClient`, `AsyncToyopucDeviceClient`, `ClockData`,
 `CpuStatusData`, `RelayLayer`, `ResolvedDevice`, `ToyopucAddress`,
-`ToyopucAddressRange`, `ToyopucAddressingOptions`, `ToyopucAreaDescriptor`,
+`ToyopucAddressRange`, `ToyopucAreaDescriptor`,
 `ToyopucClient`, `ToyopucConnectionOptions`, `ToyopucDeviceCatalog`,
 `ToyopucDeviceClient`, `ToyopucDeviceMatrixRow`, `ToyopucError`,
+`ToyopucOperationOutcomeUnknownError`,
 `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucPlcProfiles`, `ToyopucProtocolError`,
-`ToyopucTimeoutError`, `ToyopucTraceDirection`, `ToyopucTraceFrame`,
+`ToyopucTimeoutError`,
 `display_name`, `encode_bit_address`, `encode_byte_address`,
 `encode_exno_bit_u32`, `encode_exno_byte_u32`, `encode_ext_no_address`,
 `encode_fr_word_addr32`, `encode_program_bit_address`,
@@ -77,11 +83,11 @@ The package exports these public names from `toyopuc.__all__`:
 `fr_block_ex_no`, `normalize_address`, `normalize_relay_hops`,
 `open_and_connect`, `parse_address`, `parse_device_address`,
 `parse_prefixed_address`, `parse_relay_hops`, `plc_profile_descriptors`, `poll`, `read_dwords`,
-`read_dwords_chunked`, `read_dwords_single_request`, `read_named`,
-`read_typed`, `read_words`, `read_words_chunked`,
+`read_dwords_single_request`, `read_named`,
+`read_typed`, `read_words`,
 `read_words_single_request`, `resolve_device`, `split_u32_words`,
-`try_parse_device_address`, `write_bit_in_word`, `write_dwords_chunked`,
-`write_dwords_single_request`, `write_typed`, `write_words_chunked`,
+`try_parse_device_address`, `write_bit_in_word`,
+`write_dwords_single_request`, `write_typed`,
 `write_words_single_request`.
 
 ## Generated API Details

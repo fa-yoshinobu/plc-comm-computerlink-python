@@ -32,8 +32,8 @@ def parse_args() -> argparse.Namespace:
         description="Read one TOYOPUC Computerlink value forever and reconnect after transport loss."
     )
     parser.add_argument("--host", required=True, help="PLC IP address or hostname")
-    parser.add_argument("--port", type=int, default=1025, help="Computerlink TCP port (default 1025)")
-    parser.add_argument("--transport", choices=("tcp", "udp"), default="tcp", help="Transport protocol")
+    parser.add_argument("--port", type=int, required=True, help="Required Computerlink port")
+    parser.add_argument("--transport", choices=("tcp", "udp"), required=True, help="Required transport protocol")
     parser.add_argument("--local-port", type=int, default=0, help="UDP local port, or 0 for ephemeral")
     parser.add_argument("--profile", required=True, help="Canonical PLC profile, for example toyopuc:plus:extended")
     parser.add_argument("--device", default="P1-D0100", help="Device to poll (default P1-D0100)")

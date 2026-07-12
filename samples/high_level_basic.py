@@ -7,7 +7,7 @@ Common high-level tasks for TOYOPUC users.
 What this sample shows:
 - word read / write
 - bit read / write
-- `read_many(...)`
+- `read_devices(...)`
 - packed `W/H/L` access on bit families
 - extended-area access such as `ES0000`
 
@@ -21,6 +21,7 @@ Examples:
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -61,33 +62,33 @@ def main() -> int:
         # The sample uses high-level device strings instead of raw protocol addresses.
         print("scenario: daily high-level tasks")
         plc.write("P1-D0000", 0x1234)
-        print("P1-D0000 =", hex(plc.read("P1-D0000")))
+        print("P1-D0000 =", hex(cast(int, plc.read_one("P1-D0000"))))
 
         plc.write("P1-D0000L", 0x56)
-        print("P1-D0000L =", hex(plc.read("P1-D0000L")))
+        print("P1-D0000L =", hex(cast(int, plc.read_one("P1-D0000L"))))
 
         plc.write("P1-M0000", 1)
-        print("P1-M0000 =", plc.read("P1-M0000"))
+        print("P1-M0000 =", plc.read_one("P1-M0000"))
 
         plc.write("P1-D0000", 0x2222)
-        print("P1-D0000 =", hex(plc.read("P1-D0000")))
+        print("P1-D0000 =", hex(cast(int, plc.read_one("P1-D0000"))))
 
         plc.write("ES0000", 0x3333)
-        print("ES0000 =", hex(plc.read("ES0000")))
+        print("ES0000 =", hex(cast(int, plc.read_one("ES0000"))))
 
-        values = plc.read_many(["P1-D0000", "P1-D0001"])
-        print("read_many =", values)
+        values = plc.read_devices(["P1-D0000", "P1-D0001"])
+        print("read_devices =", values)
 
         plc.write("P1-M0010W", 0x1234)
-        print("P1-M0010W =", hex(plc.read("P1-M0010W")))
-        print("P1-M0010L =", hex(plc.read("P1-M0010L")))
-        print("P1-M0010H =", hex(plc.read("P1-M0010H")))
+        print("P1-M0010W =", hex(cast(int, plc.read_one("P1-M0010W"))))
+        print("P1-M0010L =", hex(cast(int, plc.read_one("P1-M0010L"))))
+        print("P1-M0010H =", hex(cast(int, plc.read_one("P1-M0010H"))))
 
         plc.write("EX0010L", 0xAB)
-        print("EX0010L =", hex(plc.read("EX0010L")))
+        print("EX0010L =", hex(cast(int, plc.read_one("EX0010L"))))
         print(
             "EX0100..EX0107 =",
-            [plc.read(f"EX{index:04X}") for index in range(0x0100, 0x0108)],
+            [plc.read_one(f"EX{index:04X}") for index in range(0x0100, 0x0108)],
         )
 
     return 0

@@ -11,8 +11,10 @@ from toyopuc import ToyopucDeviceClient
 
 
 def main() -> None:
-    with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as client:
-        print(client.read("P1-D0000"))
+    with ToyopucDeviceClient(
+        "192.168.250.100", 1025, transport="tcp", plc_profile="toyopuc:plus:extended"
+    ) as client:
+        print(client.read_one("P1-D0000"))
 
 
 if __name__ == "__main__":
@@ -23,13 +25,32 @@ if __name__ == "__main__":
 
 | Root cause | Fix |
 | --- | --- |
-| A multi-address request can require multiple protocol requests, incompatible protocol groups, PC10 block boundary crossings, or an internal fallback to individual requests. | `read_many` / `write_many` now reject those cases before communication. Keep each call to one compatible protocol request, or use single-request helpers, chunked helpers, or separate explicit calls when splitting is intentional. |
+| A contiguous or multi-device operation can require multiple protocol requests, incompatible protocol groups, or a PC10 block boundary crossing. | `read`, `read_devices`, and `write_many` reject those cases before communication. Split the operation into separate explicit calls only when different acquisition times or partial completion are acceptable. |
+
+## Symptom: a write value is rejected instead of truncated
+
+This is intentional. Bit writes accept only `bool`, `0`, or `1`; byte writes
+accept integers in `0..255`; word writes accept integers in `0..65535`; and
+dword writes accept integers in `0..4294967295`. Boolean values are not word
+or dword integers. Fractional values and numeric strings are never converted.
+
+## Symptom: a fixed-port UDP client cannot reconnect after a timeout
+
+A connected UDP socket accepts datagrams only from its configured PLC endpoint.
+However, Computerlink has no request serial that can distinguish a late response
+from a later request to the same endpoint. After a request may have been sent and
+a fixed-local-port UDP session times out or fails, that client instance is
+terminal. Create a new client only after the network can no longer contain the
+late response; prefer `local_port=0` unless a fixed source port is required.
+
+When a state-changing request may already have reached the PLC, Python raises
+`ToyopucOperationOutcomeUnknownError`. Reconcile PLC state before retrying.
 
 ## Symptom: `read_named(["P1-D0000", "P1-D0001"])` is rejected
 
 | Root cause | Fix |
 | --- | --- |
-| Computerlink named reads intentionally accept one named address per call. Unlike SLMP or Host Link snapshots, they do not split a multi-address list into several PLC requests. | Call `read_named` once per named address, or use `read_words_single_request` / chunked helpers for contiguous ranges. |
+| Computerlink named reads intentionally accept one named address per call. Unlike SLMP or Host Link snapshots, they do not split a multi-address list into several PLC requests. | Call `read_named` once per named address, or use `read_words_single_request` for a contiguous range. |
 
 ```python
 import asyncio
@@ -41,6 +62,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
     async with await open_and_connect(options) as client:
@@ -68,6 +90,7 @@ async def main() -> None:
     options = ToyopucConnectionOptions(
         host="192.168.250.100",
         port=1025,
+        transport="tcp",
         plc_profile="toyopuc:plus:extended",
     )
     async with await open_and_connect(options) as client:
@@ -81,18 +104,21 @@ asyncio.run(main())
 
 | Root cause | Fix |
 | --- | --- |
-| FR writes are two-phase. `write_fr(..., commit=False)` updates RAM only. | Call `commit_fr()` or pass `commit=True` only when you want flash persistence. |
+| `write_fr(...)` updates only the FR work area. It never commits flash. | Call `commit_fr()` separately with the first word of exactly one block only when persistence is intended. |
+| An FR word is an unsigned 16-bit value. | Pass an integer in `0..65535`; Boolean, fractional, string, negative, and overflowing values are rejected before communication. |
 
 ```python
 from toyopuc import ToyopucDeviceClient
 
 
 def main() -> None:
-    with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:pc10g:pc10") as client:
+    with ToyopucDeviceClient(
+        "192.168.250.100", 1025, transport="tcp", plc_profile="toyopuc:pc10g:pc10"
+    ) as client:
         # Use only a test FR address. commit_fr persists the staged value
         # to flash and does not restore the previous value automatically.
-        client.write_fr("FR000000", 0x1234, commit=False)
-        client.commit_fr("FR000000", wait=True)
+        client.write_fr("FR000000", 0x1234)
+        client.commit_fr("FR000000")
 
 
 if __name__ == "__main__":
@@ -129,7 +155,9 @@ from toyopuc import ToyopucDeviceClient
 
 
 def main() -> None:
-    with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:nano-10gx:compatible") as client:
+    with ToyopucDeviceClient(
+        "192.168.250.100", 1025, transport="tcp", plc_profile="toyopuc:nano-10gx:compatible"
+    ) as client:
         hops = "P1-L2:N2"
         print(client.relay_read_words(hops, "P1-D0000", count=1))
 
@@ -149,8 +177,10 @@ from toyopuc import ToyopucDeviceClient
 
 
 def main() -> None:
-    with ToyopucDeviceClient("192.168.250.100", 1025, plc_profile="toyopuc:plus:extended") as client:
-        packed = client.read("P1-M0010W")
+    with ToyopucDeviceClient(
+        "192.168.250.100", 1025, transport="tcp", plc_profile="toyopuc:plus:extended"
+    ) as client:
+        packed = client.read_one("P1-M0010W")
         dword = client.read_dword("P1-D0100")
         print(packed, dword)
 

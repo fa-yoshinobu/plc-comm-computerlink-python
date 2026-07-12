@@ -8,3 +8,7 @@ class ToyopucProtocolError(ToyopucError):
 
 class ToyopucTimeoutError(ToyopucProtocolError):
     """Raised on socket timeouts."""
+
+
+class ToyopucOperationOutcomeUnknownError(ToyopucError):
+    """Raised when a state-changing request may have reached the PLC."""

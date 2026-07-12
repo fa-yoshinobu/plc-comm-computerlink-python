@@ -10,7 +10,7 @@ from typing import TextIO, TypeVar, cast
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from toyopuc import ToyopucDeviceClient, resolve_device  # noqa: E402
+from toyopuc import ToyopucDeviceClient  # noqa: E402
 from toyopuc.high_level import ResolvedDevice  # noqa: E402
 from toyopuc.protocol import (  # noqa: E402
     build_ext_word_read,
@@ -76,7 +76,7 @@ def _format_words(values: Iterable[int]) -> str:
 
 
 def _relay_block_read(plc: ToyopucDeviceClient, hops: str, device: str, count: int) -> list[int]:
-    resolved = resolve_device(device)
+    resolved = plc.resolve_device(device)
     if resolved.unit != "word":
         raise ValueError(f"{device} is not a word device")
     if resolved.scheme == "basic-word":
@@ -101,7 +101,7 @@ def _relay_block_read(plc: ToyopucDeviceClient, hops: str, device: str, count: i
 
 
 def _relay_block_write(plc: ToyopucDeviceClient, hops: str, device: str, values: list[int]) -> None:
-    resolved = resolve_device(device)
+    resolved = plc.resolve_device(device)
     if resolved.unit != "word":
         raise ValueError(f"{device} is not a word device")
     masked = [int(value) & 0xFFFF for value in values]
@@ -227,7 +227,7 @@ def main() -> int:
                     for i, target in enumerate(targets):
                         items[target] = (args.value + 0x2000 + i) & 0xFFFF
                     plc.relay_write_many(args.hops, cast(Mapping[str | ResolvedDevice, object], items))
-                    actual = plc.relay_read_many(args.hops, list(items.keys()))
+                    actual = plc.relay_read_devices(args.hops, list(items.keys()))
                     normalized = [_as_int(value) for value in actual]
                     expected = [_as_int(items[target]) for target in items]
                     if normalized != expected:
@@ -249,7 +249,7 @@ def main() -> int:
                         "U08000": 0xDEF0,
                     }
                     plc.relay_write_many(args.hops, cast(Mapping[str | ResolvedDevice, object], items))
-                    actual = plc.relay_read_many(args.hops, list(items.keys()))
+                    actual = plc.relay_read_devices(args.hops, list(items.keys()))
                     normalized = [_as_int(value) for value in actual]
                     expected = [_as_int(items[key]) for key in items]
                     if normalized != expected:
@@ -263,13 +263,13 @@ def main() -> int:
             if args.clock_loops:
 
                 def _clock_case() -> str:
-                    original = plc.relay_read_clock(args.hops).as_datetime()
+                    original = plc.relay_read_clock(args.hops).as_datetime(year_base=2000)
                     base = args.clock_start or original
                     passed = 0
                     for loop_index in range(args.clock_loops):
                         target = base + timedelta(seconds=loop_index * args.clock_step_seconds)
-                        plc.relay_write_clock(args.hops, target)
-                        readback = plc.relay_read_clock(args.hops).as_datetime()
+                        plc.relay_write_clock(args.hops, target, year_base=2000)
+                        readback = plc.relay_read_clock(args.hops).as_datetime(year_base=2000)
                         matched = abs((readback - target).total_seconds()) <= 2
                         if matched:
                             passed += 1
@@ -278,8 +278,8 @@ def main() -> int:
                             f"readback={readback.isoformat(sep=' ')} ok={matched}",
                             log_f,
                         )
-                    plc.relay_write_clock(args.hops, original)
-                    restored = plc.relay_read_clock(args.hops).as_datetime()
+                    plc.relay_write_clock(args.hops, original, year_base=2000)
+                    restored = plc.relay_read_clock(args.hops).as_datetime(year_base=2000)
                     restored_ok = abs((restored - original).total_seconds()) <= 2
                     if not restored_ok:
                         raise ValueError(

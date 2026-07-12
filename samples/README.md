@@ -9,7 +9,7 @@ Use only test addresses that are safe for your PLC program before you run any wr
 | Sample | What it shows |
 | --- | --- |
 | `high_level_minimal.py` | One connection, one word read, one word write, and readback. |
-| `high_level_basic.py` | Common high-level reads, writes, `read_many`, and packed `W/H/L` access. |
+| `high_level_basic.py` | Common high-level reads, writes, `read_devices`, and packed `W/H/L` access. |
 | `high_level_all_sync.py` | Synchronous cookbook for `ToyopucDeviceClient`. |
 | `high_level_all_async.py` | Async cookbook for `ToyopucConnectionOptions`, `open_and_connect`, typed helpers, named reads, and polling. |
 | `polling_reconnect.py` | Read-only polling loop with automatic reconnect and backoff after transport loss. |
@@ -70,4 +70,4 @@ python samples/clock_and_status.py --host 192.168.250.100 --port 1025 --profile 
 | Data type suffixes use `:`. | `P1-D0100:D`, `P1-D0100:F` |
 | Bit-in-word uses `.`. | `P1-D0100.3` |
 | Packed bit-family views use `W`, `L`, or `H`. | `P1-M0010W`, `P1-M0010L` |
-| FR writes are two-phase. | `write_fr(..., commit=False)` then `commit_fr()` when needed. |
+| FR writes are two-phase. | `write_fr(...)` updates one work-area range; `commit_fr()` separately commits one explicit block. |

@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from ._shared import _validate_relay_hop
 from .errors import ToyopucProtocolError
 
 FT_COMMAND = 0x00
@@ -23,6 +24,12 @@ def _require_count(label: str, count: int, max_count: int) -> int:
     if n < 1 or n > max_count:
         raise ValueError(f"{label} count must be 1..0x{max_count:X} ({max_count})")
     return n
+
+
+def _require_uint(label: str, value: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+        raise ValueError(f"{label} must be an integer in the range 0..{maximum}")
+    return value
 
 
 def _require_length(label: str, length: int, max_length: int) -> None:
@@ -97,11 +104,20 @@ class ClockData:
     year_2digit: int
     weekday: int
 
-    def as_datetime(self, *, year_base: int = 2000) -> datetime:
+    def as_datetime(self, *, year_base: int) -> datetime:
         """Convert the PLC clock fields into a Python ``datetime``."""
 
+        _require_year_base(year_base)
         year = year_base + self.year_2digit
+        if not 1 <= year <= 9999:
+            raise ValueError("year_base + year_2digit must be in the range 1..9999")
         return datetime(year, self.month, self.day, self.hour, self.minute, self.second)
+
+
+def _require_year_base(year_base: int) -> int:
+    if isinstance(year_base, bool) or not isinstance(year_base, int) or year_base < 0 or year_base % 100 != 0:
+        raise ValueError("year_base must be a non-negative century boundary such as 1900, 2000, or 2100")
+    return year_base
 
 
 @dataclass(frozen=True)
@@ -393,10 +409,17 @@ class CpuStatusData:
 
 def build_command(cmd: int, data: bytes) -> bytes:
     """Build a generic TOYOPUC command frame."""
-    length = 1 + len(data)  # CMD + data
+    if isinstance(cmd, bool) or not isinstance(cmd, int) or not 0 <= cmd <= 0xFF:
+        raise ValueError("cmd must be an integer in the range 0..255")
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("data must be an explicit bytes-like value")
+    payload = bytes(data)
+    length = 1 + len(payload)  # CMD + data
+    if length > 0xFFFF:
+        raise ValueError("command payload is too large for the 16-bit frame length")
     ll = length & 0xFF
-    lh = (length >> 8) & 0xFF
-    return bytes([FT_COMMAND, 0x00, ll, lh, cmd]) + data
+    lh = length >> 8
+    return bytes([FT_COMMAND, 0x00, ll, lh, cmd]) + payload
 
 
 def parse_response(frame: bytes) -> ResponseFrame:
@@ -415,7 +438,8 @@ def parse_response(frame: bytes) -> ResponseFrame:
 def pack_u16_le(value: int) -> bytes:
     """Pack one unsigned 16-bit integer in little-endian order."""
 
-    return bytes([value & 0xFF, (value >> 8) & 0xFF])
+    normalized = _require_uint("unsigned 16-bit value", value, 0xFFFF)
+    return bytes([normalized & 0xFF, (normalized >> 8) & 0xFF])
 
 
 def unpack_u16_le(data: bytes) -> list[int]:
@@ -594,7 +618,7 @@ def build_byte_read(addr: int, count: int) -> bytes:
 def build_byte_write(addr: int, values: Iterable[int]) -> bytes:
     """Build ``CMD=1F`` continuous byte-write command."""
 
-    vals = bytes(values)
+    vals = bytes(_require_uint("byte value", value, 0xFF) for value in values)
     _require_count("CMD=1F byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     return build_command(0x1F, pack_u16_le(addr) + vals)
 
@@ -608,7 +632,8 @@ def build_bit_read(addr: int) -> bytes:
 def build_bit_write(addr: int, value: int) -> bytes:
     """Build ``CMD=21`` single bit-write command."""
 
-    return build_command(0x21, pack_u16_le(addr) + bytes([1 if value else 0]))
+    normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+    return build_command(0x21, pack_u16_le(addr) + bytes([normalized]))
 
 
 def build_multi_word_read(addrs: Iterable[int]) -> bytes:
@@ -643,7 +668,7 @@ def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
 
     items = list(pairs)
     _require_count("CMD=25 multi-byte-write", len(items), _BASIC_MULTI_MAX_POINTS)
-    data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in items)
+    data = b"".join(pack_u16_le(a) + bytes([_require_uint("byte value", v, 0xFF)]) for a, v in items)
     return build_command(0x25, data)
 
 
@@ -673,7 +698,7 @@ def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
     """Build ``CMD=97`` extended byte-write command."""
 
-    vals = bytes(values)
+    vals = bytes(_require_uint("byte value", value, 0xFF) for value in values)
     _require_count("CMD=97 ext-byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + vals
     return build_command(0x97, data)
@@ -714,11 +739,12 @@ def build_ext_multi_write(
     for no, bit, addr, value in bit_points:
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
-        data.extend([value & 0x01])
+        normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+        data.extend([normalized])
     for no, addr, value in byte_points:
         data.extend([no & 0xFF])
         data.extend(pack_u16_le(addr))
-        data.extend([value & 0xFF])
+        data.extend([_require_uint("byte value", value, 0xFF)])
     for no, addr, value in word_points:
         data.extend([no & 0xFF])
         data.extend(pack_u16_le(addr))
@@ -800,16 +826,17 @@ def _frame_to_inner_payload(frame: bytes) -> bytes:
     return frame[2:]
 
 
-def build_relay_command(link_no: int, station_no: int, inner_payload: bytes, *, enq: int = 0x05) -> bytes:
+def build_relay_command(link_no: int, station_no: int, inner_payload: bytes) -> bytes:
     """Build a single-hop relay command (`CMD=60`)."""
+    link_no, station_no = _validate_relay_hop(link_no, station_no)
     inner = _normalize_inner_payload(inner_payload)
     data = (
         bytes(
             [
-                link_no & 0xFF,
+                link_no,
                 station_no & 0xFF,
-                (station_no >> 8) & 0xFF,
-                enq & 0xFF,
+                station_no >> 8,
+                0x05,
             ]
         )
         + inner
@@ -824,9 +851,10 @@ def build_relay_nested(hops: Sequence[tuple[int, int]], inner_payload: bytes) ->
     hops = list(hops)
     if not hops:
         raise ValueError("at least one relay hop is required")
+    validated_hops = [_validate_relay_hop(link, station) for link, station in hops]
     inner = _normalize_inner_payload(inner_payload)
     frame: bytes | None = None
-    for link_no, station_no in reversed(hops):
+    for link_no, station_no in reversed(validated_hops):
         frame = build_relay_command(link_no, station_no, inner)
         inner = _frame_to_inner_payload(frame)
     assert frame is not None

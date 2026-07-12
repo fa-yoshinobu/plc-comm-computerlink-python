@@ -1033,10 +1033,10 @@ class ToyopucDeviceCatalog:
 
     @staticmethod
     def _can_resolve(device: str, options: ToyopucAddressingOptions, profile: str) -> bool:
-        from .high_level import resolve_device
+        from .high_level import _resolve_device_unbound
 
         try:
-            resolve_device(device, options=options, profile=profile)
+            _resolve_device_unbound(device, options=options, profile=profile)
             return True
         except Exception:
             return False

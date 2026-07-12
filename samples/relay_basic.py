@@ -56,7 +56,7 @@ def main() -> int:
             "--mode word-read --device P1-D0000 --count 4\n"
             "  python samples/relay_basic.py --host 192.168.250.100 --port 1035 "
             '--protocol udp --local-port 12000 --profile toyopuc:nano-10gx:compatible --hops "P1-L2:N2" '
-            "--mode fr-write --device FR000000 --value 0x1234 --commit --wait"
+            "--mode fr-write --device FR000000 --value 0x1234 --commit"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -93,7 +93,6 @@ def main() -> int:
         help="ISO datetime for --mode clock-write",
     )
     p.add_argument("--commit", action="store_true", help="commit FR write after RAM update")
-    p.add_argument("--wait", action="store_true", help="wait for FR commit completion")
     args = p.parse_args()
 
     with ToyopucDeviceClient(
@@ -130,7 +129,7 @@ def main() -> int:
             clock = plc.relay_read_clock(args.hops)
             print("clock raw =", clock)
             try:
-                print("clock datetime =", clock.as_datetime())
+                print("clock datetime =", clock.as_datetime(year_base=2000))
             except ValueError as exc:
                 print("clock datetime unavailable:", exc)
             return 0
@@ -138,12 +137,12 @@ def main() -> int:
         if args.mode == "clock-write":
             if args.clock_value is None:
                 raise SystemExit("--mode clock-write requires --clock-value 2026-03-10T12:34:56")
-            plc.relay_write_clock(args.hops, args.clock_value)
+            plc.relay_write_clock(args.hops, args.clock_value, year_base=2000)
             readback = plc.relay_read_clock(args.hops)
             print("clock write value =", args.clock_value.isoformat(sep=" "))
             print("clock readback =", readback)
             try:
-                print("clock readback datetime =", readback.as_datetime())
+                print("clock readback datetime =", readback.as_datetime(year_base=2000))
             except ValueError as exc:
                 print("clock readback datetime unavailable:", exc)
             return 0
@@ -170,25 +169,21 @@ def main() -> int:
         if args.mode == "fr-write":
             if args.count != 1:
                 raise SystemExit("--mode fr-write currently requires --count 1")
-            plc.relay_write_fr(
-                args.hops,
-                args.device,
-                args.value,
-                commit=args.commit,
-                wait=args.wait or args.commit,
-            )
+            plc.relay_write_fr(args.hops, args.device, args.value)
+            if args.commit:
+                plc.relay_commit_fr(args.hops, args.device)
             fr_readback = plc.relay_read_fr(args.hops, args.device, count=1)
             print("fr write device =", args.device)
             print("fr write value =", f"0x{args.value & 0xFFFF:04X}")
             print("fr commit =", args.commit)
-            print("fr readback =", f"0x{fr_readback:04X}")
+            print("fr readback =", f"0x{fr_readback[0]:04X}")
             return 0
 
         if args.mode == "fr-commit":
-            plc.relay_commit_fr(args.hops, args.device, count=args.count, wait=args.wait)
+            if args.count != 1:
+                raise SystemExit("--mode fr-commit accepts exactly one explicit block")
+            plc.relay_commit_fr(args.hops, args.device)
             print("fr commit device =", args.device)
-            print("fr commit count =", args.count)
-            print("fr commit wait =", args.wait)
             return 0
 
         values = plc.relay_read_words(args.hops, args.device, count=args.count)
