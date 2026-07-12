@@ -19,8 +19,8 @@ Acceptance criteria:
 - [x] Tests cover constructor/options/factory boundaries.
 - [x] `release_check.bat` passed Ruff, format, mypy, sample/script compilation, API docs, 233 tests, canonical profile parity, PyPI identity, and CLI packaging after the final diff.
 - [x] Codex reviewed public signatures, sample/config parsing, and the no-fallback source scan.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and affected checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and affected checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] No live communication is required for local endpoint validation; no PLC communication was performed.
 - [x] Documentation, changelog, samples, and API coverage agree.
 - [ ] Final cross-language acceptance verified.
@@ -42,8 +42,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full static, unit, example, build, and package checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and affected checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and affected checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; UDP bind-0, assigned source port, fixed-port collision, and TCP rejection are covered by local socket fixtures without claiming PLC compatibility).
 - [x] Documentation, migration notes, changelog, samples, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -64,8 +64,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; required transport parsing and pre-socket rejection are deterministic constructor/factory behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -86,8 +86,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; timeout default/validation and per-attempt session disposal are covered by deterministic local timeout fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -111,8 +111,8 @@ Acceptance criteria:
 - [x] Tests cover retry eligibility, connect retry, state-changing no-retry behavior, and worker termination on cancellation.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; retry eligibility, send-count boundaries, delay, cancellation, and no-retry state transitions are covered by fault-injected transports).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -133,8 +133,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; full-datagram receive and truncation/length handling are covered by local UDP fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -156,8 +156,8 @@ Acceptance criteria:
 - [x] Tests cover callback exception isolation, ordering, immutable frame copies, and slow-callback non-blocking behavior.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; diagnostic copy ownership, ordering, exception isolation, and timing isolation do not depend on PLC behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -179,8 +179,8 @@ Acceptance criteria:
 - [x] Tests cover required profile selection, bound objects, and cross-profile rejection before transport.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; canonical profile derivation, profile-bound object identity, and pre-transport mismatch rejection are deterministic resolver/vector properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -203,8 +203,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; named-type grammar, width/range validation, and result decoding are covered by parser and protocol fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -229,8 +229,8 @@ Acceptance criteria:
 - [x] Tests cover scalar/list shape, invalid counts, boundaries, and zero-send rejection.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; scalar/list return shape, count limits, one-request enforcement, and zero-send rejection are deterministic API/mock-transport properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -253,8 +253,8 @@ Acceptance criteria:
 - [x] Tests cover strict counts, block crossing, zero-send rejection, and removed options/helpers.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; Dword/float conversion, block/limit validation, and one-request/no-partial-write behavior are covered by exact frame and send-count fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -278,8 +278,8 @@ Acceptance criteria:
 - [x] Tests cover validation, exact frame bytes, explicit empty payload, oversize rejection, and no retry.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; maintainer-only visibility, raw payload validation, exact frame construction, and post-send no-retry are deterministic).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -303,8 +303,8 @@ Acceptance criteria:
 - [x] Tests cover boundary/limit rejection, strict FR value domains, sync/async direct/relay zero-send rejection, and removed public surfaces.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-12): Ruff, format, mypy, API coverage, 233 tests, all samples/scripts, PyInstaller, canonical profile fixture, and PyPI identity check.
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [ ] Live-PLC work-area and durability checks remain unverified and require item-level release disposition.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -331,8 +331,8 @@ Acceptance criteria:
 - [x] Tests cover exact CA frame, alignment rejection, fixed return behavior, and removed surfaces.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [ ] Live-PLC CA acceptance/durability checks remain unverified and require item-level release disposition.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -352,8 +352,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; fixed hexadecimal parsing, normalization, formatting, and wire round trips are deterministic vectors).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -374,8 +374,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [ ] Live-PLC clock-write check remains unverified and requires release disposition.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -398,8 +398,8 @@ Acceptance criteria:
 - [x] Tests cover the acceptance criteria.
 - [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
-- [ ] Claude review completed (`pending user authorization`).
-- [ ] Claude findings dispositioned and checks rerun.
+- [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
+- [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [ ] Live-PLC relay-route checks remain unverified and require release disposition.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
@@ -430,11 +430,38 @@ No command below is authorized merely by appearing here. Confirm the currently c
 
 If hardware is unavailable, each item needs an explicit release disposition. The proposed dispositions are recorded in workspace `quality_overhaul_goal_20260711.md`; no proposal is approved merely by being documented.
 
-## Claude review package status
+## Claude review batch `CLAUDE-CL-20260712-01`
 
-- [x] Review package prepared; Claude was not invoked.
-- [ ] Present the proposed Claude batch to the user and wait for explicit authorization.
-- [ ] Run Claude only after that authorization, preserve findings, classify each finding, correct accepted findings, and rerun affected checks.
+- [x] Review package prepared and explicit user authorization obtained for this batch.
+- [x] Claude independently reviewed the stated Python/.NET diff read-only; the result is preserved in workspace `claude_review_result_computerlink_20260712.md`.
+- [x] Codex independently reproduced and accepted all eleven findings; no finding was rejected, duplicated, or deferred.
+- [x] Accepted findings were corrected with deterministic regression coverage.
+- [x] Final full release checks and post-fix Codex diff review recorded (251 tests and complete `release_check.bat`, 2026-07-12).
+
+Finding dispositions:
+
+| Finding | Disposition and acceptance evidence |
+| --- | --- |
+| 1 | Accepted. FR/dword/float/word helper paths use strict unsigned value validation, restore the dedicated FR work-area route, and reject coercion before transport. |
+| 2 | Accepted. Sequence `write` and `relay_write` compile one batch request or reject before send; no element loop remains. |
+| 3 | Accepted. Each async worker call owns a start/cancel state; canceling a queued call cancels only that future and does not close the running call's socket. |
+| 4 | Accepted, .NET scope. Typed U/S/D/L/F validation and finite float32 reads are aligned with Python. |
+| 5 | Accepted as a contract completion. Generic bit/byte/word/dword writes reject truth conversion, masking, fractional conversion, numeric strings, and out-of-range values. |
+| 6 | Accepted with stronger correction. UDP sockets connect to the configured endpoint. A fixed-local-port UDP session becomes terminal after an uncertain post-send transport failure because same-endpoint stale responses cannot be identified without a protocol serial. |
+| 7 | Accepted. Python exposes `ToyopucOperationOutcomeUnknownError` for state-changing post-send timeout/disconnect/cancellation. |
+| 8 | Accepted. Relay reads may retry retry-required outer response `0x73`; relay state-changing operations do not retry after send. |
+| 9 | Accepted, .NET scope. Timeout and retry-delay values exceeding `int.MaxValue` milliseconds fail during configuration. |
+| 10 | Accepted. The polling example uses a required named dtype. |
+| 11 | Accepted. Python direct/relay read/write collection APIs reject empty inputs before transport, matching .NET. |
+
+Machine-verifiable acceptance criteria for the Claude corrections:
+
+1. Invalid bit/byte/word/dword/float/FR values and empty collections send zero requests in both affected implementations.
+2. One public sequence write produces exactly one protocol request or fails before transport.
+3. Canceling a queued Python async call does not cancel, close, or alter the running call and the queued call sends zero requests.
+4. State-changing Python post-send failure has a distinct unknown-outcome exception; relay reads and writes retain different retry eligibility.
+5. UDP accepts only the configured endpoint, and a fixed-port session cannot issue another request after an uncertain post-send transport failure.
+6. Source, tests, samples, generated/public API documentation, changelog, and maintainer records pass each repository's full release check.
 
 Prepared batch scope: all changes on `quality/2026-07-overhaul` relative to its merge base, with emphasis on `toyopuc/client.py`, `toyopuc/high_level.py`, async wrappers, transport/retry/cancellation state, generated/public API surface, D-066 through D-084 tests and documentation, and the 2026-07-12 strict FR-value correction.
 

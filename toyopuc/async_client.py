@@ -5,9 +5,11 @@ import functools
 import weakref
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from typing import Any
 
 from .client import ToyopucClient
+from .errors import ToyopucOperationOutcomeUnknownError
 from .high_level import ToyopucDeviceClient
 
 
@@ -37,22 +39,40 @@ class _AsyncToyopucClientBase:
     async def _run_sync_in_worker(self, func: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
         loop = asyncio.get_running_loop()
         call = functools.partial(func, *args, **kwargs)
+        started = Event()
+
+        def invoke() -> Any:
+            started.set()
+            return call()
+
         executor = self.__dict__.get("_executor")
+        owns_executor = False
         if executor is None:
-            future = loop.run_in_executor(None, call)
-        else:
-            future = loop.run_in_executor(executor, call)
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=type(self).__name__)
+            owns_executor = True
+        concurrent_future = executor.submit(invoke)
+        future = asyncio.wrap_future(concurrent_future, loop=loop)
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError:
+            if concurrent_future.cancel():
+                raise
+            if concurrent_future.done():
+                raise
             self._client._cancel_pending_operation()
+            worker_error: Exception | None = None
             try:
                 await asyncio.shield(future)
-            except Exception:
-                pass
+            except Exception as exc:
+                worker_error = exc
             finally:
                 self._client._clear_operation_cancel()
+            if isinstance(worker_error, ToyopucOperationOutcomeUnknownError):
+                raise worker_error from None
             raise
+        finally:
+            if owns_executor:
+                executor.shutdown(wait=False, cancel_futures=True)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)

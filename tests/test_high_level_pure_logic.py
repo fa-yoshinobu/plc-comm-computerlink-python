@@ -75,9 +75,13 @@ def test_pc10_multi_word_payloads_pack_counts_addresses_and_values() -> None:
         "00 00 03 0000 00 10 0002 00 10 0000 00 40 00"
     )
 
-    assert _pack_pc10_multi_word_payload(
-        [(0x00100000, 0x1234), (0x00100002, 0xFFFF), (0x00400000, 0x10000), (0x00400002, -1)]
-    ) == bytes.fromhex("00 00 04 0000 00 10 0002 00 10 0000 00 40 0002 00 40 0034 12 ff ff 00 00 ff ff")
+    assert _pack_pc10_multi_word_payload([(0x00100000, 0x1234), (0x00100002, 0xFFFF)]) == bytes.fromhex(
+        "00 00 02 0000 00 10 0002 00 10 0034 12 ff ff"
+    )
+    with pytest.raises(ValueError):
+        _pack_pc10_multi_word_payload([(0x00400000, 0x10000)])
+    with pytest.raises(ValueError):
+        _pack_pc10_multi_word_payload([(0x00400002, -1)])
 
 
 def test_pc10_payload_helpers_reject_count_wrap_and_oversized_writes() -> None:

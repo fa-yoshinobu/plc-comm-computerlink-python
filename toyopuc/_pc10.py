@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .client import ToyopucClient
+from .client import ToyopucClient, _normalize_bit_value, _normalize_word_values
 from .errors import ToyopucProtocolError
 
 _PC10_MULTI_READ_MAX_POINTS = 0x7F
@@ -68,7 +68,8 @@ def _read_pc10_block_word(client: ToyopucClient, addr32: int) -> int:
 
 
 def _write_pc10_block_word(client: ToyopucClient, addr32: int, value: int) -> None:
-    client.pc10_block_write(addr32, int(value & 0xFFFF).to_bytes(2, "little"))
+    normalized = _normalize_word_values([value])[0]
+    client.pc10_block_write(addr32, normalized.to_bytes(2, "little"))
 
 
 def _pack_pc10_multi_bit_payload(addr32_values: Sequence[tuple[int, int]]) -> bytes:
@@ -77,7 +78,7 @@ def _pack_pc10_multi_bit_payload(addr32_values: Sequence[tuple[int, int]]) -> by
         payload.extend(addr32.to_bytes(4, "little"))
     bit_bytes = bytearray((len(addr32_values) + 7) // 8)
     for i, (_, value) in enumerate(addr32_values):
-        if int(value) & 0x01:
+        if _normalize_bit_value(value):
             bit_bytes[i // 8] |= 1 << (i % 8)
     payload.extend(bit_bytes)
     _require_pc10_multi_write_payload(payload)
@@ -90,7 +91,8 @@ def _pack_pc10_multi_word_payload(addr32_values: Sequence[tuple[int, int]]) -> b
     for i, (addr32, _) in enumerate(addr32_values):
         payload[4 + i * 4 : 8 + i * 4] = addr32.to_bytes(4, "little")
     values_offset = 4 + len(addr32_values) * 4
-    for i, (_, value) in enumerate(addr32_values):
-        payload[values_offset + i * 2 : values_offset + i * 2 + 2] = int(value & 0xFFFF).to_bytes(2, "little")
+    values = _normalize_word_values(value for _, value in addr32_values)
+    for i, value in enumerate(values):
+        payload[values_offset + i * 2 : values_offset + i * 2 + 2] = value.to_bytes(2, "little")
     _require_pc10_multi_write_payload(payload)
     return bytes(payload)

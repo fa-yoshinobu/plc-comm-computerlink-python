@@ -26,6 +26,12 @@ def _require_count(label: str, count: int, max_count: int) -> int:
     return n
 
 
+def _require_uint(label: str, value: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+        raise ValueError(f"{label} must be an integer in the range 0..{maximum}")
+    return value
+
+
 def _require_length(label: str, length: int, max_length: int) -> None:
     if length < 1 or length > max_length:
         raise ValueError(f"{label} length must be 1..0x{max_length:X} ({max_length}) bytes")
@@ -432,7 +438,8 @@ def parse_response(frame: bytes) -> ResponseFrame:
 def pack_u16_le(value: int) -> bytes:
     """Pack one unsigned 16-bit integer in little-endian order."""
 
-    return bytes([value & 0xFF, (value >> 8) & 0xFF])
+    normalized = _require_uint("unsigned 16-bit value", value, 0xFFFF)
+    return bytes([normalized & 0xFF, (normalized >> 8) & 0xFF])
 
 
 def unpack_u16_le(data: bytes) -> list[int]:
@@ -611,7 +618,7 @@ def build_byte_read(addr: int, count: int) -> bytes:
 def build_byte_write(addr: int, values: Iterable[int]) -> bytes:
     """Build ``CMD=1F`` continuous byte-write command."""
 
-    vals = bytes(values)
+    vals = bytes(_require_uint("byte value", value, 0xFF) for value in values)
     _require_count("CMD=1F byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     return build_command(0x1F, pack_u16_le(addr) + vals)
 
@@ -625,7 +632,8 @@ def build_bit_read(addr: int) -> bytes:
 def build_bit_write(addr: int, value: int) -> bytes:
     """Build ``CMD=21`` single bit-write command."""
 
-    return build_command(0x21, pack_u16_le(addr) + bytes([1 if value else 0]))
+    normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+    return build_command(0x21, pack_u16_le(addr) + bytes([normalized]))
 
 
 def build_multi_word_read(addrs: Iterable[int]) -> bytes:
@@ -660,7 +668,7 @@ def build_multi_byte_write(pairs: Iterable[tuple[int, int]]) -> bytes:
 
     items = list(pairs)
     _require_count("CMD=25 multi-byte-write", len(items), _BASIC_MULTI_MAX_POINTS)
-    data = b"".join(pack_u16_le(a) + bytes([v & 0xFF]) for a, v in items)
+    data = b"".join(pack_u16_le(a) + bytes([_require_uint("byte value", v, 0xFF)]) for a, v in items)
     return build_command(0x25, data)
 
 
@@ -690,7 +698,7 @@ def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
     """Build ``CMD=97`` extended byte-write command."""
 
-    vals = bytes(values)
+    vals = bytes(_require_uint("byte value", value, 0xFF) for value in values)
     _require_count("CMD=97 ext-byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
     data = bytes([no & 0xFF]) + pack_u16_le(addr) + vals
     return build_command(0x97, data)
@@ -731,11 +739,12 @@ def build_ext_multi_write(
     for no, bit, addr, value in bit_points:
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
-        data.extend([value & 0x01])
+        normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+        data.extend([normalized])
     for no, addr, value in byte_points:
         data.extend([no & 0xFF])
         data.extend(pack_u16_le(addr))
-        data.extend([value & 0xFF])
+        data.extend([_require_uint("byte value", value, 0xFF)])
     for no, addr, value in word_points:
         data.extend([no & 0xFF])
         data.extend(pack_u16_le(addr))

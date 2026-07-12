@@ -231,7 +231,7 @@ async def write_words_single_request(
     sync_client = cast(Any, client._client)
     runner = cast(Any, client._run_sync_in_worker)
     resolved = sync_client.resolve_device(device)
-    await runner(sync_client._write_resolved_word_values, resolved, [int(v) & 0xFFFF for v in values])
+    await runner(sync_client._write_resolved_word_values, resolved, values)
 
 
 async def write_dwords_single_request(
@@ -245,7 +245,7 @@ async def write_dwords_single_request(
     silently enable splitting.
     """
 
-    await client.write_dwords(device, [int(value) & 0xFFFFFFFF for value in values])
+    await client.write_dwords(device, values)
 
 
 async def read_words(
@@ -561,7 +561,7 @@ async def poll(
 
     Usage::
 
-        async for snapshot in poll(client, ["P1-D0100"], interval=1.0):
+        async for snapshot in poll(client, ["P1-D0100:U"], interval=1.0):
             print(snapshot)
     """
     while True:

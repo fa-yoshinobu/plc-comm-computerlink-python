@@ -33,7 +33,7 @@ from .address import (
 )
 from .async_client import AsyncToyopucClient, AsyncToyopucDeviceClient
 from .client import ToyopucClient
-from .errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
+from .errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
 from .high_level import ResolvedDevice, ToyopucDeviceClient, resolve_device
 from .profiles import (
     ToyopucAddressRange,
@@ -79,6 +79,7 @@ __all__ = [
     "CpuStatusData",
     "RelayLayer",
     "ToyopucError",
+    "ToyopucOperationOutcomeUnknownError",
     "ToyopucProtocolError",
     "ToyopucTimeoutError",
     "ToyopucConnectionOptions",

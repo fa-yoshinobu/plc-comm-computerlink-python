@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library: Removed public chunking helpers and the `atomic_transfer` option. Dword and float arrays now require one protocol request and reject boundary or limit overflow before communication.
 - Library: Removed FR write/commit combination, range commit, wait/poll helpers, and raw FR-register methods. FR work-area writes and one-block commits are separate operations.
 - Library: FR work-area word values require actual integers in `0..65535`; negative, overflowing, Boolean, fractional, and string values are rejected before transport instead of being coerced or masked.
+- Library: Generic bit/byte/word/dword writes reject masking and coercion; sequence writes use one request or fail before transport, and empty collections are invalid.
+- Library: Added `ToyopucOperationOutcomeUnknownError` for state-changing requests that may have reached the PLC before timeout, disconnect, or cancellation.
+- Library: UDP sockets are connected to the configured PLC endpoint. A fixed-local-port UDP client becomes terminal after an uncertain post-send failure because Computerlink cannot identify stale same-endpoint responses.
+- Library: Relay reads retry the retry-required outer response when configured; relay writes remain non-retryable after send.
 - Library: Retries now apply to pre-send connection failures and approved reads only; async cancellation interrupts the synchronous worker and waits for it to finish before returning.
 - Library: Removed public trace callback configuration and isolated the maintainer callback on a bounded background queue so callback delay or failure cannot alter communication.
 - Library: Bound resolved and parsed address objects to one canonical PLC profile, removed public addressing-option overrides, and reject cross-profile object reuse.

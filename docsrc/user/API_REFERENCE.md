@@ -61,7 +61,7 @@ Every array method is one protocol request; no public chunking or
 | Device range catalog | `ToyopucDeviceCatalog`, `ToyopucAreaDescriptor`, `ToyopucAddressRange`, `ToyopucDeviceMatrixRow` |
 | Relay helpers | `RelayLayer`, `parse_relay_hops`, `normalize_relay_hops`, `format_relay_hop` |
 | Parsed payload types | `ClockData`, `CpuStatusData` |
-| Errors | `ToyopucError`, `ToyopucProtocolError`, `ToyopucTimeoutError` |
+| Errors | `ToyopucError`, `ToyopucProtocolError`, `ToyopucTimeoutError`, `ToyopucOperationOutcomeUnknownError` |
 
 ## Public Symbol Index
 
@@ -72,6 +72,7 @@ The package exports these public names from `toyopuc.__all__`:
 `ToyopucAddressRange`, `ToyopucAreaDescriptor`,
 `ToyopucClient`, `ToyopucConnectionOptions`, `ToyopucDeviceCatalog`,
 `ToyopucDeviceClient`, `ToyopucDeviceMatrixRow`, `ToyopucError`,
+`ToyopucOperationOutcomeUnknownError`,
 `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucPlcProfiles`, `ToyopucProtocolError`,
 `ToyopucTimeoutError`,
 `display_name`, `encode_bit_address`, `encode_byte_address`,

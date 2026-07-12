@@ -115,7 +115,7 @@ class _NoIoHighLevelClient(ToyopucDeviceClient):
         super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.send_count = 0
 
-    def _send_and_recv(self, payload: bytes, *, retryable: bool = False):
+    def _send_and_recv(self, payload: bytes, *, retryable: bool = False, state_changing: bool = False):
         self.send_count += 1
         raise AssertionError("validation must reject before transport")
 
@@ -133,7 +133,7 @@ class _CommitCaptureClient(ToyopucDeviceClient):
         super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
         self.payloads: list[bytes] = []
 
-    def _send_and_recv(self, payload: bytes, *, retryable: bool = False):
+    def _send_and_recv(self, payload: bytes, *, retryable: bool = False, state_changing: bool = False):
         self.payloads.append(payload)
         return SimpleNamespace(cmd=0xCA)
 
@@ -148,6 +148,54 @@ def test_low_level_32bit_helpers_use_low_word_first() -> None:
 
     client.write_dword(0x1100, 0x12345678)
     assert client.word_writes[-1] == (0x1100, [0x5678, 0x1234])
+
+
+@pytest.mark.parametrize("value", [-1, 0x100000000, True, 1.5, "1"])
+def test_dword_writes_reject_coercion_before_transport(value: object) -> None:
+    client = _NoIoHighLevelClient()
+
+    with pytest.raises(ValueError):
+        client.write_dwords("FR000000", [value])  # type: ignore[list-item]
+
+    assert client.send_count == 0
+
+
+@pytest.mark.parametrize(
+    ("device", "value"),
+    [
+        ("M0000", 2),
+        ("M0000", "1"),
+        ("B0000", -1),
+        ("B0000", 0x10000),
+        ("U0000L", 256),
+        ("B0000", True),
+        ("B0000", 1.5),
+    ],
+)
+def test_generic_writes_reject_masking_and_coercion_before_transport(device: str, value: object) -> None:
+    client = _NoIoHighLevelClient()
+
+    with pytest.raises(ValueError):
+        client.write(device, value)
+
+    assert client.send_count == 0
+
+
+def test_sequence_write_uses_one_batch_request_and_empty_collections_fail() -> None:
+    client = _DummyHighLevelClient()
+
+    client.write("B0000", [1, 2, 3])
+
+    assert len(client.word_writes) == 1
+    assert client.word_writes[0][1] == [1, 2, 3]
+    with pytest.raises(ValueError):
+        client.read_devices([])
+    with pytest.raises(ValueError):
+        client.write_many({})
+    with pytest.raises(ValueError):
+        client.relay_read_devices("P1-L2:N2", [])
+    with pytest.raises(ValueError):
+        client.relay_write_many("P1-L2:N2", {})
 
     client.write_float32(0x1100, 1.5)
     assert client.word_writes[-1] == (0x1100, [0x0000, 0x3FC0])

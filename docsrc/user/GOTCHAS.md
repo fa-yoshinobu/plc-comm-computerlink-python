@@ -27,6 +27,25 @@ if __name__ == "__main__":
 | --- | --- |
 | A contiguous or multi-device operation can require multiple protocol requests, incompatible protocol groups, or a PC10 block boundary crossing. | `read`, `read_devices`, and `write_many` reject those cases before communication. Split the operation into separate explicit calls only when different acquisition times or partial completion are acceptable. |
 
+## Symptom: a write value is rejected instead of truncated
+
+This is intentional. Bit writes accept only `bool`, `0`, or `1`; byte writes
+accept integers in `0..255`; word writes accept integers in `0..65535`; and
+dword writes accept integers in `0..4294967295`. Boolean values are not word
+or dword integers. Fractional values and numeric strings are never converted.
+
+## Symptom: a fixed-port UDP client cannot reconnect after a timeout
+
+A connected UDP socket accepts datagrams only from its configured PLC endpoint.
+However, Computerlink has no request serial that can distinguish a late response
+from a later request to the same endpoint. After a request may have been sent and
+a fixed-local-port UDP session times out or fails, that client instance is
+terminal. Create a new client only after the network can no longer contain the
+late response; prefer `local_port=0` unless a fixed source port is required.
+
+When a state-changing request may already have reached the PLC, Python raises
+`ToyopucOperationOutcomeUnknownError`. Reconcile PLC state before retrying.
+
 ## Symptom: `read_named(["P1-D0000", "P1-D0001"])` is rejected
 
 | Root cause | Fix |
