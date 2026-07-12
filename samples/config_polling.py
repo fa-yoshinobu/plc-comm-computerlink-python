@@ -184,9 +184,12 @@ def build_plan(config_path: Path, args: argparse.Namespace) -> PollingPlan:
     defaults = as_mapping(data.get("defaults", {}), field_name="defaults")
     output = as_mapping(data.get("output", {}), field_name="output")
 
-    default_transport = parse_transport(str(defaults.get("transport", "tcp")))
-    default_port = defaults.get("port", 1025)
-    if not isinstance(default_port, int):
+    default_transport_raw = defaults.get("transport")
+    if default_transport_raw is not None and not isinstance(default_transport_raw, str):
+        raise SystemExit("defaults.transport must be tcp or udp")
+    default_transport = parse_transport(default_transport_raw) if default_transport_raw is not None else None
+    default_port = defaults.get("port")
+    if default_port is not None and (isinstance(default_port, bool) or not isinstance(default_port, int)):
         raise SystemExit("defaults.port must be an integer")
     default_local_port = optional_non_negative_int(defaults, "local_port", 0)
     default_timeout = optional_float(defaults, "timeout", 3.0)
@@ -205,15 +208,18 @@ def build_plan(config_path: Path, args: argparse.Namespace) -> PollingPlan:
         if not isinstance(name, str) or not isinstance(host, str) or not isinstance(profile, str):
             raise SystemExit(f"plcs[{index}] requires string name, host, and plc_profile")
         port = plc.get("port", default_port)
-        if not isinstance(port, int):
-            raise SystemExit(f"plcs[{index}].port must be an integer")
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise SystemExit(f"plcs[{index}].port is required and must be an integer in range 1..65535")
+        transport = plc.get("transport", default_transport)
+        if transport is None:
+            raise SystemExit(f"plcs[{index}].transport is required and must be tcp or udp")
         endpoints.append(
             PlcEndpoint(
                 name=name,
                 host=host,
                 plc_profile=profile,
                 port=port,
-                transport=parse_transport(str(plc.get("transport", default_transport))),
+                transport=parse_transport(str(transport)),
                 local_port=optional_non_negative_int(plc, "local_port", default_local_port),
                 timeout=optional_float(plc, "timeout", default_timeout),
                 interval=optional_float(plc, "interval", default_interval),

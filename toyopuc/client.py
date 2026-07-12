@@ -143,6 +143,17 @@ def _validate_fr_block_start(index: int) -> int:
     return block_start
 
 
+def _normalize_fr_word_values(values: Iterable[int]) -> list[int]:
+    normalized: list[int] = []
+    for value in values:
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFF:
+            raise ValueError("FR word values must be integers in the range 0..65535")
+        normalized.append(value)
+    if not normalized:
+        raise ValueError("values must contain at least one word")
+    return normalized
+
+
 def _unpack_uint32_low_word_first_words(words: Iterable[int]) -> list[int]:
     items = [int(word) & 0xFFFF for word in words]
     if len(items) % 2 != 0:
@@ -732,9 +743,7 @@ class ToyopucClient:
         separately with an explicit block-start index when persistence is
         intended.
         """
-        vals = [int(v) & 0xFFFF for v in values]
-        if not vals:
-            raise ValueError("values must contain at least one word")
+        vals = _normalize_fr_word_values(values)
         start, _ = _validate_fr_single_request(index, len(vals))
         data = b"".join(v.to_bytes(2, "little") for v in vals)
         self.pc10_block_write(encode_fr_word_addr32(start), data)
@@ -891,9 +900,7 @@ class ToyopucClient:
         values: Iterable[int],
     ) -> None:
         """Update the remote FR work area with exactly one request."""
-        vals = [int(v) & 0xFFFF for v in values]
-        if not vals:
-            raise ValueError("values must contain at least one word")
+        vals = _normalize_fr_word_values(values)
         start, _ = _validate_fr_single_request(index, len(vals))
         data = b"".join(v.to_bytes(2, "little") for v in vals)
         resp = self.send_via_relay(hops, build_pc10_block_write(encode_fr_word_addr32(start), data))

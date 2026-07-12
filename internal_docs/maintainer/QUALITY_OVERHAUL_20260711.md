@@ -3,6 +3,28 @@
 This record preserves the approved target contracts for the breaking quality
 overhaul. A checked box requires recorded evidence; intent is not evidence.
 
+## D-001: Required destination port
+
+Scope: public clients/options/factory and every maintained runnable sample.
+
+Target: callers select a port in `1..65535`; omission or invalid input never becomes `1025`.
+
+Acceptance criteria:
+
+1. Every public connection path requires and validates port before socket use.
+2. Single-PLC samples require `--port`; multi-PLC/config samples require a per-endpoint or explicitly supplied common port.
+3. Source inspection finds no runnable `1025` port fallback.
+
+- [x] Implementation and sample migration completed.
+- [x] Tests cover constructor/options/factory boundaries.
+- [x] `release_check.bat` passed Ruff, format, mypy, sample/script compilation, API docs, 233 tests, canonical profile parity, PyPI identity, and CLI packaging after the final diff.
+- [x] Codex reviewed public signatures, sample/config parsing, and the no-fallback source scan.
+- [ ] Claude review completed (`pending user authorization`).
+- [ ] Claude findings dispositioned and affected checks rerun.
+- [x] No live communication is required for local endpoint validation; no PLC communication was performed.
+- [x] Documentation, changelog, samples, and API coverage agree.
+- [ ] Final cross-language acceptance verified.
+
 ## D-066: UDP local port
 
 Scope: synchronous and asynchronous clients, connection options, and factory.
@@ -22,7 +44,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and affected checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; UDP bind-0, assigned source port, fixed-port collision, and TCP rejection are covered by local socket fixtures without claiming PLC compatibility).
 - [x] Documentation, migration notes, changelog, samples, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -44,7 +66,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; required transport parsing and pre-socket rejection are deterministic constructor/factory behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -66,7 +88,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; timeout default/validation and per-attempt session disposal are covered by deterministic local timeout fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -91,7 +113,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; retry eligibility, send-count boundaries, delay, cancellation, and no-retry state transitions are covered by fault-injected transports).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -113,7 +135,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; full-datagram receive and truncation/length handling are covered by local UDP fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -136,7 +158,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; diagnostic copy ownership, ordering, exception isolation, and timing isolation do not depend on PLC behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -159,7 +181,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; canonical profile derivation, profile-bound object identity, and pre-transport mismatch rejection are deterministic resolver/vector properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -183,7 +205,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; named-type grammar, width/range validation, and result decoding are covered by parser and protocol fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -209,7 +231,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; scalar/list return shape, count limits, one-request enforcement, and zero-send rejection are deterministic API/mock-transport properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -233,7 +255,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; Dword/float conversion, block/limit validation, and one-request/no-partial-write behavior are covered by exact frame and send-count fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -258,7 +280,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; maintainer-only visibility, raw payload validation, exact frame construction, and post-send no-retry are deterministic).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -275,16 +297,19 @@ Acceptance criteria:
 1. One-block, within-limit work-area writes send exactly one C3 request and no CA request.
 2. Boundary/limit overflow sends zero requests.
 3. Combined and committed convenience APIs are absent.
+4. Every direct/relay and low/high-level FR word value is an integer in `0..65535`; Boolean, fractional, string, negative, and overflowing values fail before transport without masking or coercion.
 
 - [x] Implementation completed in this repository.
-- [x] Tests cover boundary/limit rejection and removed public surfaces.
-- [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-11).
+- [x] Tests cover boundary/limit rejection, strict FR value domains, sync/async direct/relay zero-send rejection, and removed public surfaces.
+- [x] Full checks passed after the final diff (`release_check.bat`, 2026-07-12): Ruff, format, mypy, API coverage, 233 tests, all samples/scripts, PyInstaller, canonical profile fixture, and PyPI identity check.
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
 - [ ] Live-PLC work-area and durability checks remain unverified and require item-level release disposition.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
+
+Self-review finding (2026-07-12): Python `write_fr_words` and `relay_write_fr_words` converted each input with `int(value) & 0xFFFF`, so invalid public values could become valid but different PLC values. The high-level FR methods also called `int(...)` before the low-level path. This was accepted as a contract violation, corrected with one shared strict FR-word validator, and covered for direct and relay paths before the final release check.
 
 ## D-081: One-block FR commit acceptance
 
@@ -327,7 +352,7 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [ ] Claude review completed (`pending user authorization`).
 - [ ] Claude findings dispositioned and checks rerun.
-- [ ] Live-PLC requirement dispositioned.
+- [x] Live-PLC requirement dispositioned (no live PLC required; fixed hexadecimal parsing, normalization, formatting, and wire round trips are deterministic vectors).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
 - [ ] Final acceptance verified.
 
@@ -379,11 +404,40 @@ Acceptance criteria:
 
 ## Current verification evidence
 
-- `release_check.bat`: passed on 2026-07-11.
+- `release_check.bat`: passed on 2026-07-12 after the strict FR-value correction.
 - Canonical profile fixture: unchanged against `plc-comm-computerlink-profiles` v1.0.1.
 - Ruff lint/format: passed; Mypy: passed for 13 source files.
 - Public API docstring coverage: 107 definitions and 164 methods.
-- Unit tests: `223 passed`; all maintained samples/scripts compiled.
+- Unit tests: `233 passed`; all maintained samples/scripts compiled.
 - PyInstaller CLI executable build: passed.
+- PyInstaller spec is generated under ignored `build/toyopuc.spec`; the final release check leaves no root-level `toyopuc.spec` artifact.
 - Claude: not invoked; explicit user authorization is required for each batch.
 - Live PLC: not invoked; exact test plan and user `OK` are required.
+
+## Deferred live verification TODO
+
+No command below is authorized merely by appearing here. Confirm the currently connected PLC and the physical route, present the selected exact row again, and wait for explicit user `OK` before communication.
+
+| ID | Exact candidate target | Operation and evidence | Restoration / risk | Status |
+|---|---|---|---|---|
+| D-080 | Nano 10GX TUC-1157; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1025` TCP; Direct; `FR000000` | Read original, write work-area value `0xE40F`, read it back, and prove one C3 request with no CA request. | Write the captured original back without commit and read it back. Current-build live result is unverified; 2026-06-12 C3 write/restore evidence exists. |
+| D-081 | Same target; `FR000000`, the first word of the 0x8000-word block | On a dedicated test PLC reset to a known no-pending-change state, write `0xE40F`, send exactly one CA, observe completion with an explicit status read, restart, and verify persistence. | Restore the captured original, send one CA, restart, and verify restoration. CA can persist every pending change in the block; individual discussion and explicit `OK` are mandatory. |
+| D-083 | Same target; PLC clock; Direct; `year_base=2000` | Read clock, write `2026-07-12 12:34:56`, then read and verify the explicit-century round trip. | Restore the original clock advanced by measured elapsed time. Clock-dependent operation may be affected; individual discussion and explicit `OK` are mandatory. |
+| D-084-A | Nano 10GX; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1035` UDP; local `12000`; `P1-L2:N2`; `P1-D0000` | Read original, write random test value `0x3DA4`, read back, and prove one-hop ENQ/response reaches the intended PLC. | Restore original and read back. Exact physical route and target PLC must first be confirmed. |
+| D-084-B | Same endpoint; `P1-L2:N2,P1-L2:N4`; `P1-D0000` | Read original, write random test value `0x7C93`, read back, and prove nested response handling reaches the intended final PLC. | Restore original and read back. Wrong-route writes are high risk; exact hop order and target PLC plus explicit `OK` are mandatory. |
+
+If hardware is unavailable, each item needs an explicit release disposition. The proposed dispositions are recorded in workspace `quality_overhaul_goal_20260711.md`; no proposal is approved merely by being documented.
+
+## Claude review package status
+
+- [x] Review package prepared; Claude was not invoked.
+- [ ] Present the proposed Claude batch to the user and wait for explicit authorization.
+- [ ] Run Claude only after that authorization, preserve findings, classify each finding, correct accepted findings, and rerun affected checks.
+
+Prepared batch scope: all changes on `quality/2026-07-overhaul` relative to its merge base, with emphasis on `toyopuc/client.py`, `toyopuc/high_level.py`, async wrappers, transport/retry/cancellation state, generated/public API surface, D-066 through D-084 tests and documentation, and the 2026-07-12 strict FR-value correction.
+
+Review purpose: independently identify contract violations, unsafe retry/cancellation transitions, hidden multi-request behavior, validation after transport, public compatibility remnants, direct/relay or sync/async divergence, FR/clock semantic errors, value coercion/masking, and missing tests.
+
+Inputs to provide after authorization: approved contracts and acceptance criteria in this file; repository diff; public API reference; final `release_check.bat` result; Ruff/format/mypy evidence; 233-test result; sample/script compilation and PyInstaller evidence; the self-review FR finding and correction; canonical profile parity; deferred live-verification scope.
+
+Expected output: findings only, each with severity, affected contract identifier, exact file/line evidence, failure scenario, recommended correction, and missing-test recommendation. A general quality score or approval is not a substitute for concrete findings.

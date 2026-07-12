@@ -839,9 +839,9 @@ class ToyopucDeviceClient(ToyopucClient):
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("write_fr() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
-            values = [int(item) for item in value]
+            values = list(value)
         else:
-            values = [int(value)]
+            values = [value]
         self.write_fr_words(resolved.index, values)
 
     def relay_write_fr(
@@ -855,9 +855,9 @@ class ToyopucDeviceClient(ToyopucClient):
         if resolved.area != "FR" or resolved.unit != "word":
             raise ValueError("relay_write_fr() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
-            values = [int(item) for item in value]
+            values = list(value)
         else:
-            values = [int(value)]
+            values = [value]
         self.relay_write_fr_words(hops, resolved.index, values)
 
     def commit_fr(

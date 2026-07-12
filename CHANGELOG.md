@@ -18,10 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### BREAKING
+- Samples: All runnable endpoint, multi-PLC, and configuration-driven samples require an explicit destination port and transport instead of defaulting to `1025`/TCP.
 - Library: Split scalar `read_one` / `relay_read_one` from count-required list reads; `count=1` now returns a list and all range reads reject implicit multi-request splitting.
 - Library: Renamed sparse `read_many` / `relay_read_many` to `read_devices` / `relay_read_devices` so contiguous and sparse semantics are not overloaded.
 - Library: Removed public chunking helpers and the `atomic_transfer` option. Dword and float arrays now require one protocol request and reject boundary or limit overflow before communication.
 - Library: Removed FR write/commit combination, range commit, wait/poll helpers, and raw FR-register methods. FR work-area writes and one-block commits are separate operations.
+- Library: FR work-area word values require actual integers in `0..65535`; negative, overflowing, Boolean, fractional, and string values are rejected before transport instead of being coerced or masked.
 - Library: Retries now apply to pre-send connection failures and approved reads only; async cancellation interrupts the synchronous worker and waits for it to finish before returning.
 - Library: Removed public trace callback configuration and isolated the maintainer callback on a bounded background queue so callback delay or failure cannot alter communication.
 - Library: Bound resolved and parsed address objects to one canonical PLC profile, removed public addressing-option overrides, and reject cross-profile object reuse.
@@ -30,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration: Replace `write_fr(..., commit=True)` with `write_fr(...)` followed by `commit_fr(block_start)`; use explicit CPU-status reads when completion monitoring is required.
 
 ### Tests
-- Tests: Added return-shape, strict count, request-boundary, Dword/float no-partial-transfer, FR single-request, explicit block commit, and removed-surface regression coverage.
+- Tests: Added return-shape, strict count, request-boundary, Dword/float no-partial-transfer, FR single-request and strict-value, explicit block commit, and removed-surface regression coverage.
+- CI: Write the generated PyInstaller spec under the ignored `build` directory so a successful release check does not leave a root-level untracked artifact.
 
 ## [3.1.0] - 2026-07-10
 

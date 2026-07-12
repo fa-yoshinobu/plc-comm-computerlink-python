@@ -120,6 +120,14 @@ class _NoIoHighLevelClient(ToyopucDeviceClient):
         raise AssertionError("validation must reject before transport")
 
 
+class _NoIoAsyncHighLevelClient(AsyncToyopucDeviceClient):
+    def __init__(self) -> None:
+        object.__setattr__(self, "_client", _NoIoHighLevelClient())
+
+    async def _run_sync_in_worker(self, func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+
 class _CommitCaptureClient(ToyopucDeviceClient):
     def __init__(self) -> None:
         super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
@@ -447,6 +455,33 @@ def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
     with pytest.raises(ValueError, match="single-request limit"):
         invalid.write_fr("FR000000", [0] * 505)
     assert invalid.send_count == 0
+
+
+@pytest.mark.parametrize("value", [-1, 0x10000, True, 1.5, "1"])
+def test_fr_work_area_write_rejects_values_that_would_be_coerced_or_masked(value: object) -> None:
+    direct = _NoIoHighLevelClient()
+    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+        direct.write_fr("FR000000", value)
+    assert direct.send_count == 0
+
+    relay = _NoIoHighLevelClient()
+    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+        relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+    assert relay.send_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [-1, 0x10000, True, 1.5, "1"])
+async def test_async_fr_work_area_write_rejects_values_before_transport(value: object) -> None:
+    direct = _NoIoAsyncHighLevelClient()
+    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+        await direct.write_fr("FR000000", value)
+    assert direct._client.send_count == 0
+
+    relay = _NoIoAsyncHighLevelClient()
+    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+        await relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+    assert relay._client.send_count == 0
 
 
 def test_removed_fr_combined_and_range_surfaces_are_not_public() -> None:

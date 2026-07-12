@@ -86,6 +86,7 @@ asyncio.run(main())
 | Root cause | Fix |
 | --- | --- |
 | `write_fr(...)` updates only the FR work area. It never commits flash. | Call `commit_fr()` separately with the first word of exactly one block only when persistence is intended. |
+| An FR word is an unsigned 16-bit value. | Pass an integer in `0..65535`; Boolean, fractional, string, negative, and overflowing values are rejected before communication. |
 
 ```python
 from toyopuc import ToyopucDeviceClient

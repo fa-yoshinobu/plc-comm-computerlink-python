@@ -52,14 +52,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--port",
         type=int,
-        default=1025,
-        help="Computerlink TCP port (default 1025)",
+        required=True,
+        help="Required Computerlink port",
     )
     p.add_argument(
         "--transport",
         choices=("tcp", "udp"),
-        default="tcp",
-        help="Transport protocol (default tcp)",
+        required=True,
+        help="Required transport protocol",
     )
     p.add_argument(
         "--timeout",

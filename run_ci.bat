@@ -52,7 +52,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [7/7] Building CLI tool with PyInstaller...
-python -m PyInstaller --onefile --noconfirm --distpath "%PUBLISH_DIR%" --name toyopuc scripts/interactive_cli.py
+python -m PyInstaller --onefile --noconfirm --specpath ".\build" --distpath "%PUBLISH_DIR%" --name toyopuc scripts/interactive_cli.py
 if %errorlevel% neq 0 (
     echo [ERROR] PyInstaller build failed.
     exit /b %errorlevel%

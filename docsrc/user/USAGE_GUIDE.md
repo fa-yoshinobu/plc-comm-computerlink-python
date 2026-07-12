@@ -306,6 +306,8 @@ if __name__ == "__main__":
     main()
 ```
 
+FR work-area values must be integers in `0..65535`. The library rejects negative, overflowing, Boolean, fractional, and string values instead of masking or converting them.
+
 ## Relay helpers
 
 Relay hops are not probed automatically. Pass the hops you intend to use.
