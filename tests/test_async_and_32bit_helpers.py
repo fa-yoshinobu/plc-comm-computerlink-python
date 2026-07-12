@@ -470,17 +470,19 @@ def test_fr_work_area_write_rejects_values_that_would_be_coerced_or_masked(value
     assert relay.send_count == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("value", [-1, 0x10000, True, 1.5, "1"])
-async def test_async_fr_work_area_write_rejects_values_before_transport(value: object) -> None:
+def test_async_fr_work_area_write_rejects_values_before_transport(value: object) -> None:
     direct = _NoIoAsyncHighLevelClient()
-    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-        await direct.write_fr("FR000000", value)
-    assert direct._client.send_count == 0
-
     relay = _NoIoAsyncHighLevelClient()
-    with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-        await relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+
+    async def run_checks() -> None:
+        with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+            await direct.write_fr("FR000000", value)
+        with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
+            await relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+
+    asyncio.run(run_checks())
+    assert direct._client.send_count == 0
     assert relay._client.send_count == 0
 
 

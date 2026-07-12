@@ -311,6 +311,8 @@ Acceptance criteria:
 
 Self-review finding (2026-07-12): Python `write_fr_words` and `relay_write_fr_words` converted each input with `int(value) & 0xFFFF`, so invalid public values could become valid but different PLC values. The high-level FR methods also called `int(...)` before the low-level path. This was accepted as a contract violation, corrected with one shared strict FR-word validator, and covered for direct and relay paths before the final release check.
 
+GitHub CI follow-up (2026-07-12): the first published correction at `a141dfc752fab685fe139bda73bb78808ec05765` passed local `release_check.bat` but its Python 3.10／3.11／3.12／3.13 matrix failed only the five parameter cases of the new async FR rejection test. The test had introduced `pytest.mark.asyncio` even though CI intentionally does not install `pytest-asyncio`; 228 other tests passed in every job. The test was changed to the repository's existing `asyncio.run()` pattern without adding a dependency. All five cases pass with pytest plugin autoload disabled, and the full 233-test release check passes after the correction. GitHub rerun evidence is recorded after the corrected commit is published.
+
 ## D-081: One-block FR commit acceptance
 
 Scope: direct/relay, low/high-level, synchronous/asynchronous FR commit.
