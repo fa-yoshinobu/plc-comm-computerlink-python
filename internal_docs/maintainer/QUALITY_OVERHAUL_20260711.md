@@ -17,13 +17,13 @@ Acceptance criteria:
 
 - [x] Implementation and sample migration completed.
 - [x] Tests cover constructor/options/factory boundaries.
-- [x] `release_check.bat` passed Ruff, format, mypy, sample/script compilation, API docs, 233 tests, canonical profile parity, PyPI identity, and CLI packaging after the final diff.
+- [x] `release_check.bat` passed Ruff, format, mypy, sample/script compilation, API docs, 251 tests, canonical profile parity, PyPI identity, and CLI packaging after the final diff on 2026-07-12.
 - [x] Codex reviewed public signatures, sample/config parsing, and the no-fallback source scan.
 - [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
 - [x] Claude findings dispositioned and affected checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] No live communication is required for local endpoint validation; no PLC communication was performed.
 - [x] Documentation, changelog, samples, and API coverage agree.
-- [ ] Final cross-language acceptance verified.
+- [x] Final cross-language acceptance verified.
 
 ## D-066: UDP local port
 
@@ -46,7 +46,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and affected checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; UDP bind-0, assigned source port, fixed-port collision, and TCP rejection are covered by local socket fixtures without claiming PLC compatibility).
 - [x] Documentation, migration notes, changelog, samples, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-067: Required transport
 
@@ -68,7 +68,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; required transport parsing and pre-socket rejection are deterministic constructor/factory behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-068: Three-second communication timeout
 
@@ -90,7 +90,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; timeout default/validation and per-attempt session disposal are covered by deterministic local timeout fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-069/D-070: Retry count and retry delay
 
@@ -115,7 +115,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; retry eligibility, send-count boundaries, delay, cancellation, and no-retry state transitions are covered by fault-injected transports).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-071: Internal UDP receive size
 
@@ -137,7 +137,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; full-datagram receive and truncation/length handling are covered by local UDP fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-072: Maintainer-only trace callback
 
@@ -160,7 +160,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; diagnostic copy ownership, ordering, exception isolation, and timing isolation do not depend on PLC behavior).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-073: Profile-bound addressing
 
@@ -183,7 +183,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; canonical profile derivation, profile-bound object identity, and pre-transport mismatch rejection are deterministic resolver/vector properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-076: Explicit named value type
 
@@ -207,7 +207,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; named-type grammar, width/range validation, and result decoding are covered by parser and protocol fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-077: Scalar and multiple reads
 
@@ -233,7 +233,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; scalar/list return shape, count limits, one-request enforcement, and zero-send rejection are deterministic API/mock-transport properties).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-078: Single-request Dword and float arrays
 
@@ -257,7 +257,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; Dword/float conversion, block/limit validation, and one-request/no-partial-write behavior are covered by exact frame and send-count fixtures).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-079: Explicit maintainer raw payload
 
@@ -282,7 +282,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; maintainer-only visibility, raw payload validation, exact frame construction, and post-send no-retry are deterministic).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-080: FR work-area write separated from commit
 
@@ -305,9 +305,9 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
-- [ ] Live-PLC work-area and durability checks remain unverified and require item-level release disposition.
+- [x] Live-PLC work-area check passed on 2026-07-12: Nano 10GX `192.168.250.100:1025` TCP Direct, `FR000000`, original `999`, test `0x7811` (`30737`), readback `30737`, write command `0xC3`, no CA call, restore command `0xC3`, final readback `999`.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified for D-080; durability remains the separate D-081 decision.
 
 Self-review finding (2026-07-12): Python `write_fr_words` and `relay_write_fr_words` converted each input with `int(value) & 0xFFFF`, so invalid public values could become valid but different PLC values. The high-level FR methods also called `int(...)` before the low-level path. This was accepted as a contract violation, corrected with one shared strict FR-word validator, and covered for direct and relay paths before the final release check.
 
@@ -333,9 +333,9 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
-- [ ] Live-PLC CA acceptance/durability checks remain unverified and require item-level release disposition.
+- [x] Live-PLC CA acceptance/durability passed on 2026-07-12: after a clean PLC restart, Python changed `FR000000` from `999` to `0x74E6`, read it back, sent one CA, and used explicit application-level A0 reads to observe writing clear without an abnormal flag. A restart preserved `0x74E6`; .NET restored and committed `999`; a second restart returned `999` through both Python and .NET.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified for D-081 on the tested Nano 10GX profile, endpoint, block, and current Python/.NET builds; no result is generalized to other FR blocks or profiles.
 
 ## D-082: Fixed hexadecimal address notation
 
@@ -356,7 +356,7 @@ Acceptance criteria:
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
 - [x] Live-PLC requirement dispositioned (no live PLC required; fixed hexadecimal parsing, normalization, formatting, and wire round trips are deterministic vectors).
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified.
 
 ## D-083: Explicit PLC clock century
 
@@ -376,9 +376,9 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
-- [ ] Live-PLC clock-write check remains unverified and requires release disposition.
+- [x] Live-PLC clock-write check passed on 2026-07-12 for Nano 10GX `192.168.250.100:1025` TCP Direct: Python wrote `2026-07-12 12:34:56` with `year_base=2000`; a new .NET session read the advancing test time; .NET restored the captured clock plus elapsed time; new Python and .NET sessions read the advancing restored time.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified. One Nano 10GX showed a short PLC-side clock visibility difference; the user approved keeping only concise maintainer evidence, without generalizing it in GOTCHAS, PROFILES, or the shared docs-site. No automatic wait, reconnect, or retry is added.
 
 ## D-084: Fixed relay ENQ and strict route values
 
@@ -400,40 +400,40 @@ Acceptance criteria:
 - [x] Codex final self-review completed against the diff, public surface, validation order, retry/cancel behavior, tests, docs, and approved cross-language contract.
 - [x] Claude review completed (`CLAUDE-CL-20260712-01`; result and dispositions recorded).
 - [x] Claude findings dispositioned and checks rerun (`CLAUDE-CL-20260712-01`).
-- [ ] Live-PLC relay-route checks remain unverified and require release disposition.
+- [x] Live/release disposition recorded. D-084-A passed in Python and .NET: each changed `P1-D0000` through `P1-L1:N2` from `0xFFFF` to `0x3DA4`, read it back, restored `0xFFFF`, and read the restoration back over TCP `192.168.250.100:1025`; both used outer `CMD=60`, link `0x11`, station `0x0002`, and fixed ENQ `0x05`. D-084-B has no available real multi-hop topology or exact route/target and remains explicitly `unverified`; the user approved release with that TODO on 2026-07-12. Exact nested frames, all-hop validation, response unwrap tests, mandatory explicit hops, and no route discovery/fallback contain the unverified scope. Multi-hop live compatibility is not claimed.
 - [x] Documentation, changelog, samples, migration notes, and generated API coverage agree with the implementation.
-- [ ] Final acceptance verified.
+- [x] Final acceptance verified under the recorded D-084-B unverified release disposition; multi-hop live compatibility is not claimed.
 
 ## Current verification evidence
 
-- `release_check.bat`: passed on 2026-07-12 after the strict FR-value correction.
+- `release_check.bat`: passed on 2026-07-12 after all live-verification dispositions and maintainer-record updates.
 - Canonical profile fixture: unchanged against `plc-comm-computerlink-profiles` v1.0.1.
 - Ruff lint/format: passed; Mypy: passed for 13 source files.
-- Public API docstring coverage: 107 definitions and 164 methods.
-- Unit tests: `233 passed`; all maintained samples/scripts compiled.
+- Public API docstring coverage: 108 definitions and 164 methods.
+- Unit tests: `251 passed`; all maintained samples/scripts compiled.
 - PyInstaller CLI executable build: passed.
 - PyInstaller spec is generated under ignored `build/toyopuc.spec`; the final release check leaves no root-level `toyopuc.spec` artifact.
-- Claude: not invoked; explicit user authorization is required for each batch.
-- Live PLC: not invoked; exact test plan and user `OK` are required.
+- Claude: `CLAUDE-CL-20260712-01` was run by the user; all 11 findings were accepted, corrected, reverified, committed, and pushed.
+- Live PLC: D-080, D-081, D-083, and D-084-A passed on 2026-07-12 for the recorded Nano 10GX routes. D-083-LIVE-01 is closed as maintainer-only profile-specific evidence. D-084-B remains `unverified` under its explicit release disposition.
 
-## Deferred live verification TODO
+## Live verification evidence and remaining TODO
 
 No command below is authorized merely by appearing here. Confirm the currently connected PLC and the physical route, present the selected exact row again, and wait for explicit user `OK` before communication.
 
 | ID | Exact candidate target | Operation and evidence | Restoration / risk | Status |
 |---|---|---|---|---|
-| D-080 | Nano 10GX TUC-1157; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1025` TCP; Direct; `FR000000` | Read original, write work-area value `0xE40F`, read it back, and prove one C3 request with no CA request. | Write the captured original back without commit and read it back. Current-build live result is unverified; 2026-06-12 C3 write/restore evidence exists. |
-| D-081 | Same target; `FR000000`, the first word of the 0x8000-word block | On a dedicated test PLC reset to a known no-pending-change state, write `0xE40F`, send exactly one CA, observe completion with an explicit status read, restart, and verify persistence. | Restore the captured original, send one CA, restart, and verify restoration. CA can persist every pending change in the block; individual discussion and explicit `OK` are mandatory. |
-| D-083 | Same target; PLC clock; Direct; `year_base=2000` | Read clock, write `2026-07-12 12:34:56`, then read and verify the explicit-century round trip. | Restore the original clock advanced by measured elapsed time. Clock-dependent operation may be affected; individual discussion and explicit `OK` are mandatory. |
-| D-084-A | Nano 10GX; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1035` UDP; local `12000`; `P1-L2:N2`; `P1-D0000` | Read original, write random test value `0x3DA4`, read back, and prove one-hop ENQ/response reaches the intended PLC. | Restore original and read back. Exact physical route and target PLC must first be confirmed. |
-| D-084-B | Same endpoint; `P1-L2:N2,P1-L2:N4`; `P1-D0000` | Read original, write random test value `0x7C93`, read back, and prove nested response handling reaches the intended final PLC. | Restore original and read back. Wrong-route writes are high risk; exact hop order and target PLC plus explicit `OK` are mandatory. |
+| D-080 | Nano 10GX TUC-1157; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1025` TCP; Direct; `FR000000` | `pass`（2026-07-12）。Python／.NETで元値`999`、work-area test `0x7811`、readback `30737`、write command `0xC3`、CA未実行を確認。 | 両実装とも元値`999`をC3で復元しreadback済み。.NET一時project／生成物削除済み。 |
+| D-081 | Nano 10GX TUC-1157; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1025` TCP; Direct; `FR000000` | `pass`（2026-07-12）。再起動直後の元値`999`からPythonで`0x74E6`を書込み・readbackしCAを1回実行。明示A0 readで約1秒後に書込み中解除・異常なし。再起動後.NETが`0x74E6`を確認した。 | .NETでC3により`999`へ戻してCAを1回実行し、明示A0 readで約1.5秒後に書込み中解除・異常なし。再々起動後Python／.NETとも`999`。libraryによるpoll／retry／fallbackなし。一時.NET project／生成物削除済み。 |
+| D-083 | Nano 10GX TUC-1157; `toyopuc:nano-10gx:compatible`; `192.168.250.100:1025` TCP; Direct; PLC clock | `pass`（2026-07-12）。Python／.NETとも明示century付きwrite、確認read、元時刻復元に成功。 | Profile固有の短い反映差はAPI契約へ一般化しない。自動wait／reconnect／retryなし。一時.NET project／生成物削除済み。 |
+| D-084-A | Nano 10GX; `toyopuc:nano-10gx:compatible`; TCP `192.168.250.100:1025`; `P1-L1:N2`; `P1-D0000` | `pass`（2026-07-12）。Python／.NETとも`0xFFFF → 0x3DA4 → 0xFFFF`、outer `CMD=60`、link `0x11`、station `0x0002`、ENQ `0x05`、response unwrap成功。 | 両実装とも元値復元・readback済み。一時.NET project／生成物削除済み。 |
+| D-084-B | Real multi-hop topology, endpoint, route, target PLC/device unavailable | `unverified; release permitted`（2026-07-12）。Exact nested-frame, all-hop validation, and response-unwrap tests pass; D-084-A one-hop live behavior passes in Python/.NET. No multi-hop live-pass claim is made. | TODO remains until exact hardware/topology exists. Explicit hops are mandatory; no route discovery, route mutation, or fallback. Any future live command still requires the exact route/target and user `OK`. |
 
 If hardware is unavailable, each item needs an explicit release disposition. The proposed dispositions are recorded in workspace `quality_overhaul_goal_20260711.md`; no proposal is approved merely by being documented.
 
 ## Claude review batch `CLAUDE-CL-20260712-01`
 
 - [x] Review package prepared and explicit user authorization obtained for this batch.
-- [x] Claude independently reviewed the stated Python/.NET diff read-only; the result is preserved in workspace `claude_review_result_computerlink_20260712.md`.
+- [x] Claude independently reviewed the stated Python/.NET diff read-only; the result is preserved in workspace `Close/instructions/claude_review_result_computerlink_20260712.md`.
 - [x] Codex independently reproduced and accepted all eleven findings; no finding was rejected, duplicated, or deferred.
 - [x] Accepted findings were corrected with deterministic regression coverage.
 - [x] Final full release checks and post-fix Codex diff review recorded (251 tests and complete `release_check.bat`, 2026-07-12).
@@ -467,6 +467,6 @@ Prepared batch scope: all changes on `quality/2026-07-overhaul` relative to its 
 
 Review purpose: independently identify contract violations, unsafe retry/cancellation transitions, hidden multi-request behavior, validation after transport, public compatibility remnants, direct/relay or sync/async divergence, FR/clock semantic errors, value coercion/masking, and missing tests.
 
-Inputs to provide after authorization: approved contracts and acceptance criteria in this file; repository diff; public API reference; final `release_check.bat` result; Ruff/format/mypy evidence; 233-test result; sample/script compilation and PyInstaller evidence; the self-review FR finding and correction; canonical profile parity; deferred live-verification scope.
+Inputs provided for the completed review: approved contracts and acceptance criteria in this file; repository diff; public API reference; `release_check.bat` result; Ruff/format/mypy evidence; test result; sample/script compilation and PyInstaller evidence; the self-review FR finding and correction; canonical profile parity; and deferred live-verification scope.
 
 Expected output: findings only, each with severity, affected contract identifier, exact file/line evidence, failure scenario, recommended correction, and missing-test recommendation. A general quality score or approval is not a substitute for concrete findings.
