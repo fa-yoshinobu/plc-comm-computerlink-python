@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-07-13
+
 ### BREAKING
 - Samples: All runnable endpoint, multi-PLC, and configuration-driven samples require an explicit destination port and transport instead of defaulting to `1025`/TCP.
 - Library: Split scalar `read_one` / `relay_read_one` from count-required list reads; `count=1` now returns a list and all range reads reject implicit multi-request splitting.
@@ -35,12 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration: Replace scalar `read(device)` with `read_one(device)`, sparse `read_many(devices)` with `read_devices(devices)`, and intentional multi-request ranges with explicit application calls.
 - Migration: Replace `write_fr(..., commit=True)` with `write_fr(...)` followed by `commit_fr(block_start)`; use explicit CPU-status reads when completion monitoring is required.
 
-### Tests
-- Tests: Added return-shape, strict count, request-boundary, Dword/float no-partial-transfer, FR single-request and strict-value, explicit block commit, and removed-surface regression coverage.
-- CI: Write the generated PyInstaller spec under the ignored `build` directory so a successful release check does not leave a root-level untracked artifact.
-
-## [3.1.0] - 2026-07-10
-
 ### Added
 - Library: Added `ToyopucPlcProfileDescriptor` and `plc_profile_descriptors()` for canonical TOYOPUC Computer Link profile metadata.
 
@@ -49,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Samples: Updated all sample and maintainer-tool client constructors from the removed `protocol=` keyword to `transport=`.
 - CI: Made release dispatch check out an existing exact tag and verify the tag, manifest, runtime version, and built asset names before upload.
 - Docs: Corrected the release guide and removed the hand-maintained Getting Started navigation block.
+
+### Tests
+- Tests: Added return-shape, strict count, request-boundary, Dword/float no-partial-transfer, FR single-request and strict-value, explicit block commit, and removed-surface regression coverage.
+- CI: Write the generated PyInstaller spec under the ignored `build` directory so a successful release check does not leave a root-level untracked artifact.
 
 ## [3.0.0] - 2026-07-10
 
