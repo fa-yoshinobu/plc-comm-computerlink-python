@@ -82,6 +82,15 @@ Check `pyproject.toml`.
 - classifiers
 - project URLs
 
+## Final Publication Integrity Gate
+
+Before final publication, enumerate every unchecked repository TODO and maintainer checkbox and
+give each item a result or explicit release disposition. Build the shared docs site in a fresh
+virtual environment using the registry package and require its version/symbol check plus
+`mkdocs build --strict`. Compare the published PyPI wheel and sdist byte-for-byte with the inspected
+GitHub Release assets. Finally verify the immutable tag target, Release assets/state, docs
+deployment, open release PR count, and clean working tree.
+
 ## 5. Documentation
 
 Verify that the docs match the code.

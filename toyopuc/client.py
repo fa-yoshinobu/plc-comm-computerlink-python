@@ -62,6 +62,15 @@ from .relay import (
 )
 
 
+@dataclass(frozen=True)
+class ToyopucTrafficStats:
+    """Immutable lifetime traffic counters for one client."""
+
+    request_count: int
+    tx_bytes: int
+    rx_bytes: int
+
+
 class ToyopucTraceDirection(Enum):
     """Direction for a traced TOYOPUC computer-link frame."""
 
@@ -363,6 +372,13 @@ class ToyopucClient:
         self._trace_queue: Queue[tuple[Callable[[ToyopucTraceFrame], None], ToyopucTraceFrame]] | None = None
         self._cancel_event = Event()
         self._fixed_udp_session_tainted = False
+        self._request_count = 0
+        self._tx_bytes = 0
+        self._rx_bytes = 0
+
+    def traffic_stats(self) -> ToyopucTrafficStats:
+        """Return an immutable lifetime traffic-counter snapshot."""
+        return ToyopucTrafficStats(self._request_count, self._tx_bytes, self._rx_bytes)
 
     def __enter__(self) -> ToyopucClient:
         self.connect()
@@ -529,6 +545,8 @@ class ToyopucClient:
                 request_may_have_been_sent = True
                 if self.transport == "tcp":
                     self._sock.sendall(payload)
+                    self._request_count += 1
+                    self._tx_bytes += len(payload)
                     header = bytearray(4)
                     self._recv_exact_into(header)
                     ll, lh = header[2], header[3]
@@ -538,8 +556,12 @@ class ToyopucClient:
                     self._recv_exact_into(memoryview(frame_buffer)[4:])
                     frame = bytes(frame_buffer)
                 else:
-                    self._sock.send(payload)
+                    if self._sock.send(payload) != len(payload):
+                        raise OSError("UDP send did not accept the complete TOYOPUC datagram")
+                    self._request_count += 1
+                    self._tx_bytes += len(payload)
                     frame = self._sock.recv(UDP_RECEIVE_BUFFER_SIZE)
+                self._rx_bytes += len(frame)
             except (TimeoutError, ToyopucTimeoutError) as e:
                 if request_may_have_been_sent and self.transport == "udp" and self.local_port != 0:
                     self._fixed_udp_session_tainted = True

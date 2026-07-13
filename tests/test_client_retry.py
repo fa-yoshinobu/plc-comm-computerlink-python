@@ -57,8 +57,9 @@ class _FakeUdpSocket:
     def connect(self, address: tuple[str, int]) -> None:
         self.connected = address
 
-    def send(self, payload: bytes) -> None:
+    def send(self, payload: bytes) -> int:
         self.sent.append(payload)
+        return len(payload)
 
     def recv(self, size: int) -> bytes:
         self.recv_sizes.append(size)
@@ -143,11 +144,17 @@ def test_udp_send_and_recv_accepts_large_datagram_response() -> None:
     client = ToyopucClient("127.0.0.1", 1025, transport="udp")
     client._sock = sock
 
+    assert client.traffic_stats().request_count == 0
     frame = client._send_raw(0x1C, b"")
 
     assert frame.cmd == 0x1C
     assert frame.data == data
     assert sock.recv_sizes == [65535]
+    assert client.traffic_stats().request_count == 1
+    assert client.traffic_stats().tx_bytes == len(sock.sent[0])
+    assert client.traffic_stats().rx_bytes == len(_response(0x1C, data))
+    client.close()
+    assert client.traffic_stats().request_count == 1
 
 
 def test_udp_connect_binds_ephemeral_local_port(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,6 +241,9 @@ def test_send_and_recv_retries_response_error_0x73() -> None:
 
     assert values == [0x1234]
     assert len(sock.sent) == 2
+    assert client.traffic_stats().request_count == 2
+    assert client.traffic_stats().tx_bytes == sum(map(len, sock.sent))
+    assert client.traffic_stats().rx_bytes == sum(map(len, [_response(0x73, rc=0x10), _response(0x1C, b"\x34\x12")]))
 
 
 def test_raw_command_never_retries_retryable_response() -> None:
@@ -337,6 +347,9 @@ def test_state_changing_timeout_reports_unknown_outcome() -> None:
         client.write_words(0, [1])
 
     assert len(sock.sent) == 1
+    assert client.traffic_stats().request_count == 1
+    assert client.traffic_stats().tx_bytes == len(sock.sent[0])
+    assert client.traffic_stats().rx_bytes == 0
 
 
 def test_low_level_bit_write_rejects_truthy_non_bit_before_transport() -> None:
@@ -348,6 +361,7 @@ def test_low_level_bit_write_rejects_truthy_non_bit_before_transport() -> None:
         client.write_bit(0, 2)  # type: ignore[arg-type]
 
     assert sock.sent == []
+    assert client.traffic_stats().request_count == 0
 
 
 def test_fixed_port_udp_session_is_terminal_after_uncertain_timeout() -> None:

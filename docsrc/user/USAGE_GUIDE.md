@@ -351,3 +351,7 @@ if __name__ == "__main__":
 | `P1-D0100:L` | Signed 32-bit typed view | `P1-D0100:L` |
 | `P1-D0100:F` | Float32 typed view | `P1-D0100:F` |
 | `P1-D0100.3` | Bit 3 inside one word | `P1-D0100.3` |
+
+## Traffic statistics
+
+Call `client.traffic_stats()` for cumulative request, transmitted-byte, and received-byte counts.
