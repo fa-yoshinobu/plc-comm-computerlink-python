@@ -470,3 +470,15 @@ Review purpose: independently identify contract violations, unsafe retry/cancell
 Inputs provided for the completed review: approved contracts and acceptance criteria in this file; repository diff; public API reference; `release_check.bat` result; Ruff/format/mypy evidence; test result; sample/script compilation and PyInstaller evidence; the self-review FR finding and correction; canonical profile parity; and deferred live-verification scope.
 
 Expected output: findings only, each with severity, affected contract identifier, exact file/line evidence, failure scenario, recommended correction, and missing-test recommendation. A general quality score or approval is not a substitute for concrete findings.
+
+## NR-007: Lifetime traffic statistics
+
+Approved next-release contract: `traffic_stats()` returns immutable lifetime counters; every
+complete retry attempt counts independently, pre-send and partial failures do not, and close/reconnect
+does not reset. Deterministic tests are required; live PLC verification is unnecessary. Final
+packaging remains pending explicit authorization.
+
+- [x] Public API and transport-boundary implementation completed.
+- [x] Deterministic tests, documentation, changelog, and package gate completed.
+- [x] Codex final self-review completed.
+- [ ] Next-release package acceptance completed.

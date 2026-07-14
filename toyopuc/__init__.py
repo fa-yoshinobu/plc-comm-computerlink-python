@@ -32,7 +32,7 @@ from .address import (
     split_u32_words,
 )
 from .async_client import AsyncToyopucClient, AsyncToyopucDeviceClient
-from .client import ToyopucClient
+from .client import ToyopucClient, ToyopucTrafficStats
 from .errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
 from .high_level import ResolvedDevice, ToyopucDeviceClient, resolve_device
 from .profiles import (
@@ -71,6 +71,7 @@ from .utils import (
 
 __all__ = [
     "ToyopucClient",
+    "ToyopucTrafficStats",
     "AsyncToyopucClient",
     "AsyncToyopucDeviceClient",
     "ToyopucDeviceClient",

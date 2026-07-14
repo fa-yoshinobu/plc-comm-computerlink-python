@@ -95,3 +95,7 @@ The package exports these public names from `toyopuc.__all__`:
 The docs site renders the installed package with mkdocstrings so class,
 function, dataclass, and enum signatures are searchable from the site API
 reference.
+
+## Traffic statistics
+
+`ToyopucClient.traffic_stats()` returns an immutable `ToyopucTrafficStats` lifetime snapshot; async wrappers expose the same snapshot.
