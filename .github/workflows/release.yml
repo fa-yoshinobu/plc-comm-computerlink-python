@@ -39,6 +39,10 @@ jobs:
         with:
           ref: refs/tags/${{ steps.version.outputs.tag }}
 
+      - name: Check GitHub source archive contents
+        shell: pwsh
+        run: ./scripts/check_source_archive.ps1
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

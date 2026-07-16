@@ -84,9 +84,11 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
 def test_release_check_checks_canonical_profiles_then_delegates_to_ci() -> None:
     text = _read("release_check.bat")
 
-    assert "[2/3] Checking canonical ComputerLink profile fixtures" in text
+    assert "[2/4] Checking canonical ComputerLink profile fixtures" in text
     assert "scripts\\update_computerlink_profile_jsons.ps1 -FailIfChanged" in text
-    assert "[3/3] Running CI" in text
+    assert "[3/4] Checking GitHub source archive contents" in text
+    assert "scripts\\check_source_archive.ps1" in text
+    assert "[4/4] Running CI" in text
     assert "call run_ci.bat" in text
     assert text.count("call ") == 1
 
