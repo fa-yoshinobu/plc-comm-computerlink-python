@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-07-17
+
+- Release: Bumped package metadata and `toyopuc.__version__` to `3.2.0`.
+
 - Library: Added immutable client-lifetime traffic snapshots through `traffic_stats()` on synchronous and asynchronous clients.
 
 ## [3.1.0] - 2026-07-13
