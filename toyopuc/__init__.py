@@ -13,7 +13,7 @@ but the helpers above are the preferred surface for normal application code
 and generated user documentation.
 """
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 from .address import (
     encode_bit_address,
