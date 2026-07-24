@@ -27,6 +27,7 @@ from toyopuc.protocol import (
     build_multi_word_read,
     build_pc10_block_read,
     build_pc10_multi_read,
+    build_relay_command,
     build_scan_resume,
     build_scan_stop,
     build_scan_stop_release,
@@ -72,6 +73,14 @@ def test_build_command_requires_explicit_bytes_and_valid_length() -> None:
     assert len(build_command(0xFF, bytes(65_534))) == 65_539
     with pytest.raises(ValueError, match="too large"):
         build_command(0xFF, bytes(65_535))
+
+
+def test_relay_inner_payload_with_zero_length_low_byte_is_not_misclassified_as_full_frame() -> None:
+    trimmed = bytes([0x00, 0x01, 0x1C]) + bytes(255)
+
+    frame = build_relay_command(1, 2, trimmed)
+
+    assert frame[9:-1] == trimmed
 
 
 def _build_frame(vec: dict[str, Any]) -> bytes:

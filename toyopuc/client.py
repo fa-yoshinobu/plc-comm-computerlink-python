@@ -13,6 +13,7 @@ from threading import Event, Thread
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
 from .protocol import (
+    FT_COMMAND,
     FT_RESPONSE,
     ClockData,
     CpuStatusData,
@@ -263,12 +264,31 @@ def _is_retryable_response_error(resp: ResponseFrame) -> bool:
 
 
 def _is_read_only_payload(payload: bytes) -> bool:
-    if len(payload) < 5:
+    command: int
+    body: bytes
+    if (
+        len(payload) >= 5
+        and payload[0] == FT_COMMAND
+        and payload[1] == 0x00
+        and (payload[2] | (payload[3] << 8)) + 4 == len(payload)
+    ):
+        command = payload[4]
+        body = payload[5:]
+    elif len(payload) >= 3 and (payload[0] | (payload[1] << 8)) + 2 == len(payload):
+        command = payload[2]
+        body = payload[3:]
+    else:
         return False
-    command = payload[4]
     if command in {0x1C, 0x1E, 0x20, 0x22, 0x24, 0x94, 0x96, 0x98, 0xA0, 0xC2, 0xC4}:
         return True
-    return command == 0x32 and len(payload) >= 7 and payload[5:7] in {bytes([0x70, 0x00]), bytes([0x11, 0x00])}
+    return command == 0x32 and body[:2] in {bytes([0x70, 0x00]), bytes([0x11, 0x00])}
+
+
+def _require_response_data_size(command: int, data: bytes, expected: int) -> None:
+    if len(data) != expected:
+        raise ToyopucProtocolError(
+            f"CMD={command:02X} response data size mismatch: expected={expected}, actual={len(data)}"
+        )
 
 
 def _extract_response_error_code(frame: bytes | None) -> int | None:
@@ -631,6 +651,7 @@ class ToyopucClient:
         resp = self._send_and_recv(build_word_read(addr, count), retryable=True)
         if resp.cmd != 0x1C:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x1C, resp.data, count * 2)
         return unpack_u16_le(resp.data)
 
     def write_words(self, addr: int, values: Iterable[int]) -> None:
@@ -644,6 +665,7 @@ class ToyopucClient:
         resp = self._send_and_recv(build_byte_read(addr, count), retryable=True)
         if resp.cmd != 0x1E:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x1E, resp.data, count)
         return resp.data
 
     def write_bytes(self, addr: int, values: Iterable[int]) -> None:
@@ -707,9 +729,11 @@ class ToyopucClient:
 
     def read_words_multi(self, addrs: Iterable[int]) -> list[int]:
         """Read multiple non-contiguous basic-area words with `CMD=22`."""
-        resp = self._send_and_recv(build_multi_word_read(addrs), retryable=True)
+        address_list = list(addrs)
+        resp = self._send_and_recv(build_multi_word_read(address_list), retryable=True)
         if resp.cmd != 0x22:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x22, resp.data, len(address_list) * 2)
         return unpack_u16_le(resp.data)
 
     def write_words_multi(self, pairs: Iterable[tuple[int, int]]) -> None:
@@ -720,9 +744,11 @@ class ToyopucClient:
 
     def read_bytes_multi(self, addrs: Iterable[int]) -> bytes:
         """Read multiple non-contiguous basic-area bytes with `CMD=24`."""
-        resp = self._send_and_recv(build_multi_byte_read(addrs), retryable=True)
+        address_list = list(addrs)
+        resp = self._send_and_recv(build_multi_byte_read(address_list), retryable=True)
         if resp.cmd != 0x24:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x24, resp.data, len(address_list))
         return resp.data
 
     def write_bytes_multi(self, pairs: Iterable[tuple[int, int]]) -> None:
@@ -736,6 +762,7 @@ class ToyopucClient:
         resp = self._send_and_recv(build_ext_word_read(no, addr, count), retryable=True)
         if resp.cmd != 0x94:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x94, resp.data, count * 2)
         return unpack_u16_le(resp.data)
 
     def write_ext_words(self, no: int, addr: int, values: Iterable[int]) -> None:
@@ -749,6 +776,7 @@ class ToyopucClient:
         resp = self._send_and_recv(build_ext_byte_read(no, addr, count), retryable=True)
         if resp.cmd != 0x96:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x96, resp.data, count)
         return resp.data
 
     def write_ext_bytes(self, no: int, addr: int, values: Iterable[int]) -> None:
@@ -773,11 +801,13 @@ class ToyopucClient:
         (manual: "byte address N"). A `CMD=94` word address must be doubled
         before it is used as a `word_points` address.
         """
-        resp = self._send_and_recv(
-            build_ext_multi_read(list(bit_points), list(byte_points), list(word_points)), retryable=True
-        )
+        bits = list(bit_points)
+        bytes_ = list(byte_points)
+        words = list(word_points)
+        resp = self._send_and_recv(build_ext_multi_read(bits, bytes_, words), retryable=True)
         if resp.cmd != 0x98:
             raise ToyopucProtocolError("Unexpected CMD in response")
+        _require_response_data_size(0x98, resp.data, (len(bits) + 7) // 8 + len(bytes_) + len(words) * 2)
         return resp.data
 
     def write_ext_multi(
@@ -912,6 +942,7 @@ class ToyopucClient:
         resp = self.send_via_relay(hops, build_word_read(addr, count))
         if resp.cmd != 0x1C:
             raise ToyopucProtocolError("Unexpected CMD in relay word-read response")
+        _require_response_data_size(0x1C, resp.data, count * 2)
         return unpack_u16_le(resp.data)
 
     def relay_write_words(self, hops: str | Iterable[tuple[int, int]], addr: int, values: Iterable[int]) -> None:

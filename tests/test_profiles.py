@@ -61,7 +61,6 @@ def test_profiles_have_correct_addressing_options() -> None:
     assert plus_std.addressing_options.use_upper_u_pc10 is False
     assert plus_std.addressing_options.use_eb_pc10 is False
     assert plus_std.addressing_options.use_fr_pc10 is False
-    assert plus_std.addressing_options.use_upper_bit_pc10 is False
 
     pc10g_std = ToyopucPlcProfiles.Pc10GStandardPc3Jg
     assert pc10g_std.addressing_options.use_upper_u_pc10 is False
@@ -192,8 +191,6 @@ def test_addressing_options_default() -> None:
     assert opts.use_upper_u_pc10 is True
     assert opts.use_eb_pc10 is True
     assert opts.use_fr_pc10 is True
-    assert opts.use_upper_bit_pc10 is True
-    assert opts.use_upper_m_bit_pc10 is True
 
 
 def test_addressing_options_from_profile() -> None:

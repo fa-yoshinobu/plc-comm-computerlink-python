@@ -101,9 +101,9 @@ def test_pc10_multi_response_parsers_keep_current_bit_and_word_layout() -> None:
         0,
     ]
 
-    with pytest.raises(ToyopucProtocolError, match="Extended multi-bit response too short"):
+    with pytest.raises(ToyopucProtocolError, match="Extended multi-bit response size mismatch"):
         _parse_ext_multi_bit_data(b"", 1)
-    with pytest.raises(ToyopucProtocolError, match="PC10 multi-word response too short"):
+    with pytest.raises(ToyopucProtocolError, match="PC10 multi-word response size mismatch"):
         _parse_pc10_multi_word_data(b"\x00\x00\x00\x00\x34", 1)
 
 

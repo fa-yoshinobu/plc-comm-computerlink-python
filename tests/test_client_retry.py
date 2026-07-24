@@ -15,6 +15,7 @@ from toyopuc import (
     ToyopucProtocolError,
     ToyopucTimeoutError,
 )
+from toyopuc.client import _is_read_only_payload
 from toyopuc.protocol import build_command, build_scan_resume, build_scan_stop, build_scan_stop_release
 
 
@@ -244,6 +245,33 @@ def test_send_and_recv_retries_response_error_0x73() -> None:
     assert client.traffic_stats().request_count == 2
     assert client.traffic_stats().tx_bytes == sum(map(len, sock.sent))
     assert client.traffic_stats().rx_bytes == sum(map(len, [_response(0x73, rc=0x10), _response(0x1C, b"\x34\x12")]))
+
+
+def test_read_only_classifier_accepts_full_and_trimmed_frames_structurally() -> None:
+    full = build_command(0x1C, b"\x00\x00\x01\x00")
+    trimmed = full[2:]
+
+    assert _is_read_only_payload(full)
+    assert _is_read_only_payload(trimmed)
+    assert not _is_read_only_payload(build_command(0x1D, b"\x00\x00\x01\x00"))
+    assert not _is_read_only_payload(build_command(0x1D, b"\x00\x00\x01\x00")[2:])
+
+
+def test_read_only_classifier_does_not_confuse_trimmed_length_low_byte_zero_with_full_frame() -> None:
+    trimmed = bytes([0x00, 0x01, 0x1C]) + bytes(255)
+
+    assert len(trimmed) == 258
+    assert _is_read_only_payload(trimmed)
+
+
+@pytest.mark.parametrize("data", [b"\x34", b"\x34\x12\x56\x78"])
+def test_fixed_size_word_read_rejects_short_and_long_responses(data: bytes) -> None:
+    sock = _FakeSocket([_response(0x1C, data)])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="response data size mismatch"):
+        client.read_words(0, 1)
 
 
 def test_raw_command_never_retries_retryable_response() -> None:
