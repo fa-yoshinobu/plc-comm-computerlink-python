@@ -508,3 +508,43 @@ packaging and publication acceptance completed with `v3.2.0`.
 - [x] Next-release package acceptance completed. Evidence: the `v3.2.0` tag equals repository HEAD,
   the GitHub Release and PyPI `plc-comm-toyopuc` `3.2.0` package are public, tag-commit checks passed,
   and the final six-runtime family source/API comparison was completed on 2026-07-18.
+
+## BH-LIVE-NO-RETRY-20260729 — State-changing write retry verification
+
+Scope: commit `0c6ad9f952e5ad326fede3fa245f74b5a83aaa8a`; current repository source
+confirmed by `toyopuc.__file__`; Nano 10GX; `toyopuc:nano-10gx:compatible`; TCP
+`192.168.250.100:1025`; Direct; `FR000000`.
+
+Target contract: if a write request reaches the PLC but its matching response cannot be confirmed,
+the Python client reports `ToyopucOperationOutcomeUnknownError` and never retries the write even
+when retries are configured. The caller must inspect PLC state through a new normal session before
+performing any recovery.
+
+Acceptance evidence:
+
+- [x] A normal baseline read returned `FR000000=0x03E7` (`999`).
+- [x] A local response-withholding proxy forwarded one `CMD=C3` write for test value `0x4B72` to the
+  PLC and received one normal `CMD=C3` response, but did not return that response to the client.
+- [x] With `retries=3`, the current repository client returned
+  `ToyopucOperationOutcomeUnknownError`; the proxy observed exactly one PLC request and no retry.
+- [x] A new normal session read `FR000000=0x4B72`, proving that the write executed while the client
+  correctly declined to claim success.
+- [x] A normal current-source write restored `FR000000` to `0x03E7`; a new-session final read
+  returned `0x03E7`.
+- [x] The temporary proxy/probe source was removed. The repository working tree was clean before
+  this evidence record was added.
+
+Disposition: the synchronous direct TCP post-send response-loss path passes on the stated hardware.
+Deterministic fault injection remains the acceptance evidence for the complete read/write command
+matrix, pre-send boundaries, disconnect/malformed/mismatched/PLC-error responses, async operation,
+and relay routing; no live compatibility claim is made for those untested paths. The user explicitly
+accepted this combined evidence as the REL-011 high-risk release disposition on 2026-07-29.
+
+Final candidate verification on 2026-07-29 used the current working tree and the current local
+`plc-comm-computerlink-profiles` candidate. The profile fixture was unchanged, the source archive
+contract passed (`42` files, `16` samples), Ruff lint/format, Mypy (`13` source files), public API
+coverage, script/sample compilation, and all `256` tests passed. PyInstaller CLI generation and
+isolated sdist/wheel generation also passed. Self-review found mixed LF/CRLF markers and current-Ruff
+format drift in eight changed Python files; the finding was accepted, normalized with Ruff, and the
+complete gate was rerun successfully. REL-011 is complete; publication remains separately gated by
+explicit user authorization.

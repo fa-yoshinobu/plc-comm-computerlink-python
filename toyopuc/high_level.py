@@ -141,9 +141,7 @@ def _ext_word_monitor_addr(word_addr: int) -> int:
 
 def _require_relay_data_size(data: bytes, expected: int, operation: str) -> None:
     if len(data) != expected:
-        raise ToyopucProtocolError(
-            f"Relay {operation} response size mismatch: expected={expected}, actual={len(data)}"
-        )
+        raise ToyopucProtocolError(f"Relay {operation} response size mismatch: expected={expected}, actual={len(data)}")
 
 
 @dataclass(frozen=True)
@@ -1553,9 +1551,7 @@ class ToyopucDeviceClient(ToyopucClient):
         for run in self._get_run_plan(devices, split_pc10):
             batch = self._read_batch(devices[idx : idx + run])
             if len(batch) != run:
-                raise ToyopucProtocolError(
-                    f"Batch-read result size mismatch: expected={run}, actual={len(batch)}"
-                )
+                raise ToyopucProtocolError(f"Batch-read result size mismatch: expected={run}, actual={len(batch)}")
             for j, v in enumerate(batch):
                 results[idx + j] = v
             idx += run

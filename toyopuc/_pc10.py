@@ -33,9 +33,7 @@ def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> list
     raw = client.pc10_multi_read(bytes(payload))
     expected = 4 + (len(addrs32) + 7) // 8
     if len(raw) != expected:
-        raise ToyopucProtocolError(
-            f"PC10 multi-bit response size mismatch: expected={expected}, actual={len(raw)}"
-        )
+        raise ToyopucProtocolError(f"PC10 multi-bit response size mismatch: expected={expected}, actual={len(raw)}")
     data = raw[4:]
     return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(len(addrs32))]
 
@@ -43,9 +41,7 @@ def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> list
 def _parse_ext_multi_bit_data(data: bytes, count: int) -> list[int]:
     need = (count + 7) // 8
     if len(data) != need:
-        raise ToyopucProtocolError(
-            f"Extended multi-bit response size mismatch: expected={need}, actual={len(data)}"
-        )
+        raise ToyopucProtocolError(f"Extended multi-bit response size mismatch: expected={need}, actual={len(data)}")
     return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(count)]
 
 
@@ -61,9 +57,7 @@ def _build_pc10_multi_word_read_payload(addrs32: Sequence[int]) -> bytes:
 def _parse_pc10_multi_word_data(data: bytes, count: int) -> list[int]:
     need = 4 + count * 2
     if len(data) != need:
-        raise ToyopucProtocolError(
-            f"PC10 multi-word response size mismatch: expected={need}, actual={len(data)}"
-        )
+        raise ToyopucProtocolError(f"PC10 multi-word response size mismatch: expected={need}, actual={len(data)}")
     return [int.from_bytes(data[4 + i * 2 : 6 + i * 2], "little") for i in range(count)]
 
 
