@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release: Bumped package metadata and `toyopuc.__version__` to `3.2.1`.
 - Release: GitHub Release drafts now prepend this version's changelog section to generated notes and repair a missing section on workflow reruns.
+- Tooling: Pinned canonical profile fixture refreshes to `plc-comm-computerlink-profiles` `v1.0.4`, matching the embedded profile data used by this release.
 
 ### BREAKING
 
