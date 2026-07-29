@@ -138,16 +138,11 @@ class ToyopucAddressingOptions:
             commands instead of ext-word commands.
         use_eb_pc10: Route EB-area via PC10 block commands.
         use_fr_pc10: Route FR-area via PC10 block commands.
-        use_upper_bit_pc10: Route P/V/T/C/L-area bit indexes >= 0x1000
-            (and derived word/byte >= 0x100) via PC10 block commands.
-        use_upper_m_bit_pc10: Same as above but for M-area.
     """
 
     use_upper_u_pc10: bool = True
     use_eb_pc10: bool = True
     use_fr_pc10: bool = True
-    use_upper_bit_pc10: bool = True
-    use_upper_m_bit_pc10: bool = True
 
     Default: ClassVar[ToyopucAddressingOptions]
     Generic: ClassVar[ToyopucAddressingOptions]
@@ -176,8 +171,6 @@ ToyopucAddressingOptions.ToyopucPlusStandard = ToyopucAddressingOptions(
     use_upper_u_pc10=False,
     use_eb_pc10=False,
     use_fr_pc10=False,
-    use_upper_bit_pc10=False,
-    use_upper_m_bit_pc10=False,
 )
 ToyopucAddressingOptions.ToyopucPlusExtended = ToyopucAddressingOptions.ToyopucPlusStandard
 ToyopucAddressingOptions.Nano10GxMode = ToyopucAddressingOptions()
@@ -186,16 +179,12 @@ ToyopucAddressingOptions.Pc10GStandardPc3Jg = ToyopucAddressingOptions(
     use_upper_u_pc10=False,
     use_eb_pc10=True,
     use_fr_pc10=False,
-    use_upper_bit_pc10=False,
-    use_upper_m_bit_pc10=False,
 )
 ToyopucAddressingOptions.Pc10GMode = ToyopucAddressingOptions()
 ToyopucAddressingOptions.Pc3JxPc3Separate = ToyopucAddressingOptions(
     use_upper_u_pc10=False,
     use_eb_pc10=False,
     use_fr_pc10=False,
-    use_upper_bit_pc10=False,
-    use_upper_m_bit_pc10=False,
 )
 ToyopucAddressingOptions.Pc3JxPlusExpansion = ToyopucAddressingOptions.Pc3JxPc3Separate
 ToyopucAddressingOptions.Pc3JgMode = ToyopucAddressingOptions.Pc10GStandardPc3Jg

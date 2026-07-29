@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### BREAKING
+
+- Library: Removed obsolete command upper-bit response flags and routes. Consumers must classify responses from their structural length and command contract instead of the removed flags.
+
+### Fixed
+
+- Library: Write commands are never retried after a transport failure that may follow transmission; read-only classification is structural rather than dependent on the removed flags.
+- Library: Relay response length decoding now handles a zero low byte correctly and rejects truncated or trailing response data exactly.
+- Library: Profile catalog address bounds are advisory and do not reject transport sends; wire-format width checks remain.
+
 ## [3.2.0] - 2026-07-17
 
 - Release: Bumped package metadata and `toyopuc.__version__` to `3.2.0`.

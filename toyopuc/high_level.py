@@ -139,6 +139,11 @@ def _ext_word_monitor_addr(word_addr: int) -> int:
     return word_addr * 2
 
 
+def _require_relay_data_size(data: bytes, expected: int, operation: str) -> None:
+    if len(data) != expected:
+        raise ToyopucProtocolError(f"Relay {operation} response size mismatch: expected={expected}, actual={len(data)}")
+
+
 @dataclass(frozen=True)
 class ResolvedDevice:
     """Resolved high-level device description."""
@@ -234,79 +239,6 @@ def _resolve_ext_bit(parsed: ParsedAddress, text: str) -> ResolvedDevice:
     )
 
 
-def _try_resolve_direct_pc10_bit(
-    parsed: ParsedAddress,
-    text: str,
-    options: ToyopucAddressingOptions,
-) -> ResolvedDevice | None:
-    """Return a pc10-bit ResolvedDevice if the address falls in the PC10 upper bit range."""
-    area = parsed.area
-    if area in {"P", "V", "T", "C"}:
-        if not (options.use_upper_bit_pc10 and 0x1000 <= parsed.index <= 0x17FF):
-            return None
-    elif area == "L":
-        if not (options.use_upper_bit_pc10 and 0x1000 <= parsed.index <= 0x2FFF):
-            return None
-    elif area == "M":
-        if not (options.use_upper_m_bit_pc10 and 0x1000 <= parsed.index <= 0x17FF):
-            return None
-    else:
-        return None
-    return ResolvedDevice(
-        text=text,
-        scheme="pc10-bit",
-        unit="bit",
-        area=parsed.area,
-        index=parsed.index,
-        digits=parsed.digits,
-        packed=parsed.packed,
-        addr32=encode_bit_address(parsed),
-    )
-
-
-def _try_resolve_direct_pc10_derived(
-    parsed: ParsedAddress,
-    text: str,
-    options: ToyopucAddressingOptions,
-) -> ResolvedDevice | None:
-    """Return a pc10-word/byte device if the address is a derived bit-area PC10 access."""
-    area = parsed.area
-    if area in {"P", "V", "T", "C", "L"}:
-        if not (options.use_upper_bit_pc10 and parsed.index >= 0x100):
-            return None
-    elif area == "M":
-        if not (options.use_upper_m_bit_pc10 and parsed.index >= 0x100):
-            return None
-    else:
-        return None
-
-    if parsed.unit == "word":
-        byte_addr = encode_word_address(parsed) * 2
-        return ResolvedDevice(
-            text=text,
-            scheme="pc10-word",
-            unit="word",
-            area=parsed.area,
-            index=parsed.index,
-            digits=parsed.digits,
-            packed=parsed.packed,
-            addr32=encode_exno_byte_u32(0x00, byte_addr),
-        )
-    # byte
-    byte_addr = encode_byte_address(parsed)
-    return ResolvedDevice(
-        text=text,
-        scheme="pc10-byte",
-        unit="byte",
-        area=parsed.area,
-        index=parsed.index,
-        digits=parsed.digits,
-        high=parsed.high,
-        packed=parsed.packed,
-        addr32=encode_exno_byte_u32(0x00, byte_addr),
-    )
-
-
 def _validate_profile_access(
     parsed: ParsedAddress,
     prefix: str | None,
@@ -315,7 +247,8 @@ def _validate_profile_access(
 ) -> None:
     """Reject profile-level route/family combinations that cannot be encoded.
 
-    Catalog address ranges are intentionally advisory and are not enforced
+    PROFILE_RANGE_NOT_A_TRANSPORT_GUARD: Catalog address ranges are
+    intentionally advisory and are not enforced
     here.  Whether a usable index exists is PLC/configuration dependent and
     belongs in application-layer validation.
     """
@@ -420,9 +353,6 @@ def _resolve_device_unbound(
     _validate_profile_access(parsed, prefix=None, profile=normalized_profile, device=device)
 
     if unit == "bit":
-        pc10_bit = _try_resolve_direct_pc10_bit(parsed, text, options)
-        if pc10_bit is not None:
-            return pc10_bit
         if parsed.area in _BASIC_BIT_AREAS:
             return ResolvedDevice(
                 text=text,
@@ -439,9 +369,6 @@ def _resolve_device_unbound(
     if unit == "word":
         if parsed.packed and parsed.area in _BASIC_WORD_AREAS | _EXT_WORD_AREAS:
             raise ValueError(f"W suffix is only valid for bit-device families: {text}")
-        pc10_derived = _try_resolve_direct_pc10_derived(parsed, text, options)
-        if pc10_derived is not None:
-            return pc10_derived
         if parsed.area in _BASIC_WORD_AREAS | _BASIC_BIT_AREAS:
             return ResolvedDevice(
                 text=text,
@@ -500,9 +427,6 @@ def _resolve_device_unbound(
         )
 
     # byte unit
-    pc10_derived_byte = _try_resolve_direct_pc10_derived(parsed, text, options)
-    if pc10_derived_byte is not None:
-        return pc10_derived_byte
     if parsed.area in _BASIC_WORD_AREAS | _BASIC_BIT_AREAS:
         return ResolvedDevice(
             text=text,
@@ -1175,6 +1099,7 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_word_read(_require(resolved.basic_addr, "basic_addr"), 1))
             if resp.cmd != 0x1C:
                 raise ToyopucProtocolError("Unexpected CMD in relay word-read response")
+            _require_relay_data_size(resp.data, 2, "word-read")
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "basic-byte":
             resp = self.send_via_relay(hops, build_byte_read(_require(resolved.basic_addr, "basic_addr"), 1))
@@ -1200,8 +1125,7 @@ class ToyopucDeviceClient(ToyopucClient):
             )
             if resp.cmd != 0x98:
                 raise ToyopucProtocolError("Unexpected CMD in relay multi-read response")
-            if not resp.data:
-                raise ToyopucProtocolError("Relay multi-read response missing bit payload")
+            _require_relay_data_size(resp.data, 1, "multi-bit-read")
             return bool(resp.data[0] & 0x01)
         if resolved.scheme == "program-word":
             resp = self.send_via_relay(
@@ -1214,6 +1138,7 @@ class ToyopucDeviceClient(ToyopucClient):
             )
             if resp.cmd != 0x94:
                 raise ToyopucProtocolError("Unexpected CMD in relay ext word-read response")
+            _require_relay_data_size(resp.data, 2, "extended word-read")
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "program-byte":
             resp = self.send_via_relay(
@@ -1246,8 +1171,7 @@ class ToyopucDeviceClient(ToyopucClient):
             )
             if resp.cmd != 0x98:
                 raise ToyopucProtocolError("Unexpected CMD in relay multi-read response")
-            if not resp.data:
-                raise ToyopucProtocolError("Relay multi-read response missing bit payload")
+            _require_relay_data_size(resp.data, 1, "extended multi-bit-read")
             return bool(resp.data[0] & 0x01)
         if resolved.scheme == "ext-word":
             resp = self.send_via_relay(
@@ -1260,6 +1184,7 @@ class ToyopucDeviceClient(ToyopucClient):
             )
             if resp.cmd != 0x94:
                 raise ToyopucProtocolError("Unexpected CMD in relay ext word-read response")
+            _require_relay_data_size(resp.data, 2, "extended word-read")
             return unpack_u16_le(resp.data)[0]
         if resolved.scheme == "ext-byte":
             resp = self.send_via_relay(
@@ -1282,22 +1207,19 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_pc10_multi_read(bytes(payload)))
             if resp.cmd != 0xC4:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 multi-read response")
-            if len(resp.data) < 5:
-                raise ToyopucProtocolError("Relay PC10 bit-read response too short")
+            _require_relay_data_size(resp.data, 5, "PC10 bit-read")
             return bool(resp.data[4] & 0x01)
         if resolved.scheme == "pc10-word":
             resp = self.send_via_relay(hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 2))
             if resp.cmd != 0xC2:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
-            if len(resp.data) < 2:
-                raise ToyopucProtocolError("Relay PC10 word-read response too short")
-            return int.from_bytes(resp.data[:2], "little")
+            _require_relay_data_size(resp.data, 2, "PC10 word-read")
+            return int.from_bytes(resp.data, "little")
         if resolved.scheme == "pc10-byte":
             resp = self.send_via_relay(hops, build_pc10_block_read(_require(resolved.addr32, "pc10 addr32"), 1))
             if resp.cmd != 0xC2:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
-            if len(resp.data) < 1:
-                raise ToyopucProtocolError("Relay PC10 byte-read response too short")
+            _require_relay_data_size(resp.data, 1, "PC10 byte-read")
             return resp.data[0]
         raise ValueError(f"Unsupported resolved scheme: {resolved.scheme}")
 
@@ -1553,7 +1475,7 @@ class ToyopucDeviceClient(ToyopucClient):
                 [],
                 [(_require(d.no, "no"), _ext_word_monitor_addr(_require(d.addr, "addr"))) for d in devices],
             )
-        )[: len(devices)]
+        )
 
     def _read_ext_byte_batch(self, devices: list[ResolvedDevice]) -> list[int]:
         no0 = devices[0].no
@@ -1566,7 +1488,7 @@ class ToyopucDeviceClient(ToyopucClient):
                 [],
                 [(_require(d.no, "no"), _require(d.addr, "addr")) for d in devices],
                 [],
-            )[: len(devices)]
+            )
         )
 
     def _read_ext_bit_batch(self, devices: list[ResolvedDevice]) -> list[bool]:
@@ -1581,9 +1503,7 @@ class ToyopucDeviceClient(ToyopucClient):
             segment_len = _pc10_word_segment_length(devices, segment_start)
             start_addr = _require(devices[segment_start].addr32, "pc10 addr32")
             words = unpack_u16_le(self.pc10_block_read(start_addr, segment_len * 2))
-            if len(words) < segment_len:
-                raise ToyopucProtocolError("PC10 block-read response too short")
-            values.extend(words[:segment_len])
+            values.extend(words)
             segment_start += segment_len
         return values
 
@@ -1630,6 +1550,8 @@ class ToyopucDeviceClient(ToyopucClient):
         idx = 0
         for run in self._get_run_plan(devices, split_pc10):
             batch = self._read_batch(devices[idx : idx + run])
+            if len(batch) != run:
+                raise ToyopucProtocolError(f"Batch-read result size mismatch: expected={run}, actual={len(batch)}")
             for j, v in enumerate(batch):
                 results[idx + j] = v
             idx += run
@@ -1645,11 +1567,13 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_word_read(start, len(devices)))
             if resp.cmd != 0x1C:
                 raise ToyopucProtocolError("Unexpected CMD in relay word-read response")
-            return unpack_u16_le(resp.data)[: len(devices)]
+            _require_relay_data_size(resp.data, len(devices) * 2, "word-read")
+            return unpack_u16_le(resp.data)
         resp = self.send_via_relay(hops, build_multi_word_read([_require(d.basic_addr, "basic_addr") for d in devices]))
         if resp.cmd != 0x22:
             raise ToyopucProtocolError("Unexpected CMD in relay multi-word-read response")
-        return unpack_u16_le(resp.data)[: len(devices)]
+        _require_relay_data_size(resp.data, len(devices) * 2, "multi-word-read")
+        return unpack_u16_le(resp.data)
 
     def _relay_read_basic_byte_batch(self, hops: Any, devices: list[ResolvedDevice]) -> list[int]:
         addrs = [_require(d.basic_addr, "basic_addr") for d in devices]
@@ -1657,11 +1581,13 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_byte_read(addrs[0], len(devices)))
             if resp.cmd != 0x1E:
                 raise ToyopucProtocolError("Unexpected CMD in relay byte-read response")
-            return list(resp.data[: len(devices)])
+            _require_relay_data_size(resp.data, len(devices), "byte-read")
+            return list(resp.data)
         resp = self.send_via_relay(hops, build_multi_byte_read(addrs))
         if resp.cmd != 0x24:
             raise ToyopucProtocolError("Unexpected CMD in relay multi-byte-read response")
-        return list(resp.data[: len(devices)])
+        _require_relay_data_size(resp.data, len(devices), "multi-byte-read")
+        return list(resp.data)
 
     def _relay_read_ext_word_batch(self, hops: Any, devices: list[ResolvedDevice]) -> list[int]:
         if _is_consecutive_ext_word(devices):
@@ -1670,7 +1596,8 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_ext_word_read(no, addr, len(devices)))
             if resp.cmd != 0x94:
                 raise ToyopucProtocolError("Unexpected CMD in relay ext-word-read response")
-            return unpack_u16_le(resp.data)[: len(devices)]
+            _require_relay_data_size(resp.data, len(devices) * 2, "extended word-read")
+            return unpack_u16_le(resp.data)
         resp = self.send_via_relay(
             hops,
             build_ext_multi_read(
@@ -1681,7 +1608,8 @@ class ToyopucDeviceClient(ToyopucClient):
         )
         if resp.cmd != 0x98:
             raise ToyopucProtocolError("Unexpected CMD in relay ext multi-read response")
-        return unpack_u16_le(resp.data)[: len(devices)]
+        _require_relay_data_size(resp.data, len(devices) * 2, "extended multi-word-read")
+        return unpack_u16_le(resp.data)
 
     def _relay_read_ext_byte_batch(self, hops: Any, devices: list[ResolvedDevice]) -> list[int]:
         no0 = devices[0].no
@@ -1691,7 +1619,8 @@ class ToyopucDeviceClient(ToyopucClient):
                 resp = self.send_via_relay(hops, build_ext_byte_read(no0, addrs[0], len(devices)))
                 if resp.cmd != 0x96:
                     raise ToyopucProtocolError("Unexpected CMD in relay ext byte-read response")
-                return list(resp.data[: len(devices)])
+                _require_relay_data_size(resp.data, len(devices), "extended byte-read")
+                return list(resp.data)
         resp = self.send_via_relay(
             hops,
             build_ext_multi_read(
@@ -1702,7 +1631,8 @@ class ToyopucDeviceClient(ToyopucClient):
         )
         if resp.cmd != 0x98:
             raise ToyopucProtocolError("Unexpected CMD in relay ext multi-read response")
-        return list(resp.data[: len(devices)])
+        _require_relay_data_size(resp.data, len(devices), "extended multi-byte-read")
+        return list(resp.data)
 
     def _relay_read_ext_bit_batch(self, hops: Any, devices: list[ResolvedDevice]) -> list[bool]:
         bits = [(_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr")) for d in devices]
@@ -1720,10 +1650,8 @@ class ToyopucDeviceClient(ToyopucClient):
             resp = self.send_via_relay(hops, build_pc10_block_read(start_addr, segment_len * 2))
             if resp.cmd != 0xC2:
                 raise ToyopucProtocolError("Unexpected CMD in relay PC10 block-read response")
-            words = unpack_u16_le(resp.data)
-            if len(words) < segment_len:
-                raise ToyopucProtocolError("PC10 block-read response too short")
-            values.extend(words[:segment_len])
+            _require_relay_data_size(resp.data, segment_len * 2, "PC10 block-read")
+            values.extend(unpack_u16_le(resp.data))
             segment_start += segment_len
         return values
 
@@ -1801,6 +1729,10 @@ class ToyopucDeviceClient(ToyopucClient):
         idx = 0
         for run in self._get_run_plan(devices, split_pc10):
             batch = self._relay_read_batch(hops, devices[idx : idx + run])
+            if len(batch) != run:
+                raise ToyopucProtocolError(
+                    f"Relay batch-read result size mismatch: expected={run}, actual={len(batch)}"
+                )
             for j, v in enumerate(batch):
                 results[idx + j] = v
             idx += run

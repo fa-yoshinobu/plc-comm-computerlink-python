@@ -803,11 +803,13 @@ def _normalize_inner_payload(inner_payload: bytes) -> bytes:
     """Ensure the payload is in `[LL, LH, CMD, ...]` form for relay wrapping."""
     if len(inner_payload) < 3:
         raise ValueError("inner payload must contain at least LL, LH, and CMD bytes")
-    if inner_payload[0] == FT_COMMAND:
-        if len(inner_payload) < 5:
-            raise ValueError("inner command frame too short")
-        if inner_payload[1] != 0x00:
-            raise ValueError("relay inner frame must be a command request (RC=0x00)")
+    is_full_command = (
+        len(inner_payload) >= 5
+        and inner_payload[0] == FT_COMMAND
+        and inner_payload[1] == 0x00
+        and (inner_payload[2] | (inner_payload[3] << 8)) + 4 == len(inner_payload)
+    )
+    if is_full_command:
         trimmed = inner_payload[2:]
     else:
         trimmed = inner_payload
