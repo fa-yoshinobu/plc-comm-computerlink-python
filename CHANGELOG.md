@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-07-29
+
+- Release: Bumped package metadata and `toyopuc.__version__` to `3.2.1`.
+
 ### BREAKING
 
 - Library: Removed obsolete command upper-bit response flags and routes. Consumers must classify responses from their structural length and command contract instead of the removed flags.
