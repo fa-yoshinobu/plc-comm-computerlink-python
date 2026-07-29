@@ -8,6 +8,23 @@ name.
 
 Device-family notation, type suffixes, practical range notes, and model-specific writable range summaries are shared across the Computerlink libraries. Use the common [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) page for those details.
 
+## Verified hardware available for validation
+
+The maintainer owns the hardware listed below. Communication has been verified
+on this hardware, and it is available for focused reproduction and validation
+when a problem is reported.
+
+"Verified" does not mean that every library feature has been tested on every
+listed PLC or module. Exhaustively testing every combination would require a prohibitive
+amount of work.
+
+| PLC family or unit group | Hardware owned by the maintainer |
+| --- | --- |
+| TOYOPUC Nano | `Nano 10GX`, `Nano 2ET` |
+| TOYOPUC Plus | `Plus CPU`, `Plus EX2` |
+| TOYOPUC PC10G | `PC10G-1SP`, `PC10G`, `EF10`, `2PORT-EFR` |
+| TOYOPUC PC3J | `PC3JX-D`, `PC3JG` |
+
 ## Explicit selection is required
 
 Always pass one exact canonical profile name through `plc_profile`.
