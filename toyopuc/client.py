@@ -3,15 +3,30 @@ from __future__ import annotations
 import math
 import socket
 import struct
-from collections.abc import Callable, Iterable
+import time
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from functools import wraps
+from ipaddress import ip_address
 from queue import Full, Queue
-from threading import Event, Thread
+from threading import Condition, Event, RLock, Thread, local
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
-from .errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
+from .errors import (
+    ToyopucCancelledError,
+    ToyopucClosedError,
+    ToyopucNotConnectedError,
+    ToyopucOperationOutcomeUnknownError,
+    ToyopucOutcomeUnknownReason,
+    ToyopucPlcError,
+    ToyopucProtocolError,
+    ToyopucTimeoutError,
+    ToyopucTransportError,
+)
 from .protocol import (
     FT_COMMAND,
     FT_RESPONSE,
@@ -119,11 +134,47 @@ ERROR_CODE_DESCRIPTIONS = {
 }
 
 
-_RETRYABLE_RESPONSE_ERROR_CODES = {0x73}
 UDP_RECEIVE_BUFFER_SIZE = 65_535
 _FR_BLOCK_WORDS = 0x8000
 _FR_MAX_INDEX = 0x1FFFFF
 _FR_IO_CHUNK_WORDS = 0x01F8
+_MAX_TIMER_SECONDS = 2_147_483.647
+_EMPTY_STATE_RESPONSE_COMMANDS = {0x1D, 0x1F, 0x21, 0x23, 0x25, 0x95, 0x97, 0x99, 0xC3, 0xC5, 0xCA}
+
+
+@dataclass
+class _OperationAdmission:
+    generation: int
+    timeout: float
+    cancel_event: Event
+
+
+def _remaining_time(deadline: float, message: str) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ToyopucTimeoutError(message)
+    return remaining
+
+
+def _native_cause(error: BaseException) -> BaseException:
+    cause = error
+    while cause.__cause__ is not None:
+        cause = cause.__cause__
+    return cause
+
+
+def _snapshot_operation_argument(value: object) -> object:
+    """Detach mutable and one-shot public inputs before queue admission."""
+
+    if isinstance(value, (str, bytes)):
+        return value
+    if isinstance(value, (bytearray, memoryview)):
+        return bytes(value)
+    if isinstance(value, Mapping):
+        return {_snapshot_operation_argument(key): _snapshot_operation_argument(item) for key, item in value.items()}
+    if isinstance(value, Iterable):
+        return tuple(_snapshot_operation_argument(item) for item in value)
+    return value
 
 
 def _validate_fr_index(index: int) -> int:
@@ -177,11 +228,47 @@ def _normalize_unsigned_values(values: Iterable[int], *, bits: int, label: str) 
 
 
 def _normalize_bit_value(value: object) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int) and value in (0, 1):
-        return value
-    raise ValueError("bit values must be bool or integers 0 or 1")
+    if not isinstance(value, bool):
+        raise ValueError("bit values must be bool")
+    return int(value)
+
+
+def _normalize_timer_seconds(value: object, *, name: str, allow_zero: bool) -> float:
+    qualifier = "a non-negative" if allow_zero else "a positive"
+    message = f"{name} must be {qualifier} finite number no greater than {_MAX_TIMER_SECONDS} seconds"
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(message)
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(message)
+    if (value < 0 if allow_zero else value <= 0) or value > _MAX_TIMER_SECONDS:
+        raise ValueError(message)
+    return float(value)
+
+
+def _normalize_ipv4_host(host: object, *, name: str = "host") -> str:
+    if not isinstance(host, str):
+        raise ValueError(f"{name} must be a string")
+    if not host.strip():
+        raise ValueError(f"{name} must not be empty")
+    normalized = host.strip()
+    literal_text = normalized[1:-1] if normalized.startswith("[") and normalized.endswith("]") else normalized
+    try:
+        literal = ip_address(literal_text)
+    except ValueError:
+        return normalized
+    if literal.version != 4:
+        raise ValueError(f"{name} must be an IPv4 address or a hostname that resolves to IPv4")
+    return literal_text
+
+
+def _resolve_ipv4_endpoint(host: str, port: int, socket_type: int) -> tuple[str, int]:
+    endpoints = socket.getaddrinfo(host, port, socket.AF_INET, socket_type)
+    for family, resolved_type, _protocol, _canonical_name, sockaddr in endpoints:
+        if family == socket.AF_INET and resolved_type == socket_type:
+            address, resolved_port = sockaddr[0], sockaddr[1]
+            if isinstance(address, str) and isinstance(resolved_port, int):
+                return address, resolved_port
+    raise socket.gaierror(f"host did not resolve to an IPv4 address: {host}")
 
 
 def _normalize_word_values(values: Iterable[int]) -> list[int]:
@@ -259,10 +346,6 @@ def _response_error_code(resp: ResponseFrame) -> int | None:
     return resp.data[-1] if resp.data else resp.cmd
 
 
-def _is_retryable_response_error(resp: ResponseFrame) -> bool:
-    return _response_error_code(resp) in _RETRYABLE_RESPONSE_ERROR_CODES
-
-
 def _is_read_only_payload(payload: bytes) -> bool:
     command: int
     body: bytes
@@ -282,6 +365,26 @@ def _is_read_only_payload(payload: bytes) -> bool:
     if command in {0x1C, 0x1E, 0x20, 0x22, 0x24, 0x94, 0x96, 0x98, 0xA0, 0xC2, 0xC4}:
         return True
     return command == 0x32 and body[:2] in {bytes([0x70, 0x00]), bytes([0x11, 0x00])}
+
+
+def _expected_state_response_data(payload: bytes) -> bytes | None:
+    if len(payload) >= 5 and payload[0] == FT_COMMAND and (payload[2] | (payload[3] << 8)) + 4 == len(payload):
+        command = payload[4]
+        body = payload[5:]
+    elif len(payload) >= 3 and (payload[0] | (payload[1] << 8)) + 2 == len(payload):
+        command = payload[2]
+        body = payload[3:]
+    else:
+        return None
+    if command in _EMPTY_STATE_RESPONSE_COMMANDS:
+        return b""
+    if command == 0x32 and body[:2] in {
+        bytes([0x71, 0x00]),
+        bytes([0x01, 0x00]),
+        bytes([0x02, 0x00]),
+    }:
+        return body[:2]
+    return None
 
 
 def _require_response_data_size(command: int, data: bytes, expected: int) -> None:
@@ -335,7 +438,7 @@ class ToyopucClient:
 
     Use this class when you want explicit control over command families,
     numeric addresses, and transport settings. For string-address driven use,
-    prefer `ToyopucDeviceClient`.
+    prefer `ToyopucDeviceClient`. TCP and UDP connections are IPv4-only.
     """
 
     def __init__(
@@ -349,8 +452,7 @@ class ToyopucClient:
         retries: int = 0,
         retry_delay: float = 0.2,
     ) -> None:
-        if not isinstance(host, str) or not host.strip():
-            raise ValueError("host must be a non-empty string")
+        normalized_host = _normalize_ipv4_host(host)
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65_535:
             raise ValueError("port must be an integer in the range 1..65535")
         if not isinstance(transport, str) or transport.strip().lower() not in {"tcp", "udp"}:
@@ -360,37 +462,28 @@ class ToyopucClient:
         normalized_transport = transport.strip().lower()
         if normalized_transport == "tcp" and local_port != 0:
             raise ValueError("local_port is only valid when transport='udp'")
-        if (
-            isinstance(timeout, bool)
-            or not isinstance(timeout, (int, float))
-            or not math.isfinite(timeout)
-            or timeout <= 0
-        ):
-            raise ValueError("timeout must be a positive finite number")
+        normalized_timeout = _normalize_timer_seconds(timeout, name="timeout", allow_zero=False)
         if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
             raise ValueError("retries must be a non-negative integer")
-        if (
-            isinstance(retry_delay, bool)
-            or not isinstance(retry_delay, (int, float))
-            or not math.isfinite(retry_delay)
-            or retry_delay < 0
-        ):
-            raise ValueError("retry_delay must be a non-negative finite number")
+        normalized_retry_delay = _normalize_timer_seconds(retry_delay, name="retry_delay", allow_zero=True)
 
-        self.host = host.strip()
+        self.host = normalized_host
         self.port = port
         self.local_port = local_port
         self.transport = normalized_transport
-        self.timeout = float(timeout)
+        self.timeout = normalized_timeout
         self.retries = retries
-        self.retry_delay = float(retry_delay)
+        self.retry_delay = normalized_retry_delay
         self._sock: socket.socket | None = None
         self._last_tx: bytes | None = None
         self._last_rx: bytes | None = None
         self._relay_hops_cache: dict[str, tuple[tuple[int, int], ...]] = {}
         self._maintainer_trace_hook: Callable[[ToyopucTraceFrame], None] | None = None
         self._trace_queue: Queue[tuple[Callable[[ToyopucTraceFrame], None], ToyopucTraceFrame]] | None = None
-        self._cancel_event = Event()
+        self._operation_condition = Condition(RLock())
+        self._operation_queue: deque[_OperationAdmission] = deque()
+        self._operation_context = local()
+        self._transport_generation = 0
         self._fixed_udp_session_tainted = False
         self._request_count = 0
         self._tx_bytes = 0
@@ -410,10 +503,16 @@ class ToyopucClient:
     def connect(self) -> None:
         """Open the configured TCP or UDP socket if it is not already open."""
 
+        with self._operation_turn():
+            self._connect(time.monotonic() + self._operation_timeout())
+
+    def _connect(self, deadline: float) -> None:
+        """Open a socket within an already admitted operation."""
+
         if self._sock:
             return
         if self._fixed_udp_session_tainted:
-            raise ToyopucError(
+            raise ToyopucNotConnectedError(
                 "This fixed-port UDP session cannot be reused after an uncertain request; "
                 "create a new client only after late responses can no longer be present"
             )
@@ -424,36 +523,94 @@ class ToyopucClient:
             sock: socket.socket | None = None
             try:
                 if self.transport == "tcp":
-                    sock = socket.create_connection((self.host, self.port), self.timeout)
+                    endpoint = _resolve_ipv4_endpoint(self.host, self.port, socket.SOCK_STREAM)
+                    sock = socket.create_connection(
+                        endpoint,
+                        _remaining_time(deadline, "Connect timeout"),
+                    )
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 else:
+                    endpoint = _resolve_ipv4_endpoint(self.host, self.port, socket.SOCK_DGRAM)
                     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     sock.bind(("", self.local_port))
-                    sock.connect((self.host, self.port))
-                    sock.settimeout(self.timeout)
-                self._sock = sock
+                    sock.connect(endpoint)
+                    sock.settimeout(_remaining_time(deadline, "Connect timeout"))
+                _remaining_time(deadline, "Connect timeout")
+                with self._operation_condition:
+                    self._raise_if_cancelled()
+                    self._sock = sock
                 return
-            except (OSError, TimeoutError) as exc:
+            except (TimeoutError, ToyopucTimeoutError) as exc:
                 if sock is not None:
                     sock.close()
                 if attempt <= self.retries:
-                    self._wait_retry_delay()
+                    self._wait_retry_delay(deadline)
                     continue
-                raise ToyopucError("Socket connection failed") from exc
+                raise ToyopucTimeoutError("Connect timeout") from exc
+            except OSError as exc:
+                if sock is not None:
+                    sock.close()
+                if attempt <= self.retries:
+                    self._wait_retry_delay(deadline)
+                    continue
+                raise ToyopucTransportError("Socket connection failed") from exc
+            except (ToyopucCancelledError, ToyopucClosedError):
+                if sock is not None:
+                    sock.close()
+                raise
 
     def close(self) -> None:
-        """Close the current socket and clear transport state."""
+        """Interrupt active work and retire all operations admitted before this call."""
+
+        with self._operation_condition:
+            self._transport_generation += 1
+            self._operation_condition.notify_all()
+        self._retire_transport()
+
+    def _retire_transport(self) -> None:
+        """Close only the transport without invalidating later queued operations."""
 
         if self._sock:
             try:
+                if self.transport == "tcp" and hasattr(self._sock, "shutdown"):
+                    try:
+                        self._sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
                 self._sock.close()
             finally:
                 self._sock = None
         self._last_tx = None
         self._last_rx = None
 
-    def _cancel_pending_operation(self) -> None:
-        self._cancel_event.set()
+    def _capture_operation_admission(self) -> tuple[int, float]:
+        """Capture queue-visible client settings when an async call is admitted."""
+
+        with self._operation_condition:
+            return self._transport_generation, self.timeout
+
+    def _begin_operation_cancel_scope(
+        self,
+        cancel_event: Event,
+        generation: int | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        self._operation_context.cancel_event = cancel_event
+        self._operation_context.admitted_generation = generation
+        self._operation_context.admitted_timeout = timeout
+
+    def _end_operation_cancel_scope(self, cancel_event: Event) -> None:
+        if getattr(self._operation_context, "cancel_event", None) is cancel_event:
+            self._operation_context.cancel_event = None
+            self._operation_context.admitted_generation = None
+            self._operation_context.admitted_timeout = None
+        if self._sock is not None and self._sock.fileno() < 0:
+            self._sock = None
+
+    def _cancel_pending_operation(self, cancel_event: Event) -> None:
+        cancel_event.set()
+        with self._operation_condition:
+            self._operation_condition.notify_all()
         sock = self._sock
         if sock is not None:
             try:
@@ -461,18 +618,92 @@ class ToyopucClient:
             except OSError:
                 pass
 
-    def _clear_operation_cancel(self) -> None:
-        self._cancel_event.clear()
-        if self._sock is not None and self._sock.fileno() < 0:
-            self._sock = None
+    def _operation_cancel_event(self) -> Event:
+        event = getattr(self._operation_context, "cancel_event", None)
+        return event if isinstance(event, Event) else Event()
+
+    @property
+    def _cancel_event(self) -> Event:
+        """Compatibility view of the current worker's private cancellation scope."""
+
+        return self._operation_cancel_event()
+
+    def _operation_timeout(self) -> float:
+        timeout = getattr(self._operation_context, "active_timeout", None)
+        return float(timeout) if timeout is not None else self.timeout
+
+    def _operation_generation(self) -> int:
+        generation = getattr(self._operation_context, "active_generation", None)
+        if generation is None:
+            with self._operation_condition:
+                return self._transport_generation
+        return int(generation)
 
     def _raise_if_cancelled(self) -> None:
-        if self._cancel_event.is_set():
-            raise ToyopucError("Operation cancelled")
+        with self._operation_condition:
+            if self._operation_generation() != self._transport_generation:
+                raise ToyopucClosedError("Operation was retired by close()")
+        if self._operation_cancel_event().is_set():
+            raise ToyopucCancelledError("Operation cancelled")
 
-    def _wait_retry_delay(self) -> None:
-        if self._cancel_event.wait(self.retry_delay):
-            raise ToyopucError("Operation cancelled")
+    @contextmanager
+    def _operation_turn(self) -> Iterator[None]:
+        """Serialize transport use in FIFO order and retain nested calls in one turn."""
+
+        depth = int(getattr(self._operation_context, "depth", 0))
+        if depth:
+            self._operation_context.depth = depth + 1
+            try:
+                self._raise_if_cancelled()
+                yield
+            finally:
+                self._operation_context.depth -= 1
+            return
+
+        with self._operation_condition:
+            captured_generation = getattr(self._operation_context, "admitted_generation", None)
+            captured_timeout = getattr(self._operation_context, "admitted_timeout", None)
+            admission = _OperationAdmission(
+                generation=self._transport_generation if captured_generation is None else int(captured_generation),
+                timeout=self.timeout if captured_timeout is None else float(captured_timeout),
+                cancel_event=self._operation_cancel_event(),
+            )
+            self._operation_queue.append(admission)
+            while self._operation_queue[0] is not admission:
+                if admission.cancel_event.is_set() or admission.generation != self._transport_generation:
+                    self._operation_queue.remove(admission)
+                    self._operation_condition.notify_all()
+                    if admission.cancel_event.is_set():
+                        raise ToyopucCancelledError("Operation cancelled while waiting for the client queue")
+                    raise ToyopucClosedError("Queued operation was retired by close()")
+                self._operation_condition.wait()
+            if admission.cancel_event.is_set() or admission.generation != self._transport_generation:
+                self._operation_queue.popleft()
+                self._operation_condition.notify_all()
+                if admission.cancel_event.is_set():
+                    raise ToyopucCancelledError("Operation cancelled before transport use")
+                raise ToyopucClosedError("Queued operation was retired by close()")
+            self._operation_context.depth = 1
+            self._operation_context.active_generation = admission.generation
+            self._operation_context.active_timeout = admission.timeout
+        try:
+            yield
+        finally:
+            self._operation_context.depth = 0
+            self._operation_context.active_generation = None
+            self._operation_context.active_timeout = None
+            with self._operation_condition:
+                if self._operation_queue and self._operation_queue[0] is admission:
+                    self._operation_queue.popleft()
+                elif admission in self._operation_queue:
+                    self._operation_queue.remove(admission)
+                self._operation_condition.notify_all()
+
+    def _wait_retry_delay(self, deadline: float) -> None:
+        delay = min(self.retry_delay, _remaining_time(deadline, "Transaction timeout during retry delay"))
+        if self._operation_cancel_event().wait(delay):
+            raise ToyopucCancelledError("Operation cancelled")
+        _remaining_time(deadline, "Transaction timeout during retry delay")
 
     @staticmethod
     def _run_trace_queue(
@@ -520,121 +751,181 @@ class ToyopucClient:
 
         return self._last_rx
 
-    def _recv_exact_into(self, buffer: bytearray | memoryview) -> None:
+    def _recv_exact_into(self, buffer: bytearray | memoryview, deadline: float) -> None:
         assert self._sock is not None
         view = memoryview(buffer)
         offset = 0
         remaining = len(view)
         while remaining > 0:
             try:
+                self._sock.settimeout(_remaining_time(deadline, "Receive timeout"))
                 received = self._sock.recv_into(view[offset:], remaining)
             except TimeoutError as e:
                 raise ToyopucTimeoutError("Receive timeout") from e
             if received <= 0:
-                raise ToyopucProtocolError("Connection closed while receiving")
+                raise ConnectionResetError("Connection closed while receiving")
+            self._raise_if_cancelled()
             offset += received
             remaining -= received
 
-    def _recv_exact(self, n: int) -> bytes:
+    def _recv_exact(self, n: int, deadline: float) -> bytes:
         buffer = bytearray(n)
-        self._recv_exact_into(buffer)
+        self._recv_exact_into(buffer, deadline)
         return bytes(buffer)
 
     def _send_and_recv(
         self,
         payload: bytes,
         *,
-        retryable: bool = False,
         state_changing: bool = False,
     ) -> ResponseFrame:
-        attempt = 0
-        last_err: Exception | None = None
-        allowed_retries = self.retries if retryable else 0
-        while attempt <= allowed_retries:
-            attempt += 1
+        with self._operation_turn():
+            return self._send_and_recv_admitted(payload, state_changing=state_changing)
+
+    def _send_and_recv_admitted(
+        self,
+        payload: bytes,
+        *,
+        state_changing: bool,
+    ) -> ResponseFrame:
+        deadline = time.monotonic() + self._operation_timeout()
+        self._raise_if_cancelled()
+        if not self._sock:
+            self._connect(deadline)
+        assert self._sock is not None
+        self._last_tx = payload
+        self._last_rx = None
+        self._fire_trace(ToyopucTraceDirection.SEND, payload)
+        request_may_have_been_sent = False
+
+        try:
+            self._sock.settimeout(_remaining_time(deadline, "Send timeout"))
             self._raise_if_cancelled()
-            if not self._sock:
-                self.connect()
-            assert self._sock is not None
-            self._last_tx = payload
-            self._last_rx = None
-            self._fire_trace(ToyopucTraceDirection.SEND, payload)
-            request_may_have_been_sent = False
+            request_may_have_been_sent = True
+            if self.transport == "tcp":
+                self._sock.sendall(payload)
+                self._request_count += 1
+                self._tx_bytes += len(payload)
+                header = bytearray(4)
+                self._recv_exact_into(header, deadline)
+                ll, lh = header[2], header[3]
+                length = ll | (lh << 8)
+                frame_buffer = bytearray(4 + length)
+                frame_buffer[:4] = header
+                self._recv_exact_into(memoryview(frame_buffer)[4:], deadline)
+                frame = bytes(frame_buffer)
+            else:
+                if self._sock.send(payload) != len(payload):
+                    raise OSError("UDP send did not accept the complete TOYOPUC datagram")
+                self._request_count += 1
+                self._tx_bytes += len(payload)
+                self._sock.settimeout(_remaining_time(deadline, "UDP receive timeout"))
+                frame = self._sock.recv(UDP_RECEIVE_BUFFER_SIZE)
+                self._raise_if_cancelled()
+            _remaining_time(deadline, "Response decode timeout")
+            self._rx_bytes += len(frame)
+        except (TimeoutError, ToyopucTimeoutError) as exc:
+            if request_may_have_been_sent and self.transport == "udp" and self.local_port != 0:
+                self._fixed_udp_session_tainted = True
+            with self._operation_condition:
+                closed = self._operation_generation() != self._transport_generation
+            cancelled = self._operation_cancel_event().is_set()
+            if closed:
+                reason = ToyopucOutcomeUnknownReason.CLOSED
+                timeout_error: Exception = ToyopucClosedError("Operation was interrupted by close()")
+            elif cancelled:
+                reason = ToyopucOutcomeUnknownReason.CANCELLATION
+                timeout_error = ToyopucCancelledError("Operation cancelled")
+            else:
+                reason = ToyopucOutcomeUnknownReason.TIMEOUT
+                timeout_error = ToyopucTimeoutError("Send/receive timeout")
+            self._retire_transport()
+            if state_changing and request_may_have_been_sent:
+                cause = _native_cause(exc)
+                raise ToyopucOperationOutcomeUnknownError(
+                    reason,
+                    "State-changing request may have reached the PLC before the timeout",
+                    cause=cause,
+                ) from cause
+            raise timeout_error from exc
+        except (OSError, ToyopucCancelledError, ToyopucClosedError) as exc:
+            if request_may_have_been_sent and self.transport == "udp" and self.local_port != 0:
+                self._fixed_udp_session_tainted = True
+            with self._operation_condition:
+                closed = self._operation_generation() != self._transport_generation
+            cancelled = self._operation_cancel_event().is_set()
+            if closed:
+                reason = ToyopucOutcomeUnknownReason.CLOSED
+                transport_error: Exception = ToyopucClosedError("Operation was interrupted by close()")
+            elif cancelled or isinstance(exc, ToyopucCancelledError):
+                reason = ToyopucOutcomeUnknownReason.CANCELLATION
+                transport_error = ToyopucCancelledError("Operation cancelled")
+            else:
+                reason = ToyopucOutcomeUnknownReason.TRANSPORT
+                transport_error = ToyopucTransportError("Socket error")
+            self._retire_transport()
+            if state_changing and request_may_have_been_sent:
+                cause = _native_cause(exc)
+                raise ToyopucOperationOutcomeUnknownError(
+                    reason,
+                    "State-changing request may have reached the PLC before the transport failed",
+                    cause=cause,
+                ) from cause
+            raise transport_error from exc
 
-            try:
-                request_may_have_been_sent = True
-                if self.transport == "tcp":
-                    self._sock.sendall(payload)
-                    self._request_count += 1
-                    self._tx_bytes += len(payload)
-                    header = bytearray(4)
-                    self._recv_exact_into(header)
-                    ll, lh = header[2], header[3]
-                    length = ll | (lh << 8)
-                    frame_buffer = bytearray(4 + length)
-                    frame_buffer[:4] = header
-                    self._recv_exact_into(memoryview(frame_buffer)[4:])
-                    frame = bytes(frame_buffer)
-                else:
-                    if self._sock.send(payload) != len(payload):
-                        raise OSError("UDP send did not accept the complete TOYOPUC datagram")
-                    self._request_count += 1
-                    self._tx_bytes += len(payload)
-                    frame = self._sock.recv(UDP_RECEIVE_BUFFER_SIZE)
-                self._rx_bytes += len(frame)
-            except (TimeoutError, ToyopucTimeoutError) as e:
-                if request_may_have_been_sent and self.transport == "udp" and self.local_port != 0:
-                    self._fixed_udp_session_tainted = True
-                last_err = ToyopucTimeoutError("Send/receive timeout")
-                if attempt <= allowed_retries and not self._fixed_udp_session_tainted:
-                    try:
-                        self.close()
-                    except Exception:
-                        pass
-
-                    self._wait_retry_delay()
-                    continue
-                self.close()
-                if state_changing and request_may_have_been_sent:
-                    raise ToyopucOperationOutcomeUnknownError(
-                        "State-changing request may have reached the PLC before the timeout"
-                    ) from e
-                raise last_err from e
-            except OSError as e:
-                if request_may_have_been_sent and self.transport == "udp" and self.local_port != 0:
-                    self._fixed_udp_session_tainted = True
-                last_err = ToyopucError("Socket error")
-                if attempt <= allowed_retries and not self._fixed_udp_session_tainted:
-                    try:
-                        self.close()
-                    except Exception:
-                        pass
-
-                    self._wait_retry_delay()
-                    continue
-                self.close()
-                if state_changing and request_may_have_been_sent:
-                    raise ToyopucOperationOutcomeUnknownError(
-                        "State-changing request may have reached the PLC before the transport failed"
-                    ) from e
-                raise last_err from e
-
+        try:
             self._fire_trace(ToyopucTraceDirection.RECEIVE, frame)
             self._last_rx = frame
             resp = parse_response(frame)
+            _remaining_time(deadline, "Response decode timeout")
             if resp.ft != FT_RESPONSE:
                 raise ToyopucProtocolError(f"Unexpected frame type: 0x{resp.ft:02X}")
             if resp.rc != 0x00:
-                last_err = ToyopucError(format_response_error(resp))
-                if retryable and _is_retryable_response_error(resp) and attempt <= allowed_retries:
-                    self._wait_retry_delay()
-                    continue
-                raise last_err
+                raise ToyopucPlcError(format_response_error(resp))
+            if len(payload) >= 5 and resp.cmd != payload[4]:
+                raise ToyopucProtocolError(
+                    f"Unexpected response command: expected 0x{payload[4]:02X}, got 0x{resp.cmd:02X}"
+                )
+            expected_state_data = _expected_state_response_data(payload) if state_changing else None
+            if expected_state_data is not None and resp.data != expected_state_data:
+                raise ToyopucProtocolError(
+                    "State-changing response data mismatch: "
+                    f"expected={expected_state_data.hex()}, actual={resp.data.hex()}"
+                )
             return resp
+        except ToyopucProtocolError as exc:
+            self._raise_post_send_protocol_error(exc, state_changing=state_changing)
+        raise AssertionError("unreachable response path")
 
-        if last_err:
-            raise last_err
-        raise ToyopucError("Send/receive failed")
+    def _raise_post_send_protocol_error(
+        self,
+        error: ToyopucProtocolError,
+        *,
+        state_changing: bool,
+    ) -> None:
+        if self.transport == "udp" and self.local_port != 0:
+            self._fixed_udp_session_tainted = True
+        self._retire_transport()
+        if state_changing:
+            raise ToyopucOperationOutcomeUnknownError(
+                ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE,
+                "State-changing request may have reached the PLC, but its response was not valid",
+                cause=error,
+            ) from error
+        raise error
+
+    def _validate_state_changing_response(
+        self,
+        response: ResponseFrame,
+        expected_cmd: int,
+        expected_data: bytes,
+        message: str,
+    ) -> None:
+        try:
+            if response.cmd != expected_cmd or response.data != expected_data:
+                raise ToyopucProtocolError(message)
+        except ToyopucProtocolError as exc:
+            self._raise_post_send_protocol_error(exc, state_changing=True)
 
     def _send_raw(self, cmd: int, data: bytes) -> ResponseFrame:
         """Maintainer-only raw command path."""
@@ -648,7 +939,7 @@ class ToyopucClient:
 
     def read_words(self, addr: int, count: int) -> list[int]:
         """Read one or more basic-area words with `CMD=1C`."""
-        resp = self._send_and_recv(build_word_read(addr, count), retryable=True)
+        resp = self._send_and_recv(build_word_read(addr, count))
         if resp.cmd != 0x1C:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x1C, resp.data, count * 2)
@@ -662,7 +953,7 @@ class ToyopucClient:
 
     def read_bytes(self, addr: int, count: int) -> bytes:
         """Read one or more basic-area bytes with `CMD=1E`."""
-        resp = self._send_and_recv(build_byte_read(addr, count), retryable=True)
+        resp = self._send_and_recv(build_byte_read(addr, count))
         if resp.cmd != 0x1E:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x1E, resp.data, count)
@@ -676,7 +967,7 @@ class ToyopucClient:
 
     def read_bit(self, addr: int) -> bool:
         """Read one basic-area bit with `CMD=20`."""
-        resp = self._send_and_recv(build_bit_read(addr), retryable=True)
+        resp = self._send_and_recv(build_bit_read(addr))
         if resp.cmd != 0x20:
             raise ToyopucProtocolError("Unexpected CMD in response")
         if len(resp.data) != 1:
@@ -684,7 +975,7 @@ class ToyopucClient:
         return resp.data[0] != 0
 
     def write_bit(self, addr: int, value: bool) -> None:
-        """Write one basic-area bit with `CMD=21`."""
+        """Write one basic-area bit with `CMD=21`; *value* must be `bool`."""
         resp = self._send_and_recv(build_bit_write(addr, _normalize_bit_value(value)), state_changing=True)
         if resp.cmd != 0x21:
             raise ToyopucProtocolError("Unexpected CMD in response")
@@ -730,7 +1021,7 @@ class ToyopucClient:
     def read_words_multi(self, addrs: Iterable[int]) -> list[int]:
         """Read multiple non-contiguous basic-area words with `CMD=22`."""
         address_list = list(addrs)
-        resp = self._send_and_recv(build_multi_word_read(address_list), retryable=True)
+        resp = self._send_and_recv(build_multi_word_read(address_list))
         if resp.cmd != 0x22:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x22, resp.data, len(address_list) * 2)
@@ -745,7 +1036,7 @@ class ToyopucClient:
     def read_bytes_multi(self, addrs: Iterable[int]) -> bytes:
         """Read multiple non-contiguous basic-area bytes with `CMD=24`."""
         address_list = list(addrs)
-        resp = self._send_and_recv(build_multi_byte_read(address_list), retryable=True)
+        resp = self._send_and_recv(build_multi_byte_read(address_list))
         if resp.cmd != 0x24:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x24, resp.data, len(address_list))
@@ -759,7 +1050,7 @@ class ToyopucClient:
 
     def read_ext_words(self, no: int, addr: int, count: int) -> list[int]:
         """Read extended-area words with `CMD=94` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_word_read(no, addr, count), retryable=True)
+        resp = self._send_and_recv(build_ext_word_read(no, addr, count))
         if resp.cmd != 0x94:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x94, resp.data, count * 2)
@@ -773,7 +1064,7 @@ class ToyopucClient:
 
     def read_ext_bytes(self, no: int, addr: int, count: int) -> bytes:
         """Read extended-area bytes with `CMD=96` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_byte_read(no, addr, count), retryable=True)
+        resp = self._send_and_recv(build_ext_byte_read(no, addr, count))
         if resp.cmd != 0x96:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x96, resp.data, count)
@@ -804,7 +1095,7 @@ class ToyopucClient:
         bits = list(bit_points)
         bytes_ = list(byte_points)
         words = list(word_points)
-        resp = self._send_and_recv(build_ext_multi_read(bits, bytes_, words), retryable=True)
+        resp = self._send_and_recv(build_ext_multi_read(bits, bytes_, words))
         if resp.cmd != 0x98:
             raise ToyopucProtocolError("Unexpected CMD in response")
         _require_response_data_size(0x98, resp.data, (len(bits) + 7) // 8 + len(bytes_) + len(words) * 2)
@@ -812,24 +1103,26 @@ class ToyopucClient:
 
     def write_ext_multi(
         self,
-        bit_points: Iterable[tuple[int, int, int, int]],
+        bit_points: Iterable[tuple[int, int, int, bool]],
         byte_points: Iterable[tuple[int, int, int]],
         word_points: Iterable[tuple[int, int, int]],
     ) -> None:
         """Write mixed extended points with `CMD=99`.
 
         All `addr` fields are monitor byte addresses, including `word_points`
-        (manual: "byte address N"), as in :meth:`read_ext_multi`.
+        (manual: "byte address N"), as in :meth:`read_ext_multi`. Each bit
+        point value must be an actual `bool`.
         """
+        bits = [(no, bit_no, addr, _normalize_bit_value(value)) for no, bit_no, addr, value in bit_points]
         resp = self._send_and_recv(
-            build_ext_multi_write(list(bit_points), list(byte_points), list(word_points)), state_changing=True
+            build_ext_multi_write(bits, list(byte_points), list(word_points)), state_changing=True
         )
         if resp.cmd != 0x99:
             raise ToyopucProtocolError("Unexpected CMD in response")
 
     def pc10_block_read(self, addr32: int, count: int) -> bytes:
         """Read PC10 block data with `CMD=C2` from a 32-bit byte address."""
-        resp = self._send_and_recv(build_pc10_block_read(addr32, count), retryable=True)
+        resp = self._send_and_recv(build_pc10_block_read(addr32, count))
         if resp.cmd != 0xC2:
             raise ToyopucProtocolError("Unexpected CMD in response")
         if len(resp.data) != count:
@@ -846,7 +1139,7 @@ class ToyopucClient:
 
     def pc10_multi_read(self, payload: bytes) -> bytes:
         """Read PC10 multi-point data with `CMD=C4` using a prebuilt payload."""
-        resp = self._send_and_recv(build_pc10_multi_read(payload), retryable=True)
+        resp = self._send_and_recv(build_pc10_multi_read(payload))
         if resp.cmd != 0xC4:
             raise ToyopucProtocolError("Unexpected CMD in response")
         return resp.data
@@ -894,7 +1187,6 @@ class ToyopucClient:
         read_only = _is_read_only_payload(inner_payload)
         return self._send_and_recv(
             build_relay_command(link_no, station_no, inner_payload),
-            retryable=read_only,
             state_changing=not read_only,
         )
 
@@ -902,16 +1194,12 @@ class ToyopucClient:
         self,
         hops: Iterable[tuple[int, int]],
         inner_payload: bytes,
-        *,
-        retryable: bool | None = None,
-        state_changing: bool | None = None,
     ) -> ResponseFrame:
         """Wrap a command in multiple relay hops using nested `CMD=60` frames."""
         read_only = _is_read_only_payload(inner_payload)
         return self._send_and_recv(
             build_relay_nested(list(hops), inner_payload),
-            retryable=read_only if retryable is None else retryable,
-            state_changing=not read_only if state_changing is None else state_changing,
+            state_changing=not read_only,
         )
 
     def send_via_relay(self, hops: str | Iterable[tuple[int, int]], inner_payload: bytes) -> ResponseFrame:
@@ -928,12 +1216,33 @@ class ToyopucClient:
                 normalized = cached
         else:
             normalized = tuple(normalize_relay_hops(hops))
+        state_changing = not _is_read_only_payload(inner_payload)
         outer = self.relay_nested(normalized, inner_payload)
-        layers, final = unwrap_relay_response_chain(outer)
+        try:
+            layers, final = unwrap_relay_response_chain(outer)
+        except ToyopucProtocolError as exc:
+            self._raise_post_send_protocol_error(exc, state_changing=state_changing)
         if final is None:
             last = layers[-1]
             raise ToyopucProtocolError(
                 f"Relay NAK at link=0x{last.link_no:02X}, station=0x{last.station_no:04X}, ack=0x{last.ack:02X}"
+            )
+        expected_cmd = inner_payload[4] if inner_payload[0] == FT_COMMAND else inner_payload[2]
+        if final.cmd != expected_cmd:
+            self._raise_post_send_protocol_error(
+                ToyopucProtocolError(
+                    f"Unexpected relay response command: expected 0x{expected_cmd:02X}, got 0x{final.cmd:02X}"
+                ),
+                state_changing=state_changing,
+            )
+        expected_state_data = _expected_state_response_data(inner_payload) if state_changing else None
+        if expected_state_data is not None and final.data != expected_state_data:
+            self._raise_post_send_protocol_error(
+                ToyopucProtocolError(
+                    "Relay state-changing response data mismatch: "
+                    f"expected={expected_state_data.hex()}, actual={final.data.hex()}"
+                ),
+                state_changing=True,
             )
         return final
 
@@ -983,34 +1292,24 @@ class ToyopucClient:
                 weekday,
             ),
         )
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay clock-write response")
-        if resp.data != bytes([0x71, 0x00]):
-            raise ToyopucProtocolError("Unexpected relay clock-write response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x71, 0x00]), "Unexpected relay clock-write response")
 
     def relay_resume_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Resume CPU scan through relay hops via `CMD=32 / 01 00`."""
         resp = self.send_via_relay(hops, build_scan_resume())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay scan-resume response")
-        if resp.data != bytes([0x01, 0x00]):
-            raise ToyopucProtocolError("Unexpected relay scan-resume response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x01, 0x00]), "Unexpected relay scan-resume response")
 
     def relay_stop_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Stop CPU scan through relay hops via `CMD=32 / 02 00 01`."""
         resp = self.send_via_relay(hops, build_scan_stop())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay scan-stop response")
-        if resp.data != bytes([0x02, 0x00]):
-            raise ToyopucProtocolError("Unexpected relay scan-stop response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected relay scan-stop response")
 
     def relay_release_scan_stop(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Release CPU scan stop through relay hops via `CMD=32 / 02 00 00`."""
         resp = self.send_via_relay(hops, build_scan_stop_release())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay scan-stop-release response")
-        if resp.data != bytes([0x02, 0x00]):
-            raise ToyopucProtocolError("Unexpected relay scan-stop-release response body")
+        self._validate_state_changing_response(
+            resp, 0x32, bytes([0x02, 0x00]), "Unexpected relay scan-stop-release response"
+        )
 
     def relay_read_cpu_status(self, hops: str | Iterable[tuple[int, int]]) -> CpuStatusData:
         """Read the 8-byte CPU status block through relay hops."""
@@ -1069,7 +1368,7 @@ class ToyopucClient:
 
     def read_clock(self) -> ClockData:
         """Read the CPU clock via `CMD=32 / 70 00`."""
-        resp = self._send_and_recv(build_clock_read(), retryable=True)
+        resp = self._send_and_recv(build_clock_read())
         if resp.cmd != 0x32:
             raise ToyopucProtocolError("Unexpected CMD in response")
         try:
@@ -1137,31 +1436,94 @@ class ToyopucClient:
             ),
             state_changing=True,
         )
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if resp.data != bytes([0x71, 0x00]):
-            raise ToyopucProtocolError("Unexpected clock write response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x71, 0x00]), "Unexpected clock write response")
 
     def resume_scan(self) -> None:
         """Resume CPU scan via `CMD=32 / 01 00`."""
         resp = self._send_and_recv(build_scan_resume(), state_changing=True)
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if resp.data != bytes([0x01, 0x00]):
-            raise ToyopucProtocolError("Unexpected scan-resume response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x01, 0x00]), "Unexpected scan-resume response")
 
     def stop_scan(self) -> None:
         """Stop CPU scan via `CMD=32 / 02 00 01`."""
         resp = self._send_and_recv(build_scan_stop(), state_changing=True)
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if resp.data != bytes([0x02, 0x00]):
-            raise ToyopucProtocolError("Unexpected scan-stop response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected scan-stop response")
 
     def release_scan_stop(self) -> None:
         """Release CPU scan stop via `CMD=32 / 02 00 00`."""
         resp = self._send_and_recv(build_scan_stop_release(), state_changing=True)
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if resp.data != bytes([0x02, 0x00]):
-            raise ToyopucProtocolError("Unexpected scan-stop-release response body")
+        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected scan-stop-release response")
+
+
+_FIFO_OPERATION_METHODS = (
+    "read_words",
+    "write_words",
+    "read_bytes",
+    "write_bytes",
+    "read_bit",
+    "write_bit",
+    "read_dword",
+    "write_dword",
+    "read_dwords",
+    "write_dwords",
+    "read_float32",
+    "write_float32",
+    "read_float32s",
+    "write_float32s",
+    "read_words_multi",
+    "write_words_multi",
+    "read_bytes_multi",
+    "write_bytes_multi",
+    "read_ext_words",
+    "write_ext_words",
+    "read_ext_bytes",
+    "write_ext_bytes",
+    "read_ext_multi",
+    "write_ext_multi",
+    "pc10_block_read",
+    "pc10_block_write",
+    "pc10_multi_read",
+    "pc10_multi_write",
+    "read_fr_words",
+    "write_fr_words",
+    "commit_fr_block",
+    "relay_command",
+    "relay_nested",
+    "send_via_relay",
+    "relay_read_words",
+    "relay_write_words",
+    "relay_read_clock",
+    "relay_write_clock",
+    "relay_resume_scan",
+    "relay_stop_scan",
+    "relay_release_scan_stop",
+    "relay_read_cpu_status",
+    "relay_read_cpu_status_a0_raw",
+    "relay_read_cpu_status_a0",
+    "relay_write_fr_words",
+    "relay_commit_fr_block",
+    "read_clock",
+    "read_cpu_status",
+    "read_cpu_status_a0_raw",
+    "read_cpu_status_a0",
+    "write_clock",
+    "resume_scan",
+    "stop_scan",
+    "release_scan_stop",
+)
+
+
+def _install_fifo_operation(method_name: str) -> None:
+    method = getattr(ToyopucClient, method_name)
+
+    @wraps(method)
+    def fifo_operation(self: ToyopucClient, *args: object, **kwargs: object) -> object:
+        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
+        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
+        with self._operation_turn():
+            return method(self, *admitted_args, **admitted_kwargs)
+
+    setattr(ToyopucClient, method_name, fifo_operation)
+
+
+for _fifo_method_name in _FIFO_OPERATION_METHODS:
+    _install_fifo_operation(_fifo_method_name)

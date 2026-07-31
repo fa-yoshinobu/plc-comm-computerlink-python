@@ -18,20 +18,32 @@ from toyopuc.protocol import (
     build_bit_read,
     build_bit_write,
     build_byte_read,
+    build_byte_write,
     build_clock_read,
     build_command,
     build_cpu_status_read,
     build_cpu_status_read_a0,
+    build_ext_byte_read,
+    build_ext_byte_write,
     build_ext_multi_read,
     build_ext_multi_write,
+    build_ext_word_read,
+    build_ext_word_write,
+    build_fr_register,
+    build_multi_byte_read,
+    build_multi_byte_write,
     build_multi_word_read,
+    build_multi_word_write,
     build_pc10_block_read,
+    build_pc10_block_write,
     build_pc10_multi_read,
+    build_pc10_multi_write,
     build_relay_command,
     build_scan_resume,
     build_scan_stop,
     build_scan_stop_release,
     build_word_read,
+    build_word_write,
     pack_bcd,
     parse_cpu_status_data_a0,
     parse_response,
@@ -73,6 +85,24 @@ def test_build_command_requires_explicit_bytes_and_valid_length() -> None:
     assert len(build_command(0xFF, bytes(65_534))) == 65_539
     with pytest.raises(ValueError, match="too large"):
         build_command(0xFF, bytes(65_535))
+
+
+@pytest.mark.parametrize("count", [True, 1.0, 1.9, "2"])
+def test_count_requires_an_actual_non_boolean_integer(count: object) -> None:
+    with pytest.raises(ValueError):
+        build_word_read(0, count)  # type: ignore[arg-type]
+
+
+def test_wire_width_values_are_rejected_instead_of_masked() -> None:
+    with pytest.raises(ValueError):
+        build_ext_word_read(256, 0, 1)
+    with pytest.raises(ValueError):
+        build_ext_multi_read([], [(256, 0)], [])
+    with pytest.raises(ValueError):
+        build_fr_register(256)
+    for address in (-1, 0x1_0000_0000, True):
+        with pytest.raises(ValueError):
+            build_pc10_block_read(address, 1)  # type: ignore[arg-type]
 
 
 def test_relay_inner_payload_with_zero_length_low_byte_is_not_misclassified_as_full_frame() -> None:
@@ -134,6 +164,59 @@ def test_protocol_builders_reject_over_limit_single_frame_requests() -> None:
         build_pc10_block_read(0x0000FFFE, 4)
     with pytest.raises(ValueError, match="CMD=C4"):
         build_pc10_multi_read(bytes(0x0201))
+
+
+def test_every_protocol_capacity_accepts_exact_max_and_rejects_max_plus_one() -> None:
+    build_word_read(0, 0x0200)
+    build_word_write(0, [0] * 0x0200)
+    build_byte_read(0, 0x0400)
+    build_byte_write(0, bytes(0x0400))
+    build_multi_word_read(range(0x0080))
+    build_multi_word_write([(index, 0) for index in range(0x0080)])
+    build_multi_byte_read(range(0x0080))
+    build_multi_byte_write([(index, 0) for index in range(0x0080)])
+    build_ext_word_read(0, 0, 0x0200)
+    build_ext_word_write(0, 0, [0] * 0x0200)
+    build_ext_byte_read(0, 0, 0x0400)
+    build_ext_byte_write(0, 0, bytes(0x0400))
+    build_ext_multi_read([(0, 0, index) for index in range(0x00B0)], [], [])
+    build_ext_multi_write([(0, 0, index, 0) for index in range(0x0080)], [], [])
+    build_pc10_block_read(0, 0x03F0)
+    build_pc10_block_write(0, bytes(0x03F0))
+    build_pc10_multi_read(bytes(0x0200))
+    build_pc10_multi_write(bytes(0x0200))
+
+    over_limit_calls = [
+        lambda: build_word_read(0, 0x0201),
+        lambda: build_word_write(0, [0] * 0x0201),
+        lambda: build_byte_read(0, 0x0401),
+        lambda: build_byte_write(0, bytes(0x0401)),
+        lambda: build_multi_word_read(range(0x0081)),
+        lambda: build_multi_word_write([(index, 0) for index in range(0x0081)]),
+        lambda: build_multi_byte_read(range(0x0081)),
+        lambda: build_multi_byte_write([(index, 0) for index in range(0x0081)]),
+        lambda: build_ext_word_read(0, 0, 0x0201),
+        lambda: build_ext_word_write(0, 0, [0] * 0x0201),
+        lambda: build_ext_byte_read(0, 0, 0x0401),
+        lambda: build_ext_byte_write(0, 0, bytes(0x0401)),
+        lambda: build_ext_multi_read([(0, 0, index) for index in range(0x00B1)], [], []),
+        lambda: build_ext_multi_write([(0, 0, index, 0) for index in range(0x0081)], [], []),
+        lambda: build_pc10_block_read(0, 0x03F1),
+        lambda: build_pc10_block_write(0, bytes(0x03F1)),
+        lambda: build_pc10_multi_read(bytes(0x0201)),
+        lambda: build_pc10_multi_write(bytes(0x0201)),
+    ]
+    for call in over_limit_calls:
+        with pytest.raises(ValueError):
+            call()
+
+
+@pytest.mark.parametrize("value", [False, True, -1, 2, "1"])
+def test_raw_bit_builders_require_exact_wire_integer_values(value: object) -> None:
+    with pytest.raises(ValueError, match="bit value"):
+        build_bit_write(0, value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="bit value"):
+        build_ext_multi_write([(1, 0, 0, value)], [], [])  # type: ignore[list-item]
 
 
 @pytest.mark.parametrize("vec", _RESPONSE_VECTORS, ids=lambda v: v["id"])

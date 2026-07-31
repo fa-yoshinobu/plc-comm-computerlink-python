@@ -7,11 +7,13 @@
 | `ToyopucConnectionOptions` | Store one explicit connection profile for async code. |
 | `open_and_connect(options)` | Create and connect an async high-level client. |
 | `read_typed` / `write_typed` | Read or write one typed value. |
-| `read_named` | Read one named word, typed, or bit-in-word address. |
+| `read_named` | Read an ordered named collection of word, typed, and bit-in-word entries. |
 | `read_words_single_request` / `read_dwords_single_request` | Keep a contiguous read as one logical request. |
 | `write_bit_in_word` | Change one bit inside a word with read-modify-write. |
-| `poll` | Repeatedly yield one named address. |
+| `poll` | Repeatedly yield one named read result. |
 | `ToyopucDeviceClient` | Use the synchronous high-level API. |
+
+A `ResolvedDevice` is bound to the exact canonical PLC profile that resolved it. Passing it to a client configured for any other profile is rejected before request construction or transport activity, even when both profiles share addressing rules. Resolve the device again through the destination client instead of reusing it across profiles.
 
 ## Connection
 
@@ -65,15 +67,12 @@ asyncio.run(main())
 
 ## Connection reuse and concurrent requests
 
-Keep one connected `AsyncToyopucDeviceClient` open for repeated reads, writes,
-and polling. The async wrapper runs PLC operations on a single worker, so
-overlapping awaits on the same async client are serialized instead of sharing
-one socket at the same time.
-
-Do not share the synchronous `ToyopucDeviceClient` across threads unless your
-application adds its own lock. After a persistent socket or protocol connection
-failure, leave the current context and create a new client with
-`open_and_connect`.
+Keep one client open for repeated reads, writes, and polling. Each sync or async
+client admits ordinary operations in arrival order and uses its transport for
+one operation at a time. Different client instances remain independent.
+Connection is lazy: the first operation connects when necessary. `close()`
+interrupts the active operation and rejects operations already queued in that
+transport generation; a later new operation may connect again.
 
 ## Read single
 
@@ -131,7 +130,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Named snapshot
+## Named read collection
 
 ```python
 import asyncio
@@ -148,8 +147,8 @@ async def main() -> None:
     )
 
     async with await open_and_connect(options) as client:
-        snapshot = await read_named(client, ["P1-D0100:F"])
-        print(snapshot)
+        read_result = await read_named(client, ["P1-D0100:F", "P1-D0102:S", "P1-D0103.3"])
+        print(read_result)
 
 
 asyncio.run(main())
@@ -157,11 +156,43 @@ asyncio.run(main())
 
 ## Batching and request boundaries
 
-`ToyopucDeviceClient.read` reads a contiguous range. Its `count` is required and it always returns a list. Use `read_one` only when a scalar is intended. `read_devices` and `write_many` execute only when all requested devices can be represented by one compatible protocol request. These APIs raise before communication when a request would need incompatible protocol groups, a PC10 block boundary crossing, or an individual-request fallback.
+`ToyopucDeviceClient.read` reads a contiguous range. Its `count` is required and
+it always returns a list. Use `read_one` only when a scalar is intended.
+`read`, `read_devices`, relay read aggregates, and `read_named` preserve caller
+order and automatically split only when a protocol limit, route family, or
+PC10 block boundary requires another read request. Every entry is indivisible,
+the entire plan is validated before transport, and all requests hold one FIFO
+client turn. The result is non-atomic because the PLC can change between
+requests; the API returns all values or raises without returning a partial
+result.
 
-Async `read_named` accepts one named address per call. Use explicit repeated calls when multiple named reads are intentional.
+Writes are different: `write`, `write_many`, typed array writes, and their relay
+forms reject a plan that would require multiple requests before transport.
 
-For contiguous word ranges, use `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, or `write_dwords_single_request`. These helpers fail before communication if the range cannot be represented as one compatible protocol request. There are no public chunking helpers. Write separate explicit calls only when different acquisition times or partial completion are acceptable.
+For contiguous word ranges, use `read_words_single_request`,
+`read_dwords_single_request`, `write_words_single_request`, or
+`write_dwords_single_request` when one wire request is itself required. There
+are no public chunking switches. Write separate explicit calls only when
+partial completion is acceptable.
+
+`write_bit_in_word` is an explicit read-modify-write helper, not part of read
+aggregation. It holds one exclusive FIFO turn across its read and write, but it
+is not PLC-atomic: PLC logic or another connection can still change the word
+between the two requests.
+
+## Timeouts, cancellation, and retry safety
+
+One monotonic deadline covers lazy connect, transmit, receive, and response
+decode for each request. Timeout and cancellation retire the current transport.
+Automatic retries are allowed only for connection failures proven to occur
+before a send attempt. After a request may have been sent, neither reads nor
+writes are automatically resent.
+
+Timeout, cancellation, explicit close, not-connected state, transport failure,
+malformed response, and PLC NG responses have distinct exception types. A
+state-changing operation that may have been sent raises
+`ToyopucOperationOutcomeUnknownError`; inspect its `reason` and reconcile PLC
+state before deciding whether another write is safe.
 
 ## Block reads
 
@@ -243,8 +274,8 @@ async def main() -> None:
 
     async with await open_and_connect(options) as client:
         count = 0
-        async for snapshot in poll(client, ["P1-D0000"], interval=1.0):
-            print(snapshot)
+        async for read_result in poll(client, ["P1-D0000"], interval=1.0):
+            print(read_result)
             count += 1
             if count >= 3:
                 break

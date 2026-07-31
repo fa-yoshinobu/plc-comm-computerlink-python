@@ -126,7 +126,7 @@ def build_probe(target_text: str) -> tuple[Probe, int]:
                     write=cast(
                         Callable[[ToyopucClient, int], None],
                         lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                            [(no, bit_no, addr, value & 0x01)], [], []
+                            [(no, bit_no, addr, bool(value & 0x01))], [], []
                         ),
                     ),
                 ),
@@ -204,7 +204,7 @@ def build_probe(target_text: str) -> tuple[Probe, int]:
                     write=cast(
                         Callable[[ToyopucClient, int], None],
                         lambda plc, value, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                            [(no, bit_no, addr, value & 0x01)], [], []
+                            [(no, bit_no, addr, bool(value & 0x01))], [], []
                         ),
                     ),
                 ),

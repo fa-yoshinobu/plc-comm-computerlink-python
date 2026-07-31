@@ -221,7 +221,7 @@ def _write_snapshot(plc: ToyopucClient, case: ProbeCase, no: int, snapshot: Prob
     if case.bit is not None and snapshot.bit is not None:
         bit_no = _require_field(case.bit.bit_no, f"{case.key}: bit case missing bit_no")
         addr = _require_field(case.bit.addr, f"{case.key}: bit case missing addr")
-        bit_points.append((no, bit_no, addr, int(snapshot.bit) & 0x01))
+        bit_points.append((no, bit_no, addr, bool(snapshot.bit)))
     if case.byte is not None and snapshot.byte is not None:
         addr = _require_field(case.byte.addr, f"{case.key}: byte case missing addr")
         byte_points.append((no, addr, int(snapshot.byte) & 0xFF))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import wraps
 from typing import Any, cast
 
 from ._batching import (
@@ -49,6 +50,7 @@ from .client import (
     _normalize_word_values,
     _pack_float32_low_word_first_words,
     _pack_uint32_low_word_first_words,
+    _snapshot_operation_argument,
     _unpack_float32_low_word_first_words,
     _unpack_uint32_low_word_first_words,
 )
@@ -163,6 +165,26 @@ class ResolvedDevice:
     bit_no: int | None = None
     addr32: int | None = None
     plc_profile: str = ""
+
+
+def _wire_identity(device: ResolvedDevice) -> tuple[object, ...]:
+    if device.scheme in {"basic-bit", "basic-byte", "basic-word"}:
+        return (device.scheme, device.basic_addr)
+    if device.scheme in {"ext-bit", "program-bit"}:
+        return (device.scheme, device.no, device.bit_no, device.addr)
+    if device.scheme in {"ext-byte", "ext-word", "program-byte", "program-word"}:
+        return (device.scheme, device.no, device.addr)
+    if device.scheme in {"pc10-bit", "pc10-byte", "pc10-word"}:
+        return (device.scheme, device.addr32)
+    return (
+        device.scheme,
+        device.unit,
+        device.basic_addr,
+        device.no,
+        device.bit_no,
+        device.addr,
+        device.addr32,
+    )
 
 
 def _infer_unit_and_area(device: str) -> tuple[str | None, str, str]:
@@ -553,6 +575,174 @@ class ToyopucDeviceClient(ToyopucClient):
         if len(plan) != 1 or not self._can_read_as_single_request(devices):
             self._raise_implicit_split_error(operation)
 
+    @staticmethod
+    def _read_request_limit(devices: list[ResolvedDevice]) -> int:
+        """Return the exact point limit for the request shape selected for a run."""
+
+        key = _batch_key(devices[0])
+        if key == "basic-word":
+            return 0x0200 if _is_consecutive_basic(devices) else 0x0080
+        if key == "basic-byte":
+            return 0x0400 if _is_consecutive_basic(devices) else 0x0080
+        if key == "ext-word":
+            return 0x0200 if _is_consecutive_ext_word(devices) else 0x0040
+        if key == "ext-byte":
+            no = devices[0].no
+            addrs = [device.addr for device in devices]
+            first_addr = addrs[0]
+            consecutive = (
+                no is not None
+                and first_addr is not None
+                and all(device.no == no and device.addr == first_addr + index for index, device in enumerate(devices))
+            )
+            return 0x0400 if consecutive else 0x0080
+        if key == "ext-bit":
+            return 0x00B0
+        if key == "pc10-word":
+            if _contains_packed_pc10_word_device(devices) or _is_consecutive_pc10_word(devices):
+                return 0x01F8
+            return 0x007F
+        if key == "pc10-bit":
+            return 0x007F
+        if key == "pc10-byte":
+            addrs = [device.addr32 for device in devices]
+            consecutive = addrs[0] is not None and all(
+                address == addrs[0] + index for index, address in enumerate(addrs)
+            )
+            return 0x03F0 if consecutive else 1
+        return 1
+
+    def _get_read_plan(
+        self,
+        devices: list[ResolvedDevice],
+        split_pc10: bool,
+        *,
+        entry_lengths: Sequence[int] | None = None,
+    ) -> tuple[int, ...]:
+        if not devices:
+            raise ValueError("read aggregation requires at least one device")
+        allowed_ends: set[int]
+        if entry_lengths is None:
+            allowed_ends = set(range(1, len(devices) + 1))
+        else:
+            if any(isinstance(length, bool) or not isinstance(length, int) or length < 1 for length in entry_lengths):
+                raise ValueError("read entry lengths must be positive integers")
+            allowed_ends = set()
+            total = 0
+            for length in entry_lengths:
+                total += length
+                allowed_ends.add(total)
+            if total != len(devices):
+                raise ValueError("read entry lengths must cover every planned device exactly once")
+
+        plan: list[int] = []
+        group_start = 0
+        for group_length in self._get_run_plan(devices, split_pc10):
+            group_end = group_start + group_length
+            if group_end not in allowed_ends:
+                raise ToyopucProtocolError(
+                    "One declared read entry cannot cross incompatible protocol request families"
+                )
+            cursor = group_start
+            while cursor < group_end:
+                remaining = devices[cursor:group_end]
+                if _batch_key(remaining[0]) == "pc10-word" and _contains_packed_pc10_word_device(remaining):
+                    natural = _pc10_word_segment_length(remaining, 0)
+                    limit = min(natural, self._read_request_limit(remaining[:natural]))
+                else:
+                    limit = self._read_request_limit(remaining)
+                maximum_end = min(group_end, cursor + limit)
+                candidates = [end for end in allowed_ends if cursor < end <= maximum_end]
+                if not candidates:
+                    raise ToyopucProtocolError("One declared read entry exceeds the protocol request capacity")
+                request_end = max(candidates)
+                plan.append(request_end - cursor)
+                cursor = request_end
+            group_start = group_end
+        return tuple(plan)
+
+    @staticmethod
+    def _preflight_read_batch(devices: list[ResolvedDevice]) -> None:
+        """Build the selected request without transport so the whole read plan is validated first."""
+
+        key = _batch_key(devices[0])
+        if key == "basic-word":
+            addrs = [_require(device.basic_addr, "basic_addr") for device in devices]
+            if _is_consecutive_basic(devices):
+                build_word_read(addrs[0], len(devices))
+            else:
+                build_multi_word_read(addrs)
+            return
+        if key == "basic-byte":
+            addrs = [_require(device.basic_addr, "basic_addr") for device in devices]
+            if _is_consecutive_basic(devices):
+                build_byte_read(addrs[0], len(devices))
+            else:
+                build_multi_byte_read(addrs)
+            return
+        if key == "ext-word":
+            if _is_consecutive_ext_word(devices):
+                build_ext_word_read(_require(devices[0].no, "no"), _require(devices[0].addr, "addr"), len(devices))
+            else:
+                build_ext_multi_read(
+                    [],
+                    [],
+                    [
+                        (_require(device.no, "no"), _ext_word_monitor_addr(_require(device.addr, "addr")))
+                        for device in devices
+                    ],
+                )
+            return
+        if key == "ext-byte":
+            no = devices[0].no
+            addrs = [_require(device.addr, "addr") for device in devices]
+            if no is not None and all(
+                device.no == no and device.addr == addrs[0] + index for index, device in enumerate(devices)
+            ):
+                build_ext_byte_read(no, addrs[0], len(devices))
+            else:
+                build_ext_multi_read(
+                    [],
+                    [(_require(device.no, "no"), addr) for device, addr in zip(devices, addrs, strict=True)],
+                    [],
+                )
+            return
+        if key == "ext-bit":
+            build_ext_multi_read(
+                [
+                    (_require(device.no, "no"), _require(device.bit_no, "bit_no"), _require(device.addr, "addr"))
+                    for device in devices
+                ],
+                [],
+                [],
+            )
+            return
+        if key == "pc10-word":
+            addrs32 = [_require(device.addr32, "addr32") for device in devices]
+            if _is_consecutive_pc10_word(devices):
+                build_pc10_block_read(addrs32[0], len(devices) * 2)
+            else:
+                build_pc10_multi_read(_build_pc10_multi_word_read_payload(addrs32))
+            return
+        if key == "pc10-bit":
+            addrs32 = [_require(device.addr32, "addr32") for device in devices]
+            payload = bytearray([len(addrs32), 0, 0, 0])
+            for address in addrs32:
+                payload.extend(address.to_bytes(4, "little"))
+            build_pc10_multi_read(bytes(payload))
+            return
+        if key == "pc10-byte":
+            addrs32 = [_require(device.addr32, "addr32") for device in devices]
+            if len(addrs32) != 1 and not all(address == addrs32[0] + index for index, address in enumerate(addrs32)):
+                raise ToyopucProtocolError("PC10 byte read planning produced a non-contiguous request")
+            build_pc10_block_read(addrs32[0], len(addrs32))
+            return
+        device = devices[0]
+        if device.scheme == "basic-bit":
+            build_bit_read(_require(device.basic_addr, "basic_addr"))
+            return
+        raise ValueError(f"Unsupported resolved scheme: {device.scheme}")
+
     def _require_single_write_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
         if not devices:
             raise ValueError(f"{operation} requires at least one value")
@@ -597,7 +787,7 @@ class ToyopucDeviceClient(ToyopucClient):
         key = _batch_key(devices[0])
         if key is None or any(_batch_key(device) != key for device in devices):
             return False
-        if len({device.text for device in devices}) != len(devices):
+        if len({_wire_identity(device) for device in devices}) != len(devices):
             return False
         if key == "pc10-byte":
             return ToyopucDeviceClient._pc10_block_consecutive(devices, 1)
@@ -637,11 +827,10 @@ class ToyopucDeviceClient(ToyopucClient):
         device: str | ResolvedDevice,
         count: int,
     ) -> list[object]:
-        """Read a contiguous sequence through relay hops using one request."""
+        """Read a contiguous sequence through relay hops, splitting only when required."""
         _require_positive_count(count)
         resolved = self._coerce_device(device)
         devices = self._seq_devices(resolved, count)
-        self._require_single_read_request(devices, split_pc10=True, operation="relay_read")
         return self._relay_read_runs(hops, devices, split_pc10=True)
 
     def relay_write(
@@ -698,10 +887,9 @@ class ToyopucDeviceClient(ToyopucClient):
         hops: str | Iterable[tuple[int, int]],
         devices: Sequence[str | ResolvedDevice],
     ) -> list[object]:
-        """Read multiple devices through relay hops as one compatible protocol request."""
+        """Read multiple devices through relay hops in caller order as one FIFO operation."""
         resolved = [self._coerce_device(d) for d in devices]
-        self._require_single_read_request(resolved, split_pc10=False, operation="relay_read_devices")
-        return self._relay_read_runs(hops, resolved, split_pc10=False)
+        return self._relay_read_runs(hops, resolved, split_pc10=True)
 
     def relay_write_many(
         self,
@@ -816,11 +1004,10 @@ class ToyopucDeviceClient(ToyopucClient):
         return self._read_resolved_device(resolved)
 
     def read(self, device: str | ResolvedDevice, count: int) -> list[object]:
-        """Read a contiguous sequence using exactly one protocol request."""
+        """Read a contiguous sequence, splitting only when protocol capacity requires it."""
         _require_positive_count(count)
         resolved = self._coerce_device(device)
         devices = self._seq_devices(resolved, count)
-        self._require_single_read_request(devices, split_pc10=True, operation="read")
         return self._read_runs(devices, split_pc10=True)
 
     def write(self, device: str | ResolvedDevice, value: Any) -> None:
@@ -837,10 +1024,20 @@ class ToyopucDeviceClient(ToyopucClient):
         self._write_resolved_device(resolved, value)
 
     def read_devices(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
-        """Read multiple devices as one compatible protocol request and preserve input order."""
+        """Read multiple devices in caller order as one non-atomic FIFO operation."""
         resolved = [self._coerce_device(d) for d in devices]
-        self._require_single_read_request(resolved, split_pc10=False, operation="read_devices")
-        return self._read_runs(resolved, split_pc10=False)
+        return self._read_runs(resolved, split_pc10=True)
+
+    def _read_device_entries(self, entries: Sequence[Sequence[ResolvedDevice]]) -> list[object]:
+        """Read pre-resolved, indivisible entries as one aggregate operation."""
+
+        normalized_entries = [list(entry) for entry in entries]
+        devices = [device for entry in normalized_entries for device in entry]
+        return self._read_runs(
+            devices,
+            split_pc10=True,
+            entry_lengths=[len(entry) for entry in normalized_entries],
+        )
 
     def write_many(self, items: Mapping[str | ResolvedDevice, object]) -> None:
         """Write multiple devices as one compatible protocol request in mapping iteration order."""
@@ -876,7 +1073,7 @@ class ToyopucDeviceClient(ToyopucClient):
         resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "read_dwords()")
         _require_positive_count(count)
-        words = self._read_resolved_word_values(resolved, count * 2)
+        words = self._read_resolved_word_values(resolved, count * 2, entry_width=2)
         return _unpack_uint32_low_word_first_words(words)
 
     def write_dwords(self, device: int | str | ResolvedDevice, values: Iterable[int]) -> None:
@@ -902,7 +1099,7 @@ class ToyopucDeviceClient(ToyopucClient):
         resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "read_float32s()")
         _require_positive_count(count)
-        words = self._read_resolved_word_values(resolved, count * 2)
+        words = self._read_resolved_word_values(resolved, count * 2, entry_width=2)
         return _unpack_float32_low_word_first_words(words)
 
     def write_float32s(self, device: int | str | ResolvedDevice, values: Iterable[float]) -> None:
@@ -940,7 +1137,7 @@ class ToyopucDeviceClient(ToyopucClient):
         resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_read_dwords()")
         _require_positive_count(count)
-        words = self._relay_read_resolved_word_values(hops, resolved, count * 2)
+        words = self._relay_read_resolved_word_values(hops, resolved, count * 2, entry_width=2)
         return _unpack_uint32_low_word_first_words(words)
 
     def relay_write_dwords(
@@ -981,7 +1178,7 @@ class ToyopucDeviceClient(ToyopucClient):
         resolved = self._coerce_device(device)
         self._ensure_word_device(resolved, "relay_read_float32s()")
         _require_positive_count(count)
-        words = self._relay_read_resolved_word_values(hops, resolved, count * 2)
+        words = self._relay_read_resolved_word_values(hops, resolved, count * 2, entry_width=2)
         return _unpack_float32_low_word_first_words(words)
 
     def relay_write_float32s(
@@ -999,22 +1196,44 @@ class ToyopucDeviceClient(ToyopucClient):
         if resolved.unit != "word":
             raise ValueError(f"{method_name} requires a word device")
 
-    def _read_resolved_word_values(self, resolved: ResolvedDevice, word_count: int) -> list[int]:
+    def _read_resolved_word_values(
+        self,
+        resolved: ResolvedDevice,
+        word_count: int,
+        *,
+        entry_width: int = 1,
+    ) -> list[int]:
         _require_positive_count(word_count, "word_count")
+        if word_count % entry_width != 0:
+            raise ValueError("word_count must be divisible by entry_width")
         devices = self._seq_devices(resolved, word_count)
-        self._require_single_read_request(devices, split_pc10=True, operation="word read")
-        return [int(v) & 0xFFFF for v in self._read_runs(devices, split_pc10=True)]
+        return [
+            int(v) & 0xFFFF
+            for v in self._read_runs(
+                devices,
+                split_pc10=True,
+                entry_lengths=[entry_width] * (word_count // entry_width),
+            )
+        ]
 
     def _relay_read_resolved_word_values(
         self,
         hops: str | Iterable[tuple[int, int]],
         resolved: ResolvedDevice,
         word_count: int,
+        *,
+        entry_width: int = 1,
     ) -> list[int]:
         _require_positive_count(word_count, "word_count")
+        if word_count % entry_width != 0:
+            raise ValueError("word_count must be divisible by entry_width")
         devices = self._seq_devices(resolved, word_count)
-        self._require_single_read_request(devices, split_pc10=True, operation="relay word read")
-        runs = self._relay_read_runs(hops, devices, split_pc10=True)
+        runs = self._relay_read_runs(
+            hops,
+            devices,
+            split_pc10=True,
+            entry_lengths=[entry_width] * (word_count // entry_width),
+        )
         return [int(v) & 0xFFFF for v in runs]
 
     def _write_resolved_word_values(self, resolved: ResolvedDevice, word_values: Iterable[int]) -> None:
@@ -1241,7 +1460,7 @@ class ToyopucDeviceClient(ToyopucClient):
             no = _require(resolved.no, "program number")
             bit_no = _require(resolved.bit_no, "program bit")
             addr = _require(resolved.addr, "program addr")
-            self.write_ext_multi([(no, bit_no, addr, value)], [], [])
+            self.write_ext_multi([(no, bit_no, addr, bool(value))], [], [])
             return
         if resolved.scheme == "program-word":
             no = _require(resolved.no, "program number")
@@ -1257,7 +1476,7 @@ class ToyopucDeviceClient(ToyopucClient):
             no = _require(resolved.no, "extended number")
             bit_no = _require(resolved.bit_no, "extended bit")
             addr = _require(resolved.addr, "extended addr")
-            self.write_ext_multi([(no, bit_no, addr, value)], [], [])
+            self.write_ext_multi([(no, bit_no, addr, bool(value))], [], [])
             return
         if resolved.scheme == "ext-word":
             no = _require(resolved.no, "extended number")
@@ -1464,6 +1683,12 @@ class ToyopucDeviceClient(ToyopucClient):
             return self.read_words(addrs[0], len(devices))
         return list(self.read_words_multi(addrs))
 
+    def _read_basic_byte_batch(self, devices: list[ResolvedDevice]) -> list[int]:
+        addrs = [_require(device.basic_addr, "basic_addr") for device in devices]
+        if _is_consecutive_basic(devices):
+            return list(self.read_bytes(addrs[0], len(devices)))
+        return list(self.read_bytes_multi(addrs))
+
     def _read_ext_word_batch(self, devices: list[ResolvedDevice]) -> list[int]:
         if _is_consecutive_ext_word(devices):
             no = _require(devices[0].no, "no")
@@ -1530,7 +1755,7 @@ class ToyopucDeviceClient(ToyopucClient):
         if key == "basic-word":
             return self._read_basic_word_batch(devices)
         if key == "basic-byte":
-            return list(self.read_bytes_multi([_require(d.basic_addr, "basic_addr") for d in devices]))
+            return self._read_basic_byte_batch(devices)
         if key == "ext-word":
             return self._read_ext_word_batch(devices)
         if key == "ext-byte":
@@ -1545,17 +1770,34 @@ class ToyopucDeviceClient(ToyopucClient):
             return self._read_pc10_byte_batch(devices)
         return [self._read_resolved_device(d) for d in devices]
 
-    def _read_runs(self, devices: list[ResolvedDevice], split_pc10: bool) -> list[Any]:
-        results: list[Any] = [None] * len(devices)
+    def _read_runs(
+        self,
+        devices: list[ResolvedDevice],
+        split_pc10: bool,
+        *,
+        entry_lengths: Sequence[int] | None = None,
+    ) -> list[Any]:
+        plan = self._get_read_plan(devices, split_pc10, entry_lengths=entry_lengths)
+        planned_batches: list[list[ResolvedDevice]] = []
         idx = 0
-        for run in self._get_run_plan(devices, split_pc10):
-            batch = self._read_batch(devices[idx : idx + run])
-            if len(batch) != run:
-                raise ToyopucProtocolError(f"Batch-read result size mismatch: expected={run}, actual={len(batch)}")
-            for j, v in enumerate(batch):
-                results[idx + j] = v
+        for run in plan:
+            batch_devices = devices[idx : idx + run]
+            self._preflight_read_batch(batch_devices)
+            planned_batches.append(batch_devices)
             idx += run
-        return results
+
+        with self._operation_turn():
+            results: list[Any] = [None] * len(devices)
+            idx = 0
+            for batch_devices in planned_batches:
+                batch = self._read_batch(batch_devices)
+                run = len(batch_devices)
+                if len(batch) != run:
+                    raise ToyopucProtocolError(f"Batch-read result size mismatch: expected={run}, actual={len(batch)}")
+                for offset, value in enumerate(batch):
+                    results[idx + offset] = value
+                idx += run
+            return results
 
     # ------------------------------------------------------------------
     # Batch-read helpers (relay)
@@ -1724,19 +1966,37 @@ class ToyopucDeviceClient(ToyopucClient):
             return self._relay_read_pc10_byte_batch(hops, devices)
         return [self._relay_read_resolved_device(hops, d) for d in devices]
 
-    def _relay_read_runs(self, hops: Any, devices: list[ResolvedDevice], split_pc10: bool) -> list[Any]:
-        results: list[Any] = [None] * len(devices)
+    def _relay_read_runs(
+        self,
+        hops: Any,
+        devices: list[ResolvedDevice],
+        split_pc10: bool,
+        *,
+        entry_lengths: Sequence[int] | None = None,
+    ) -> list[Any]:
+        plan = self._get_read_plan(devices, split_pc10, entry_lengths=entry_lengths)
+        planned_batches: list[list[ResolvedDevice]] = []
         idx = 0
-        for run in self._get_run_plan(devices, split_pc10):
-            batch = self._relay_read_batch(hops, devices[idx : idx + run])
-            if len(batch) != run:
-                raise ToyopucProtocolError(
-                    f"Relay batch-read result size mismatch: expected={run}, actual={len(batch)}"
-                )
-            for j, v in enumerate(batch):
-                results[idx + j] = v
+        for run in plan:
+            batch_devices = devices[idx : idx + run]
+            self._preflight_read_batch(batch_devices)
+            planned_batches.append(batch_devices)
             idx += run
-        return results
+
+        with self._operation_turn():
+            results: list[Any] = [None] * len(devices)
+            idx = 0
+            for batch_devices in planned_batches:
+                batch = self._relay_read_batch(hops, batch_devices)
+                run = len(batch_devices)
+                if len(batch) != run:
+                    raise ToyopucProtocolError(
+                        f"Relay batch-read result size mismatch: expected={run}, actual={len(batch)}"
+                    )
+                for offset, value in enumerate(batch):
+                    results[idx + offset] = value
+                idx += run
+            return results
 
     # ------------------------------------------------------------------
     # Batch-write helpers
@@ -1785,7 +2045,7 @@ class ToyopucDeviceClient(ToyopucClient):
     def _write_ext_bit_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
         self.write_ext_multi(
             [
-                (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v)
+                (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), bool(v))
                 for d, v in zip(devices, values, strict=False)
             ],
             [],
@@ -2022,3 +2282,60 @@ class ToyopucDeviceClient(ToyopucClient):
         for run in self._get_run_plan(devices, split_pc10):
             self._relay_write_batch(hops, devices[idx : idx + run], values[idx : idx + run])
             idx += run
+
+
+_HIGH_LEVEL_FIFO_METHODS = (
+    "relay_read_one",
+    "relay_read",
+    "relay_write",
+    "relay_read_words",
+    "relay_write_words",
+    "relay_read_devices",
+    "relay_write_many",
+    "read_fr_one",
+    "read_fr",
+    "relay_read_fr_one",
+    "relay_read_fr",
+    "write_fr",
+    "relay_write_fr",
+    "commit_fr",
+    "relay_commit_fr",
+    "read_one",
+    "read",
+    "write",
+    "read_devices",
+    "write_many",
+    "read_dword",
+    "write_dword",
+    "read_dwords",
+    "write_dwords",
+    "read_float32",
+    "write_float32",
+    "read_float32s",
+    "write_float32s",
+    "relay_read_dword",
+    "relay_write_dword",
+    "relay_read_dwords",
+    "relay_write_dwords",
+    "relay_read_float32",
+    "relay_write_float32",
+    "relay_read_float32s",
+    "relay_write_float32s",
+)
+
+
+def _install_high_level_fifo_operation(method_name: str) -> None:
+    method = getattr(ToyopucDeviceClient, method_name)
+
+    @wraps(method)
+    def fifo_operation(self: ToyopucDeviceClient, *args: object, **kwargs: object) -> object:
+        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
+        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
+        with self._operation_turn():
+            return method(self, *admitted_args, **admitted_kwargs)
+
+    setattr(ToyopucDeviceClient, method_name, fifo_operation)
+
+
+for _high_level_fifo_method_name in _HIGH_LEVEL_FIFO_METHODS:
+    _install_high_level_fifo_operation(_high_level_fifo_method_name)

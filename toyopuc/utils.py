@@ -2,18 +2,21 @@
 
 These helpers provide the user-facing surface that samples and maintained
 documentation should point to first. They wrap the lower-level async client
-with typed reads and writes, named snapshots, polling, and contiguous access
-helpers that each use exactly one protocol request.
+with typed reads and writes, named read collections, polling, and contiguous access
+helpers. Functions whose names end in ``single_request`` enforce one wire
+request; named read aggregation splits only when required.
 """
 
 from __future__ import annotations
 
 import asyncio
 import math
+import struct
 from collections.abc import AsyncIterator
 from dataclasses import KW_ONLY, dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from .client import _normalize_bit_value, _normalize_ipv4_host, _normalize_timer_seconds
 from .errors import ToyopucProtocolError
 
 if TYPE_CHECKING:
@@ -35,13 +38,14 @@ class ToyopucConnectionOptions:
     """Stable connection settings for one TOYOPUC session.
 
     Attributes:
-        host: PLC hostname or IP address.
+        host: PLC IPv4 address or hostname that resolves to IPv4.
         port: TOYOPUC computer-link port.
         local_port: UDP source port. Leave zero for an ephemeral port.
         transport: ``"tcp"`` or ``"udp"``.
-        timeout: Socket timeout in seconds.
+        timeout: Socket timeout in seconds. Maximum ``2147483.647``.
         retries: Number of retry attempts performed by the async client.
-        retry_delay: Delay between retry attempts, in seconds.
+        retry_delay: Delay between retry attempts, in seconds. Maximum
+            ``2147483.647``.
         plc_profile: Canonical PLC profile name such as
             ``"toyopuc:pc10g:pc10"``. Required when creating a high-level
             device client.
@@ -60,8 +64,7 @@ class ToyopucConnectionOptions:
     def __post_init__(self) -> None:
         from .profiles import ToyopucPlcProfiles
 
-        if self.host is None or not str(self.host).strip():
-            raise ValueError("Host must not be empty")
+        normalized_host = _normalize_ipv4_host(self.host, name="Host")
         _validate_int_range(self.port, "Port", 1, 65_535)
         _validate_int_range(self.local_port, "LocalPort", 0, 65_535)
         if not isinstance(self.transport, str) or self.transport.strip().lower() not in {"tcp", "udp"}:
@@ -69,25 +72,16 @@ class ToyopucConnectionOptions:
         normalized_transport = self.transport.strip().lower()
         if normalized_transport == "tcp" and self.local_port != 0:
             raise ValueError("LocalPort is only valid for UDP transport")
-        if (
-            isinstance(self.timeout, bool)
-            or not isinstance(self.timeout, (int, float))
-            or not math.isfinite(self.timeout)
-            or self.timeout <= 0
-        ):
-            raise ValueError("Timeout must be a positive finite number")
+        normalized_timeout = _normalize_timer_seconds(self.timeout, name="Timeout", allow_zero=False)
         if isinstance(self.retries, bool) or not isinstance(self.retries, int) or self.retries < 0:
             raise ValueError("Retries must be a non-negative integer")
-        if (
-            isinstance(self.retry_delay, bool)
-            or not isinstance(self.retry_delay, (int, float))
-            or not math.isfinite(self.retry_delay)
-            or self.retry_delay < 0
-        ):
-            raise ValueError("RetryDelay must be a non-negative finite number")
+        normalized_retry_delay = _normalize_timer_seconds(self.retry_delay, name="RetryDelay", allow_zero=True)
 
         object.__setattr__(self, "transport", normalized_transport)
+        object.__setattr__(self, "host", normalized_host)
         object.__setattr__(self, "plc_profile", ToyopucPlcProfiles.from_name(self.plc_profile).name)
+        object.__setattr__(self, "timeout", normalized_timeout)
+        object.__setattr__(self, "retry_delay", normalized_retry_delay)
 
 
 @dataclass(frozen=True)
@@ -433,16 +427,21 @@ async def write_bit_in_word(
         client: Connected AsyncToyopucDeviceClient.
         device: Word device address.
         bit_index: Bit position within the word, in the range ``0`` to ``15``.
-        value: New bit state.
+        value: New bit state. This must be an actual ``bool``.
     """
-    if not 0 <= bit_index <= 15:
+    if isinstance(bit_index, bool) or not isinstance(bit_index, int) or not 0 <= bit_index <= 15:
         raise ValueError(f"bit_index must be 0-15, got {bit_index}")
-    current = int(await client.read_one(device)) & 0xFFFF
-    if value:
-        current |= 1 << bit_index
-    else:
-        current &= ~(1 << bit_index) & 0xFFFF
-    await client.write(device, current)
+    normalized_value = _normalize_bit_value(value)
+
+    def update(sync_client: Any) -> None:
+        current = int(sync_client.read_one(device)) & 0xFFFF
+        if normalized_value:
+            current |= 1 << bit_index
+        else:
+            current &= ~(1 << bit_index) & 0xFFFF
+        sync_client.write(device, current)
+
+    await client._run_exclusive(update)
 
 
 # ---------------------------------------------------------------------------
@@ -499,10 +498,10 @@ async def read_named(
     client: AsyncToyopucDeviceClient,
     addresses: list[str],
 ) -> dict[str, int | float | bool]:
-    """Read one device by address string and return the result as a dict.
+    """Read named entries in declaration order as one non-atomic FIFO operation.
 
     The returned dictionary preserves the original address strings as keys so
-    application code can display or diff snapshots without rebuilding the
+    application code can display or diff read results without rebuilding the
     request list.
 
     Address format examples:
@@ -516,27 +515,73 @@ async def read_named(
 
     Args:
         client: Connected AsyncToyopucDeviceClient.
-        addresses: List containing exactly one address string.
+        addresses: Non-empty list of unique named addresses.
 
     Returns:
         Dictionary mapping each address string to its value.
     """
-    if len(addresses) != 1:
-        raise ToyopucProtocolError(
-            "read_named requires exactly one named address per call. "
-            "Split the operation into explicit calls when multiple requests are intentional."
-        )
+    if not addresses:
+        raise ValueError("read_named requires at least one address")
+    if len(set(addresses)) != len(addresses):
+        raise ValueError("read_named address keys must be unique")
 
-    result: dict[str, int | float | bool] = {}
+    parsed: list[tuple[str, str, str, int | None]] = []
     for address in addresses:
-        base, dtype, bit_idx = _parse_address(address)
+        if not isinstance(address, str):
+            raise ValueError("read_named addresses must be strings")
+        base, dtype, bit_index = _parse_address(address)
         if dtype == "BIT_IN_WORD":
-            bit_idx = _require_bit_in_word_index(address, bit_idx)
-            raw = int(await client.read_one(base)) & 0xFFFF
-            result[address] = bool((raw >> bit_idx) & 1)
+            bit_index = _require_bit_in_word_index(address, bit_index)
         else:
-            result[address] = await read_typed(client, base, dtype)
-    return result
+            dtype = _normalize_dtype(dtype)
+        parsed.append((address, base, dtype, bit_index))
+
+    def read_all(sync_client: Any) -> dict[str, int | float | bool]:
+        entries: list[list[Any]] = []
+        for _address, base, dtype, _bit_index in parsed:
+            resolved = sync_client.resolve_device(base)
+            if resolved.unit != "word":
+                raise ValueError(f"named typed read requires a word device: {base!r}")
+            entry_count = 2 if dtype in {"D", "L", "F"} else 1
+            entries.append(sync_client._seq_devices(resolved, entry_count))
+
+        raw_values = sync_client._read_device_entries(entries)
+        result: dict[str, int | float | bool] = {}
+        offset = 0
+        for address, _base, dtype, bit_index in parsed:
+            low_word = int(raw_values[offset])
+            if not 0 <= low_word <= 0xFFFF:
+                raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
+            if dtype == "BIT_IN_WORD":
+                assert bit_index is not None
+                result[address] = bool((low_word >> bit_index) & 1)
+                offset += 1
+                continue
+            if dtype == "U":
+                result[address] = low_word
+                offset += 1
+                continue
+            if dtype == "S":
+                result[address] = low_word - 0x10000 if low_word & 0x8000 else low_word
+                offset += 1
+                continue
+            high_word = int(raw_values[offset + 1])
+            if not 0 <= high_word <= 0xFFFF:
+                raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
+            unsigned = low_word | (high_word << 16)
+            if dtype == "D":
+                result[address] = unsigned
+            elif dtype == "L":
+                result[address] = (unsigned ^ 0x80000000) - 0x80000000
+            else:
+                value = struct.unpack("<f", struct.pack("<I", unsigned))[0]
+                if not math.isfinite(value):
+                    raise ToyopucProtocolError("PLC returned a non-finite float32 value")
+                result[address] = value
+            offset += 2
+        return result
+
+    return await client._run_exclusive(read_all)
 
 
 # ---------------------------------------------------------------------------
@@ -549,21 +594,24 @@ async def poll(
     addresses: list[str],
     interval: float,
 ) -> AsyncIterator[dict[str, int | float | bool]]:
-    """Yield one named-device snapshot every *interval* seconds.
+    """Yield one named-device read result every *interval* seconds.
 
     This helper performs repeated :func:`read_named` calls and sleeps for the
-    requested interval between snapshots.
+    requested interval between read results.
 
     Args:
         client: Connected AsyncToyopucDeviceClient.
-        addresses: List containing exactly one address string.
-        interval: Poll interval in seconds.
+        addresses: Non-empty list of unique named addresses.
+        interval: Poll interval in seconds. It must be greater than zero and no
+            greater than ``2147483.647``.
 
     Usage::
 
-        async for snapshot in poll(client, ["P1-D0100:U"], interval=1.0):
-            print(snapshot)
+        async for read_result in poll(client, ["P1-D0100:U"], interval=1.0):
+            print(read_result)
     """
+    normalized_interval = _normalize_timer_seconds(interval, name="interval", allow_zero=False)
+
     while True:
         yield await read_named(client, addresses)
-        await asyncio.sleep(interval)
+        await asyncio.sleep(normalized_interval)

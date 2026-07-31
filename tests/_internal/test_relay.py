@@ -219,6 +219,11 @@ def test_parse_hops_accepts_tool_style():
     assert parse_relay_hops("1-2:2") == [(0x12, 0x0002)]
 
 
+def test_parse_hops_rejects_empty_route_elements():
+    with pytest.raises(ValueError, match="empty hop"):
+        parse_relay_hops("0:1,,0:2")
+
+
 def test_format_hop_uses_p_style():
     assert format_relay_hop(0x12, 0x0002) == "P1-L2:N2 (0x12:0x0002)"
 

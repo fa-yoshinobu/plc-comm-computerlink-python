@@ -26,7 +26,7 @@ def parse_relay_hops(text: str) -> list[tuple[int, int]]:
     for part in text.split(","):
         item = part.strip()
         if not item:
-            continue
+            raise ValueError("relay route must not contain an empty hop")
         m = re.fullmatch(
             r"P([0-9A-Fa-f])[-:]L([0-9A-Fa-f])\s*:\s*N([0-9A-Fa-fx]+)",
             item,

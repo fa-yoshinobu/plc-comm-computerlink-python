@@ -70,6 +70,12 @@ def test_pc10_multi_bit_payload_packs_addresses_and_bit_values() -> None:
     )
 
 
+@pytest.mark.parametrize("value", [False, True, -1, 2, "1"])
+def test_pc10_multi_bit_payload_requires_exact_wire_integer_values(value: object) -> None:
+    with pytest.raises(ValueError, match="packed PC10 bit value"):
+        _pack_pc10_multi_bit_payload([(0x00100000, value)])  # type: ignore[list-item]
+
+
 def test_pc10_multi_word_payloads_pack_counts_addresses_and_values() -> None:
     assert _build_pc10_multi_word_read_payload([0x00100000, 0x00100002, 0x00400000]) == bytes.fromhex(
         "00 00 03 0000 00 10 0002 00 10 0000 00 40 00"

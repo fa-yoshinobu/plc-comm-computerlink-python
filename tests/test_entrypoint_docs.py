@@ -1,11 +1,20 @@
 import ast
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _read_repository_only(relative_path: str) -> str:
+    path = REPO_ROOT / relative_path
+    if not path.exists() and not (REPO_ROOT / ".git").exists():
+        pytest.skip(f"{relative_path} is intentionally excluded from the GitHub source archive")
+    return path.read_text(encoding="utf-8")
 
 
 def test_samples_readme_uses_current_paths() -> None:
@@ -61,7 +70,7 @@ def test_user_docs_focus_on_high_level_api_only() -> None:
 
 
 def test_scripts_readme_uses_current_paths() -> None:
-    text = _read("scripts/README.md")
+    text = _read_repository_only("scripts/README.md")
 
     assert "This directory contains Python helper programs only." in text
     assert "scripts/run_" not in text
@@ -72,7 +81,7 @@ def test_scripts_readme_uses_current_paths() -> None:
 
 
 def test_run_ci_documents_current_static_analysis_policy() -> None:
-    text = _read("run_ci.bat")
+    text = _read_repository_only("run_ci.bat")
 
     assert "python -m ruff check toyopuc tests scripts samples" in text
     assert "python -m ruff format --check toyopuc tests scripts samples" in text
@@ -82,11 +91,11 @@ def test_run_ci_documents_current_static_analysis_policy() -> None:
 
 
 def test_release_check_checks_canonical_profiles_then_delegates_to_ci() -> None:
-    text = _read("release_check.bat")
+    text = _read_repository_only("release_check.bat")
 
     assert "[2/4] Checking canonical ComputerLink profile fixtures" in text
     assert "scripts\\update_computerlink_profile_jsons.ps1 -FailIfChanged" in text
-    assert "[3/4] Checking GitHub source archive contents" in text
+    assert "[3/4] Checking GitHub source archive build and tests" in text
     assert "scripts\\check_source_archive.ps1" in text
     assert "[4/4] Running CI" in text
     assert "call run_ci.bat" in text

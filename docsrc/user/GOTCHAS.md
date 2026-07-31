@@ -25,16 +25,33 @@ if __name__ == "__main__":
 
 | Root cause | Fix |
 | --- | --- |
-| A contiguous or multi-device operation can require multiple protocol requests, incompatible protocol groups, or a PC10 block boundary crossing. | `read`, `read_devices`, and `write_many` reject those cases before communication. Split the operation into separate explicit calls only when different acquisition times or partial completion are acceptable. |
+| A contiguous or multi-device operation can require multiple protocol requests, incompatible protocol groups, or a PC10 block boundary crossing. | Read aggregates validate the complete plan and split only when necessary while holding one FIFO turn. The result is ordered and all-or-error, but not an atomic PLC snapshot. Writes still reject every multi-request plan before communication. |
 
 ## Symptom: a write value is rejected instead of truncated
 
-This is intentional. Bit writes accept only `bool`, `0`, or `1`; byte writes
+This is intentional. Semantic bit writes accept only actual `bool` values; byte writes
 accept integers in `0..255`; word writes accept integers in `0..65535`; and
 dword writes accept integers in `0..4294967295`. Boolean values are not word
 or dword integers. Fractional values and numeric strings are never converted.
+Raw frame and payload builders are the wire layer and therefore use validated
+integer `0`/`1` bit fields rather than semantic Boolean values.
+
+## Symptom: an IPv6 PLC endpoint is rejected
+
+Computerlink connections are IPv4-only. TCP and UDP accept an IPv4 literal or
+a hostname that resolves to IPv4. An IPv6 literal, including an IPv4-mapped
+IPv6 literal such as `::ffff:192.0.2.1`, raises `ValueError` before a socket is
+created. For a hostname with multiple results, the library uses the first IPv4
+result in resolver order; a hostname with no IPv4 result fails without falling
+back to IPv6.
 
 ## Symptom: a fixed-port UDP client cannot reconnect after a timeout
+
+Connection timeouts, retry delays, and polling intervals have a common
+inclusive maximum of `2,147,483.647` seconds (`2,147,483,647` milliseconds,
+about 24.86 days). Timeouts and polling intervals must be greater than zero;
+retry delay may be zero. Invalid values raise `ValueError` before communication
+or waiting starts.
 
 A connected UDP socket accepts datagrams only from its configured PLC endpoint.
 However, Computerlink has no request serial that can distinguish a late response
@@ -46,11 +63,11 @@ late response; prefer `local_port=0` unless a fixed source port is required.
 When a state-changing request may already have reached the PLC, Python raises
 `ToyopucOperationOutcomeUnknownError`. Reconcile PLC state before retrying.
 
-## Symptom: `read_named(["P1-D0000", "P1-D0001"])` is rejected
+## Symptom: a multi-address `read_named` result changes between entries
 
 | Root cause | Fix |
 | --- | --- |
-| Computerlink named reads intentionally accept one named address per call. Unlike SLMP or Host Link snapshots, they do not split a multi-address list into several PLC requests. | Call `read_named` once per named address, or use `read_words_single_request` for a contiguous range. |
+| `read_named` preserves declaration order and holds one client FIFO turn, but protocol limits can require multiple PLC reads. The PLC may update data between those requests. | Use a PLC-side consistency marker when a cross-request atomic snapshot is required. Use a single-request helper only when one wire request is itself the requirement. |
 
 ```python
 import asyncio
@@ -66,13 +83,19 @@ async def main() -> None:
         plc_profile="toyopuc:plus:extended",
     )
     async with await open_and_connect(options) as client:
-        d0000 = await read_named(client, ["P1-D0000"])
-        d0001 = await read_named(client, ["P1-D0001"])
-        print(d0000["P1-D0000"], d0001["P1-D0001"])
+        snapshot = await read_named(client, ["P1-D0000:U", "P1-D0001:U"])
+        print(snapshot["P1-D0000:U"], snapshot["P1-D0001:U"])
 
 
 asyncio.run(main())
 ```
+
+## Symptom: a request was not retried after a disconnect
+
+Only a connection failure proven to happen before any send attempt is eligible
+for automatic retry. Once a read or write may have been sent, the client retires
+the transport and does not resend it. This avoids applying a response from a
+different request or repeating a state change whose outcome is unknown.
 
 ## Symptom: `P1-D0100.D` reads a bit instead of a dword
 

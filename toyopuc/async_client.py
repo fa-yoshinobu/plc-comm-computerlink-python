@@ -6,11 +6,13 @@ import weakref
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
-from typing import Any
+from typing import Any, TypeVar, cast
 
-from .client import ToyopucClient
+from .client import ToyopucClient, _snapshot_operation_argument
 from .errors import ToyopucOperationOutcomeUnknownError
 from .high_level import ToyopucDeviceClient
+
+_T = TypeVar("_T")
 
 
 def _shutdown_executor(executor: ThreadPoolExecutor) -> None:
@@ -20,7 +22,9 @@ def _shutdown_executor(executor: ThreadPoolExecutor) -> None:
 def _install_async_wrapper(async_cls: type, method_name: str) -> None:
     async def _async_method(self: Any, *args: Any, **kwargs: Any) -> Any:
         bound = getattr(self._client, method_name)
-        return await self._run_sync_in_worker(bound, *args, **kwargs)
+        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
+        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
+        return await self._run_sync_in_worker(bound, *admitted_args, **admitted_kwargs)
 
     _async_method.__name__ = method_name
     _async_method.__qualname__ = f"{async_cls.__name__}.{method_name}"
@@ -40,10 +44,21 @@ class _AsyncToyopucClientBase:
         loop = asyncio.get_running_loop()
         call = functools.partial(func, *args, **kwargs)
         started = Event()
+        operation_cancel = Event()
+        capture = getattr(self._client, "_capture_operation_admission", None)
+        generation, timeout = capture() if capture is not None else (None, None)
 
         def invoke() -> Any:
+            try:
+                self._client._begin_operation_cancel_scope(operation_cancel, generation, timeout)
+            except TypeError:
+                # Private test doubles from older releases accepted only the event.
+                self._client._begin_operation_cancel_scope(operation_cancel)
             started.set()
-            return call()
+            try:
+                return call()
+            finally:
+                self._client._end_operation_cancel_scope(operation_cancel)
 
         executor = self.__dict__.get("_executor")
         owns_executor = False
@@ -59,20 +74,35 @@ class _AsyncToyopucClientBase:
                 raise
             if concurrent_future.done():
                 raise
-            self._client._cancel_pending_operation()
+            self._client._cancel_pending_operation(operation_cancel)
             worker_error: Exception | None = None
             try:
                 await asyncio.shield(future)
             except Exception as exc:
                 worker_error = exc
-            finally:
-                self._client._clear_operation_cancel()
             if isinstance(worker_error, ToyopucOperationOutcomeUnknownError):
                 raise worker_error from None
             raise
         finally:
             if owns_executor:
                 executor.shutdown(wait=False, cancel_futures=True)
+
+    async def _run_exclusive(self, operation: Callable[[Any], _T]) -> _T:
+        """Run a multi-step helper as one FIFO client operation."""
+
+        def invoke(client: Any) -> _T:
+            operation_turn = getattr(client, "_operation_turn", None)
+            if operation_turn is None:
+                return operation(client)
+            with operation_turn():
+                return operation(client)
+
+        return cast(_T, await self._run_sync_in_worker(invoke, self._client))
+
+    async def close(self) -> None:
+        """Interrupt active work and invalidate all calls admitted before close."""
+
+        self._client.close()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
@@ -105,7 +135,6 @@ class AsyncToyopucDeviceClient(_AsyncToyopucClientBase):
 
 _CLIENT_ASYNC_METHODS = [
     "connect",
-    "close",
     "read_words",
     "write_words",
     "read_bytes",

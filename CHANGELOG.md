@@ -17,7 +17,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Library: Sync and async clients now serialize ordinary operations in arrival-order FIFO turns, snapshot timeout and transport generation at admission, lazily connect, and let `close()` retire active and already queued work without coupling independent client instances.
+- Library: Connect, transmit, receive, and response decode now share one monotonic request deadline. Timeout and cancellation retire the transport, and no request is automatically resent after it may have been sent, including reads and PLC retry-required responses.
+- Library: Added dedicated cancellation, closed, not-connected, transport, timeout, malformed-response, PLC-NG, and machine-readable unknown-outcome classifications while preserving native exception causes.
+- Library: Read aggregates and `read_named` now preserve declared order, preflight the complete plan, split only when protocol capacity or routing requires it, hold one FIFO turn, and return all results or raise. Cross-request results remain non-atomic; write aggregates remain single-request-only.
+- Library: `write_bit_in_word` remains an explicit non-atomic read-modify-write helper and now holds one exclusive FIFO turn across its read and write.
+- Tests: Added exact maximum/maximum-plus-one protocol-capacity checks, deadline, pre-send/post-send classification, sync/async FIFO, cancellation, close-generation, aggregate preflight/order/splitting, and exclusive RMW regressions.
+- Release: Aligned artifact roles so the registry package contains consumer runtime, native API metadata, license, README, and ecosystem-native examples where applicable while excluding repository tests and maintainer tooling; the GitHub source archive retains tracked non-hardware validation and maintainer inputs.
+- Library: Audited profile-bound `ResolvedDevice` inputs: every live read/write path requires exact canonical profile identity with the client before request construction or transport state changes; no base-family or addressing-mode fallback is used.
+- Tests: Added profile-mismatch regression coverage for both canonical identities, traffic counters, and last-frame state.
 - Docs: README documentation links now include the shared Performance and Choosing a Language pages, and package registry metadata was expanded for discoverability. No functional change.
+- CI: GitHub source archives now include the complete test suite, and the archive gate extracts each archive and requires its package build and tests to pass.
+- CI: Package validation now installs the built wheel into a fresh isolated virtual environment and checks public imports, signatures, docstrings, version identity, and installed origin without checkout or `PYTHONPATH` access.
+- CI: Worktree source-archive validation now builds one synthetic Git tree containing modifications, untracked files, and deletions, then requires the extracted archive to pass the complete non-hardware and isolated package-consumer gates.
+
+### BREAKING
+
+- Library: Automatic post-send retries were removed for every command, including reads and relay collision responses. Applications that intentionally retry must reconcile the prior request and issue a new explicit call.
+- Library: Read aggregates can now span multiple protocol requests while preserving order and one FIFO client turn. Callers that require one wire request must use a `*_single_request` helper; callers that require one atomic observation must provide PLC-side consistency control.
+- Library: Concurrent sync calls are serialized, and `close()` rejects active and already queued operations from the retired generation with dedicated structured errors.
+- Library: Protocol integers now require actual `int` values (not `bool`) within their exact wire range; PC10 addresses, extended-area numbers, FR indices, module fields, and polling intervals no longer accept truncation, wrapping, or non-finite values.
+- Library: Fixed-format PC10 and relay responses now require exact command-specific fields and lengths; empty relay elements, trailing data, and malformed responses that were previously tolerated now fail.
+- Library: Semantic bit-write APIs now accept only actual `bool` values. Integer `0`/`1` callers must migrate to `False`/`True`; raw frame builders continue to use validated wire integers.
+- Library: Connection timeouts, retry delays, and polling intervals now share an inclusive maximum of `2,147,483.647` seconds. Larger values fail with `ValueError` before transport or timer creation instead of leaking platform-dependent overflow errors.
+- Library: TCP and UDP connections are now IPv4-only. IPv6 literals are rejected before socket creation, and hostnames use the first IPv4 result returned by the resolver; callers using IPv6 endpoints must migrate to an IPv4 address or IPv4-resolving hostname.
+
+### Fixed
+
+- Library: Random/sparse write duplicate detection now uses the complete encoded wire identity, including extended and relay routes.
+- Library: Sync and async state-changing operations now classify EOF and malformed post-send responses as `ToyopucOperationOutcomeUnknownError`; affected fixed-endpoint UDP clients are tainted before reuse.
+- Library: Async cancellation is generation-scoped, waits for the active worker to finish, and cannot leak a stale cancellation request into a later operation.
+- Library: Iterable inputs are snapshotted once before validation and encoding so caller mutation or a one-shot iterable cannot change the transmitted request.
+- Library: `write_bit_in_word` rejects every non-`bool` value and invalid bit index before its read-modify-write I/O.
+
+### Tests
+
+- Tests: Added wire-boundary, strict-response, duplicate-destination, iterable snapshot, EOF, malformed-response, cancellation-generation, relay, UDP-taint, IPv6-rejection, and IPv4-resolution regressions.
 
 ## [3.2.1] - 2026-07-29
 

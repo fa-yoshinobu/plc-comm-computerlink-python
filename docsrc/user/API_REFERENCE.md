@@ -41,7 +41,7 @@ workflows.
 | Address encoding helpers | `parse_address`, `parse_prefixed_address`, `encode_word_address`, `encode_byte_address`, `encode_bit_address`, `encode_program_word_address`, `encode_program_byte_address`, `encode_program_bit_address`, `encode_exno_bit_u32`, `encode_exno_byte_u32`, `split_u32_words`, `encode_ext_no_address`, `fr_block_ex_no`, `encode_fr_word_addr32` |
 | Device resolver | `ResolvedDevice`, `resolve_device` |
 | Typed values | `read_typed`, `write_typed` |
-| Named snapshots and polling | `read_named`, `poll` |
+| Named read collections and polling | `read_named`, `poll` |
 | Word/dword reads | `read_words`, `read_dwords` |
 | Single-request reads/writes | `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, `write_dwords_single_request` |
 | Bit-in-word write | `write_bit_in_word` |
@@ -50,7 +50,9 @@ workflows.
 `read`, `relay_read`, `read_fr`, and `relay_read_fr` require an explicit
 positive `count` and always return a list, including when `count == 1`.
 `read_devices` and `relay_read_devices` are the sparse multi-device forms.
-Every array method is one protocol request; no public chunking or
+Read aggregates split only when required, preserve input order, validate the
+full plan before transport, and hold one FIFO turn; they are non-atomic across
+requests. Write aggregates remain single-request-only. No public chunking or
 `atomic_transfer` switch exists.
 
 ## Profiles, Relay, And Diagnostics
@@ -61,7 +63,7 @@ Every array method is one protocol request; no public chunking or
 | Device range catalog | `ToyopucDeviceCatalog`, `ToyopucAreaDescriptor`, `ToyopucAddressRange`, `ToyopucDeviceMatrixRow` |
 | Relay helpers | `RelayLayer`, `parse_relay_hops`, `normalize_relay_hops`, `format_relay_hop` |
 | Parsed payload types | `ClockData`, `CpuStatusData` |
-| Errors | `ToyopucError`, `ToyopucProtocolError`, `ToyopucTimeoutError`, `ToyopucOperationOutcomeUnknownError` |
+| Errors | `ToyopucError`, `ToyopucTimeoutError`, `ToyopucCancelledError`, `ToyopucClosedError`, `ToyopucNotConnectedError`, `ToyopucTransportError`, `ToyopucProtocolError`, `ToyopucPlcError`, `ToyopucOperationOutcomeUnknownError`, `ToyopucOutcomeUnknownReason` |
 
 ## Public Symbol Index
 
@@ -72,9 +74,11 @@ The package exports these public names from `toyopuc.__all__`:
 `ToyopucAddressRange`, `ToyopucAreaDescriptor`,
 `ToyopucClient`, `ToyopucConnectionOptions`, `ToyopucDeviceCatalog`,
 `ToyopucDeviceClient`, `ToyopucDeviceMatrixRow`, `ToyopucError`,
+`ToyopucCancelledError`, `ToyopucClosedError`, `ToyopucNotConnectedError`,
 `ToyopucOperationOutcomeUnknownError`,
+`ToyopucOutcomeUnknownReason`, `ToyopucPlcError`,
 `ToyopucPlcProfile`, `ToyopucPlcProfileDescriptor`, `ToyopucPlcProfiles`, `ToyopucProtocolError`,
-`ToyopucTimeoutError`,
+`ToyopucTimeoutError`, `ToyopucTransportError`,
 `display_name`, `encode_bit_address`, `encode_byte_address`,
 `encode_exno_bit_u32`, `encode_exno_byte_u32`, `encode_ext_no_address`,
 `encode_fr_word_addr32`, `encode_program_bit_address`,

@@ -141,7 +141,7 @@ def _pref_bit_writer(prefix: str, area: str) -> Callable[[ToyopucClient, int], N
     def writer(plc: ToyopucClient, index: int) -> None:
         parsed = parse_address(f"{area}{index:04X}", "bit")
         bit_no, addr = encode_program_bit_address(parsed)
-        plc.write_ext_multi([(no, bit_no, addr, 1)], [], [])
+        plc.write_ext_multi([(no, bit_no, addr, True)], [], [])
 
     return writer
 
@@ -163,7 +163,7 @@ def _ext_bit_writer(area: str) -> Callable[[ToyopucClient, int], None]:
     def writer(plc: ToyopucClient, index: int) -> None:
         bit_no = index & 0x07
         addr = byte_base + (index >> 3)
-        plc.write_ext_multi([(no, bit_no, addr, 1)], [], [])
+        plc.write_ext_multi([(no, bit_no, addr, True)], [], [])
 
     return writer
 

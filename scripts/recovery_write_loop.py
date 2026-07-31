@@ -132,7 +132,7 @@ def _basic_word_rw(addr: int) -> tuple[WriteFn, ReadFn]:
 
 def _ext_bit_rw(no: int, bit_no: int, addr: int) -> tuple[WriteFn, ReadFn]:
     def write(plc: ToyopucClient, value: int) -> None:
-        plc.write_ext_multi([(no, bit_no, addr, value & 0x01)], [], [])
+        plc.write_ext_multi([(no, bit_no, addr, bool(value & 0x01))], [], [])
 
     def read(plc: ToyopucClient) -> int:
         return plc.read_ext_multi([(no, bit_no, addr)], [], [])[0] & 0x01

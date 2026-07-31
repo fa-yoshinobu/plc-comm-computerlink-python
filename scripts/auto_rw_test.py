@@ -726,7 +726,7 @@ def _verify_ext_multi_case(
     byte_value1 = rng.randint(0, 0xFF)
     word_value1 = rng.randint(0, 0xFFFF)
     plc.write_ext_multi(
-        [(bit_no, bit_pos, bit_addr, 0)],
+        [(bit_no, bit_pos, bit_addr, False)],
         [(byte_no, byte_addr, byte_value1)],
         [(word_no, word_addr, word_value1)],
     )
@@ -746,7 +746,7 @@ def _verify_ext_multi_case(
     byte_value2 = byte_value1 ^ 0xFF
     word_value2 = word_value1 ^ 0xFFFF
     plc.write_ext_multi(
-        [(bit_no, bit_pos, bit_addr, 1)],
+        [(bit_no, bit_pos, bit_addr, True)],
         [(byte_no, byte_addr, byte_value2)],
         [(word_no, word_addr, word_value2)],
     )
@@ -789,7 +789,7 @@ def _verify_ext_multi_pair_case(
 
     if bit_point is not None:
         bit_no, bit_pos, bit_addr = bit_point
-        bit_points_w.append((bit_no, bit_pos, bit_addr, 0))
+        bit_points_w.append((bit_no, bit_pos, bit_addr, False))
         bit_points_r.append((bit_no, bit_pos, bit_addr))
         expected1_bits.append(0)
         expected2_bits.append(1)
@@ -822,7 +822,7 @@ def _verify_ext_multi_pair_case(
 
     if bit_point is not None:
         bit_no, bit_pos, bit_addr = bit_point
-        bit_points_w = [(bit_no, bit_pos, bit_addr, 1)]
+        bit_points_w = [(bit_no, bit_pos, bit_addr, True)]
     if byte_point is not None:
         byte_no, byte_addr = byte_point
         byte_points_w = [(byte_no, byte_addr, expected2_bytes[0])]
@@ -1281,7 +1281,7 @@ def _ext_multi_read_bit(plc: ToyopucClient, no: int, bit_no: int, addr: int) -> 
 
 
 def _ext_multi_write_bit(plc: ToyopucClient, no: int, bit_no: int, addr: int, value: int) -> None:
-    plc.write_ext_multi([(no, bit_no, addr, value & 0x01)], [], [])
+    plc.write_ext_multi([(no, bit_no, addr, bool(value & 0x01))], [], [])
 
 
 _EXT_BIT_AREA_SPECS = {

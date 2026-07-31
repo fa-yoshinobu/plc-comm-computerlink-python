@@ -29,10 +29,6 @@ jobs:
         shell: pwsh
         run: ./scripts/check_no_auto_publish.ps1
 
-      - name: Check GitHub source archive contents
-        shell: pwsh
-        run: ./scripts/check_source_archive.ps1
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -42,6 +38,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+
+      - name: Check GitHub source archive build and tests
+        if: matrix.python-version == '3.10'
+        shell: pwsh
+        run: ./scripts/check_source_archive.ps1
 
       - name: Run Ruff lint
         run: python -m ruff check toyopuc tests scripts samples
@@ -54,3 +55,8 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Validate wheel and sdist contents
+        if: matrix.python-version == '3.10'
+        shell: pwsh
+        run: ./scripts/check_package_contents.ps1

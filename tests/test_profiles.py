@@ -294,8 +294,14 @@ def test_resolved_device_is_bound_to_canonical_profile() -> None:
         transport="tcp",
         plc_profile="toyopuc:plus:standard",
     )
-    with pytest.raises(ValueError, match="profile mismatch"):
+    with pytest.raises(ValueError, match="profile mismatch") as raised:
         client.read_one(resolved)
+
+    assert "toyopuc:generic" in str(raised.value)
+    assert "toyopuc:plus:standard" in str(raised.value)
+    assert client.traffic_stats().request_count == 0
+    assert client._last_tx is None
+    assert client._last_rx is None
 
 
 def test_resolve_with_unknown_profile_raises() -> None:

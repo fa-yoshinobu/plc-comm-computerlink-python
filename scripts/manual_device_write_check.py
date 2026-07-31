@@ -177,7 +177,7 @@ def _prefixed_targets() -> list[Target]:
                             write=cast(
                                 Callable[[ToyopucClient], None],
                                 lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                                    [(no, bit_no, addr, 1)], [], []
+                                    [(no, bit_no, addr, True)], [], []
                                 ),
                             ),
                         )
@@ -240,7 +240,7 @@ def _ext_targets(include_fr: bool) -> list[Target]:
                         write=cast(
                             Callable[[ToyopucClient], None],
                             lambda plc, no=no, bit_no=bit_no, addr=addr: plc.write_ext_multi(
-                                [(no, bit_no, addr, 1)], [], []
+                                [(no, bit_no, addr, True)], [], []
                             ),
                         ),
                     )

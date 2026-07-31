@@ -20,10 +20,9 @@ _PC10_MULTI_MAX_PAYLOAD_BYTES = 0x0200
 
 
 def _require_count(label: str, count: int, max_count: int) -> int:
-    n = int(count)
-    if n < 1 or n > max_count:
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1 or count > max_count:
         raise ValueError(f"{label} count must be 1..0x{max_count:X} ({max_count})")
-    return n
+    return count
 
 
 def _require_uint(label: str, value: int, maximum: int) -> int:
@@ -37,10 +36,16 @@ def _require_length(label: str, length: int, max_length: int) -> None:
         raise ValueError(f"{label} length must be 1..0x{max_length:X} ({max_length}) bytes")
 
 
-def _require_pc10_block_range(addr32: int, byte_count: int) -> None:
-    offset = int(addr32) & 0xFFFF
-    if offset + int(byte_count) > 0x10000:
+def _require_pc10_address(addr32: int) -> int:
+    return _require_uint("PC10 address", addr32, 0xFFFFFFFF)
+
+
+def _require_pc10_block_range(addr32: int, byte_count: int) -> int:
+    normalized = _require_pc10_address(addr32)
+    offset = normalized & 0xFFFF
+    if offset + byte_count > 0x10000:
         raise ValueError("PC10 block access must not cross the 16-bit block boundary")
+    return normalized
 
 
 def _require_ext_multi_read_limits(
@@ -632,7 +637,7 @@ def build_bit_read(addr: int) -> bytes:
 def build_bit_write(addr: int, value: int) -> bytes:
     """Build ``CMD=21`` single bit-write command."""
 
-    normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+    normalized = _require_uint("bit value", value, 1)
     return build_command(0x21, pack_u16_le(addr) + bytes([normalized]))
 
 
@@ -676,7 +681,7 @@ def build_ext_word_read(no: int, addr: int, count: int) -> bytes:
     """Build ``CMD=94`` extended word-read command."""
 
     n = _require_count("CMD=94 ext-word-read", count, _CONTINUOUS_WORD_MAX)
-    return build_command(0x94, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
+    return build_command(0x94, bytes([_require_uint("extended No.", no, 0xFF)]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
@@ -684,7 +689,7 @@ def build_ext_word_write(no: int, addr: int, values: Iterable[int]) -> bytes:
 
     vals = list(values)
     _require_count("CMD=95 ext-word-write", len(vals), _CONTINUOUS_WORD_MAX)
-    data = bytes([no & 0xFF]) + pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
+    data = bytes([_require_uint("extended No.", no, 0xFF)]) + pack_u16_le(addr) + b"".join(pack_u16_le(v) for v in vals)
     return build_command(0x95, data)
 
 
@@ -692,7 +697,7 @@ def build_ext_byte_read(no: int, addr: int, count: int) -> bytes:
     """Build ``CMD=96`` extended byte-read command."""
 
     n = _require_count("CMD=96 ext-byte-read", count, _CONTINUOUS_BYTE_MAX)
-    return build_command(0x96, bytes([no & 0xFF]) + pack_u16_le(addr) + pack_u16_le(n))
+    return build_command(0x96, bytes([_require_uint("extended No.", no, 0xFF)]) + pack_u16_le(addr) + pack_u16_le(n))
 
 
 def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
@@ -700,7 +705,7 @@ def build_ext_byte_write(no: int, addr: int, values: Iterable[int]) -> bytes:
 
     vals = bytes(_require_uint("byte value", value, 0xFF) for value in values)
     _require_count("CMD=97 ext-byte-write", len(vals), _CONTINUOUS_BYTE_MAX)
-    data = bytes([no & 0xFF]) + pack_u16_le(addr) + vals
+    data = bytes([_require_uint("extended No.", no, 0xFF)]) + pack_u16_le(addr) + vals
     return build_command(0x97, data)
 
 
@@ -718,10 +723,10 @@ def build_ext_multi_read(
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
     for no, addr in byte_points:
-        data.extend([no & 0xFF])
+        data.extend([_require_uint("extended No.", no, 0xFF)])
         data.extend(pack_u16_le(addr))
     for no, addr in word_points:
-        data.extend([no & 0xFF])
+        data.extend([_require_uint("extended No.", no, 0xFF)])
         data.extend(pack_u16_le(addr))
     return build_command(0x98, bytes(data))
 
@@ -739,14 +744,14 @@ def build_ext_multi_write(
     for no, bit, addr, value in bit_points:
         data.extend([pack_ext_bit_spec(no, bit)])
         data.extend(pack_u16_le(addr))
-        normalized = int(value) if isinstance(value, bool) else _require_uint("bit value", value, 1)
+        normalized = _require_uint("bit value", value, 1)
         data.extend([normalized])
     for no, addr, value in byte_points:
-        data.extend([no & 0xFF])
+        data.extend([_require_uint("extended No.", no, 0xFF)])
         data.extend(pack_u16_le(addr))
         data.extend([_require_uint("byte value", value, 0xFF)])
     for no, addr, value in word_points:
-        data.extend([no & 0xFF])
+        data.extend([_require_uint("extended No.", no, 0xFF)])
         data.extend(pack_u16_le(addr))
         data.extend(pack_u16_le(value))
     return build_command(0x99, bytes(data))
@@ -757,11 +762,11 @@ def build_pc10_block_read(addr32: int, count: int) -> bytes:
     """Build ``CMD=C2`` PC10 32-bit-address block-read command."""
 
     n = _require_count("CMD=C2 PC10 block-read", count, _PC10_BLOCK_MAX_BYTES)
-    _require_pc10_block_range(addr32, n)
+    address = _require_pc10_block_range(addr32, n)
     # Address is 32-bit (low word, high word)
     return build_command(
         0xC2,
-        pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + pack_u16_le(n),
+        pack_u16_le(address & 0xFFFF) + pack_u16_le((address >> 16) & 0xFFFF) + pack_u16_le(n),
     )
 
 
@@ -769,10 +774,10 @@ def build_pc10_block_write(addr32: int, data_bytes: bytes) -> bytes:
     """Build ``CMD=C3`` PC10 32-bit-address block-write command."""
 
     _require_length("CMD=C3 PC10 block-write", len(data_bytes), _PC10_BLOCK_MAX_BYTES)
-    _require_pc10_block_range(addr32, len(data_bytes))
+    address = _require_pc10_block_range(addr32, len(data_bytes))
     return build_command(
         0xC3,
-        pack_u16_le(addr32 & 0xFFFF) + pack_u16_le((addr32 >> 16) & 0xFFFF) + data_bytes,
+        pack_u16_le(address & 0xFFFF) + pack_u16_le((address >> 16) & 0xFFFF) + data_bytes,
     )
 
 
@@ -795,7 +800,7 @@ def build_pc10_multi_write(payload: bytes) -> bytes:
 def build_fr_register(ex_no: int) -> bytes:
     """Build ``CMD=CA`` FR-register command for one expansion number."""
 
-    return build_command(0xCA, bytes([ex_no & 0xFF]))
+    return build_command(0xCA, bytes([_require_uint("FR extended No.", ex_no, 0xFF)]))
 
 
 # Relay command (CMD=60) helpers

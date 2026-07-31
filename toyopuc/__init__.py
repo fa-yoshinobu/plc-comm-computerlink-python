@@ -33,7 +33,18 @@ from .address import (
 )
 from .async_client import AsyncToyopucClient, AsyncToyopucDeviceClient
 from .client import ToyopucClient, ToyopucTrafficStats
-from .errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
+from .errors import (
+    ToyopucCancelledError,
+    ToyopucClosedError,
+    ToyopucError,
+    ToyopucNotConnectedError,
+    ToyopucOperationOutcomeUnknownError,
+    ToyopucOutcomeUnknownReason,
+    ToyopucPlcError,
+    ToyopucProtocolError,
+    ToyopucTimeoutError,
+    ToyopucTransportError,
+)
 from .high_level import ResolvedDevice, ToyopucDeviceClient, resolve_device
 from .profiles import (
     ToyopucAddressRange,
@@ -81,8 +92,14 @@ __all__ = [
     "RelayLayer",
     "ToyopucError",
     "ToyopucOperationOutcomeUnknownError",
+    "ToyopucOutcomeUnknownReason",
+    "ToyopucCancelledError",
+    "ToyopucClosedError",
+    "ToyopucNotConnectedError",
+    "ToyopucPlcError",
     "ToyopucProtocolError",
     "ToyopucTimeoutError",
+    "ToyopucTransportError",
     "ToyopucConnectionOptions",
     "ToyopucAddress",
     "format_device_address",

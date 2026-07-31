@@ -10,13 +10,16 @@ import pytest
 from toyopuc import (
     AsyncToyopucClient,
     ToyopucClient,
+    ToyopucClosedError,
     ToyopucError,
     ToyopucOperationOutcomeUnknownError,
+    ToyopucOutcomeUnknownReason,
     ToyopucProtocolError,
     ToyopucTimeoutError,
+    ToyopucTransportError,
 )
 from toyopuc.client import _is_read_only_payload
-from toyopuc.protocol import build_command, build_scan_resume, build_scan_stop, build_scan_stop_release
+from toyopuc.protocol import ResponseFrame, build_command, build_scan_resume, build_scan_stop, build_scan_stop_release
 
 
 class _FakeSocket:
@@ -26,6 +29,10 @@ class _FakeSocket:
         self._offset = 0
         self.sent: list[bytes] = []
         self.options: list[tuple[int, int, int]] = []
+        self.timeout: float | None = None
+
+    def settimeout(self, value: float) -> None:
+        self.timeout = value
 
     def sendall(self, payload: bytes) -> None:
         self.sent.append(payload)
@@ -93,6 +100,18 @@ class _TimeoutUdpSocket(_FakeUdpSocket):
         raise TimeoutError("injected timeout")
 
 
+class _ReconnectClient(ToyopucClient):
+    def __init__(self, sockets: list[_FakeSocket], *, retries: int) -> None:
+        super().__init__("127.0.0.1", 1025, transport="tcp", retries=retries, retry_delay=0)
+        self._sockets = list(sockets)
+
+    def _connect(self, deadline: float) -> None:
+        self._sock = self._sockets.pop(0)
+
+
+MAX_TIMER_SECONDS = 2_147_483.647
+
+
 def _response(cmd: int, data: bytes = b"", *, rc: int = 0x00) -> bytes:
     length = 1 + len(data)
     return bytes([0x80, rc, length & 0xFF, (length >> 8) & 0xFF, cmd & 0xFF]) + data
@@ -108,7 +127,7 @@ def test_tcp_connect_enables_tcp_nodelay(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def fake_create_connection(address: tuple[str, int], timeout: float) -> _FakeSocket:
         assert address == ("127.0.0.1", 1025)
-        assert timeout == 3.0
+        assert 0 < timeout <= 3.0
         return sock
 
     monkeypatch.setattr(socket, "create_connection", fake_create_connection)
@@ -160,14 +179,91 @@ def test_udp_send_and_recv_accepts_large_datagram_response() -> None:
 
 def test_udp_connect_binds_ephemeral_local_port(monkeypatch: pytest.MonkeyPatch) -> None:
     sock = _FakeUdpSocket(_response(0x1C))
-    monkeypatch.setattr(socket, "socket", lambda *args: sock)
+    socket_args: list[tuple[int, int]] = []
+
+    def fake_socket(family: int, socket_type: int) -> _FakeUdpSocket:
+        socket_args.append((family, socket_type))
+        return sock
+
+    monkeypatch.setattr(socket, "socket", fake_socket)
     client = ToyopucClient("127.0.0.1", 1025, transport="udp")
 
     client.connect()
 
     assert sock.binds == [("", 0)]
     assert sock.connected == ("127.0.0.1", 1025)
-    assert sock.timeout == 3.0
+    assert sock.timeout is not None
+    assert 0 < sock.timeout <= 3.0
+    assert socket_args == [(socket.AF_INET, socket.SOCK_DGRAM)]
+
+
+@pytest.mark.parametrize("transport", ["tcp", "udp"])
+@pytest.mark.parametrize("host", ["::1", "[::1]", "::ffff:127.0.0.1"])
+def test_client_rejects_ipv6_literals_before_resolution_or_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+    host: str,
+) -> None:
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: pytest.fail("must not resolve"))
+    monkeypatch.setattr(socket, "socket", lambda *_args, **_kwargs: pytest.fail("must not create socket"))
+
+    with pytest.raises(ValueError, match="must be an IPv4 address"):
+        ToyopucClient(host, 1025, transport=transport)
+    with pytest.raises(ValueError, match="must be an IPv4 address"):
+        AsyncToyopucClient(host, 1025, transport=transport)
+
+
+def test_hostname_resolution_selects_first_ipv4_for_tcp_and_udp(monkeypatch: pytest.MonkeyPatch) -> None:
+    resolution_calls: list[tuple[str, int, int, int]] = []
+
+    def fake_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+        resolution_calls.append((host, port, family, socket_type))
+        return [
+            (socket.AF_INET6, socket_type, 0, "", ("::1", port, 0, 0)),
+            (socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port)),
+            (socket.AF_INET, socket_type, 0, "", ("192.0.2.11", port)),
+        ]
+
+    tcp_socket = _FakeSocket([])
+    tcp_endpoints: list[tuple[str, int]] = []
+
+    def fake_create_connection(endpoint: tuple[str, int], timeout: float) -> _FakeSocket:
+        assert 0 < timeout <= 3.0
+        tcp_endpoints.append(endpoint)
+        return tcp_socket
+
+    udp_socket = _FakeUdpSocket(_response(0x1C))
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+    monkeypatch.setattr(socket, "socket", lambda family, socket_type: udp_socket)
+
+    tcp_client = ToyopucClient("plc.local", 1025, transport="tcp")
+    tcp_client.connect()
+    udp_client = ToyopucClient("plc.local", 1025, transport="udp")
+    udp_client.connect()
+
+    assert tcp_endpoints == [("192.0.2.10", 1025)]
+    assert udp_socket.connected == ("192.0.2.10", 1025)
+    assert resolution_calls == [
+        ("plc.local", 1025, socket.AF_INET, socket.SOCK_STREAM),
+        ("plc.local", 1025, socket.AF_INET, socket.SOCK_DGRAM),
+    ]
+
+
+@pytest.mark.parametrize("transport", ["tcp", "udp"])
+def test_hostname_without_ipv4_fails_before_socket_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+) -> None:
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args: (_ for _ in ()).throw(socket.gaierror("no IPv4")))
+    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("must not connect"))
+    monkeypatch.setattr(socket, "socket", lambda *_args: pytest.fail("must not create socket"))
+    client = ToyopucClient("ipv6-only.invalid", 1025, transport=transport)
+
+    with pytest.raises(ToyopucError, match="Socket connection failed"):
+        client.connect()
+
+    assert client._sock is None
 
 
 @pytest.mark.parametrize(
@@ -189,6 +285,36 @@ def test_udp_connect_binds_ephemeral_local_port(monkeypatch: pytest.MonkeyPatch)
 def test_client_rejects_invalid_connection_values_before_socket(kwargs: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         ToyopucClient("127.0.0.1", 1025, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"transport": "tcp", "timeout": MAX_TIMER_SECONDS + 0.001},
+        {"transport": "tcp", "retry_delay": MAX_TIMER_SECONDS + 0.001},
+        {"transport": "tcp", "timeout": 10**10_000},
+        {"transport": "tcp", "retry_delay": 10**10_000},
+    ],
+)
+def test_client_rejects_timer_overflow_values_as_value_error(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="no greater than 2147483.647 seconds"):
+        ToyopucClient("127.0.0.1", 1025, **kwargs)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="no greater than 2147483.647 seconds"):
+        AsyncToyopucClient("127.0.0.1", 1025, **kwargs)  # type: ignore[arg-type]
+
+
+def test_client_accepts_the_common_timer_boundary() -> None:
+    client = ToyopucClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        timeout=MAX_TIMER_SECONDS,
+        retry_delay=MAX_TIMER_SECONDS,
+    )
+
+    assert client.timeout == MAX_TIMER_SECONDS
+    assert client.retry_delay == MAX_TIMER_SECONDS
 
 
 def test_maintainer_trace_exception_does_not_change_read_or_retry() -> None:
@@ -228,7 +354,7 @@ def test_slow_maintainer_trace_does_not_delay_transport() -> None:
     assert elapsed < 0.2
 
 
-def test_send_and_recv_retries_response_error_0x73() -> None:
+def test_read_does_not_retry_plc_response_after_possible_send() -> None:
     sock = _FakeSocket(
         [
             _response(0x73, rc=0x10),
@@ -238,13 +364,36 @@ def test_send_and_recv_retries_response_error_0x73() -> None:
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=1, retry_delay=0)
     client._sock = sock
 
-    values = client.read_words(0, 1)
+    with pytest.raises(ToyopucError, match="error_code=0x73"):
+        client.read_words(0, 1)
 
-    assert values == [0x1234]
-    assert len(sock.sent) == 2
-    assert client.traffic_stats().request_count == 2
-    assert client.traffic_stats().tx_bytes == sum(map(len, sock.sent))
-    assert client.traffic_stats().rx_bytes == sum(map(len, [_response(0x73, rc=0x10), _response(0x1C, b"\x34\x12")]))
+    assert len(sock.sent) == 1
+    assert client.traffic_stats().request_count == 1
+
+
+def test_cpu_status_read_methods_are_classified_read_only() -> None:
+    class CaptureClient(ToyopucClient):
+        def __init__(self) -> None:
+            super().__init__("127.0.0.1", 1025, transport="tcp")
+            self.state_changing_values: list[bool] = []
+
+        def _send_and_recv(
+            self,
+            payload: bytes,
+            *,
+            state_changing: bool = False,
+        ) -> ResponseFrame:
+            self.state_changing_values.append(state_changing)
+            cmd = payload[4]
+            data = b"\x11\x00" + bytes(8) if cmd == 0x32 else b"\x00\x11\x00" + bytes(8)
+            return ResponseFrame(ft=0x80, rc=0, cmd=cmd, data=data)
+
+    client = CaptureClient()
+    client.read_cpu_status()
+    client.read_cpu_status_a0_raw()
+    client.read_cpu_status_a0()
+
+    assert client.state_changing_values == [False, False, False]
 
 
 def test_read_only_classifier_accepts_full_and_trimmed_frames_structurally() -> None:
@@ -296,13 +445,14 @@ def test_send_and_recv_exhausts_response_error_0x73_retries() -> None:
     assert len(sock.sent) == 1
 
 
-def test_relay_read_retries_outer_retryable_response_but_write_does_not() -> None:
+def test_relay_read_and_write_do_not_retry_after_possible_send() -> None:
     read_sock = _FakeSocket([_response(0x73, rc=0x10), _relay_success_bytes(0x1C, b"\x34\x12")])
     read_client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=1, retry_delay=0)
     read_client._sock = read_sock
 
-    assert read_client.relay_read_words("P1-L2:N2", 0, 1) == [0x1234]
-    assert len(read_sock.sent) == 2
+    with pytest.raises(ToyopucError, match="error_code=0x73"):
+        read_client.relay_read_words("P1-L2:N2", 0, 1)
+    assert len(read_sock.sent) == 1
 
     write_sock = _FakeSocket([_response(0x73, rc=0x10), _relay_success_bytes(0x1D, b"")])
     write_client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=1, retry_delay=0)
@@ -348,8 +498,26 @@ def test_stop_scan_rejects_unexpected_response_body() -> None:
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=0, retry_delay=0)
     client._sock = sock
 
-    with pytest.raises(ToyopucProtocolError, match="scan-stop response body"):
+    with pytest.raises(ToyopucOperationOutcomeUnknownError):
         client.stop_scan()
+
+
+def test_direct_and_relay_write_response_bodies_are_exact_and_unknown_when_malformed() -> None:
+    direct_socket = _FakeSocket([_response(0x1D, b"\x00")])
+    direct = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    direct._sock = direct_socket
+
+    with pytest.raises(ToyopucOperationOutcomeUnknownError) as direct_error:
+        direct.write_words(0, [1])
+    assert direct_error.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
+
+    relay_socket = _FakeSocket([_relay_success_bytes(0x1D, b"\x00")])
+    relay = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    relay._sock = relay_socket
+
+    with pytest.raises(ToyopucOperationOutcomeUnknownError) as relay_error:
+        relay.relay_write_words("P1-L2:N2", 0, [1])
+    assert relay_error.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
 
 
 def test_clock_write_requires_explicit_matching_century_and_naive_value() -> None:
@@ -371,22 +539,55 @@ def test_state_changing_timeout_reports_unknown_outcome() -> None:
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
     client._sock = sock
 
-    with pytest.raises(ToyopucOperationOutcomeUnknownError):
+    with pytest.raises(ToyopucOperationOutcomeUnknownError) as captured:
         client.write_words(0, [1])
 
+    assert captured.value.reason is ToyopucOutcomeUnknownReason.TIMEOUT
+    assert isinstance(captured.value.cause, TimeoutError)
+    assert captured.value.__cause__ is captured.value.cause
     assert len(sock.sent) == 1
     assert client.traffic_stats().request_count == 1
     assert client.traffic_stats().tx_bytes == len(sock.sent[0])
     assert client.traffic_stats().rx_bytes == 0
 
 
-def test_low_level_bit_write_rejects_truthy_non_bit_before_transport() -> None:
+@pytest.mark.parametrize("value", [0, 1, 2, "1", None])
+def test_low_level_bit_write_rejects_every_non_bool_before_transport(value: object) -> None:
     sock = _FakeSocket([])
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
     client._sock = sock
 
-    with pytest.raises(ValueError):
-        client.write_bit(0, 2)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be bool"):
+        client.write_bit(0, value)  # type: ignore[arg-type]
+
+    assert sock.sent == []
+    assert client.traffic_stats().request_count == 0
+
+
+@pytest.mark.parametrize("value", [False, True])
+def test_low_level_bit_writes_accept_boolean_values(value: bool) -> None:
+    bit_socket = _FakeSocket([_response(0x21)])
+    bit_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    bit_client._sock = bit_socket
+    bit_client.write_bit(0, value)
+
+    ext_socket = _FakeSocket([_response(0x99)])
+    ext_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    ext_client._sock = ext_socket
+    ext_client.write_ext_multi([(1, 0, 0, value)], [], [])
+
+    assert bit_socket.sent[0][-1] == int(value)
+    assert ext_socket.sent[0][-1] == int(value)
+
+
+@pytest.mark.parametrize("value", [0, 1])
+def test_low_level_extended_bit_write_rejects_integer_bits_before_transport(value: int) -> None:
+    sock = _FakeSocket([])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ValueError, match="must be bool"):
+        client.write_ext_multi([(1, 0, 0, value)], [], [])  # type: ignore[list-item]
 
     assert sock.sent == []
     assert client.traffic_stats().request_count == 0
@@ -401,6 +602,31 @@ def test_fixed_port_udp_session_is_terminal_after_uncertain_timeout() -> None:
         client.read_words(0, 1)
     with pytest.raises(ToyopucError, match="cannot be reused"):
         client.connect()
+
+
+def test_fixed_port_udp_session_is_terminal_after_malformed_write_response() -> None:
+    sock = _FakeUdpSocket(b"\x80")
+    client = ToyopucClient("127.0.0.1", 1025, transport="udp", local_port=20000)
+    client._sock = sock
+
+    with pytest.raises(ToyopucOperationOutcomeUnknownError):
+        client.write_words(0, [1])
+    with pytest.raises(ToyopucError, match="cannot be reused"):
+        client.connect()
+
+
+def test_graceful_eof_never_retries_and_write_outcome_is_unknown() -> None:
+    read_client = _ReconnectClient(
+        [_FakeSocket([b""]), _FakeSocket([_response(0x1C, b"\x34\x12")])],
+        retries=1,
+    )
+    with pytest.raises(ToyopucError, match="Socket error"):
+        read_client.read_words(0, 1)
+    assert len(read_client._sockets) == 1
+
+    write_client = _ReconnectClient([_FakeSocket([b""])], retries=1)
+    with pytest.raises(ToyopucOperationOutcomeUnknownError):
+        write_client.write_words(0, [1])
 
 
 def test_canceling_queued_async_call_does_not_cancel_running_call() -> None:
@@ -423,11 +649,16 @@ def test_canceling_queued_async_call_does_not_cancel_running_call() -> None:
             self.executed.append(name)
             return name
 
-        def _cancel_pending_operation(self) -> None:
-            self.cancel_calls += 1
+        def _begin_operation_cancel_scope(self, cancel_event: Event) -> None:
+            self.cancel_event = cancel_event
 
-        def _clear_operation_cancel(self) -> None:
+        def _end_operation_cancel_scope(self, cancel_event: Event) -> None:
+            assert self.cancel_event is cancel_event
             self.clear_calls += 1
+
+        def _cancel_pending_operation(self, cancel_event: Event) -> None:
+            assert self.cancel_event is cancel_event
+            self.cancel_calls += 1
 
     async def run() -> None:
         wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
@@ -448,6 +679,259 @@ def test_canceling_queued_async_call_does_not_cancel_running_call() -> None:
             assert await first == "first"
             assert await wrapper._run_sync_in_worker(sync_client.later, "last") == "last"
             assert sync_client.executed == ["first", "last"]
+        finally:
+            release.set()
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+
+
+def test_canceling_running_async_call_does_not_cancel_the_next_generation() -> None:
+    started = Event()
+
+    async def run() -> None:
+        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
+        executor = ThreadPoolExecutor(max_workers=1)
+        object.__setattr__(wrapper, "_client", sync_client)
+        object.__setattr__(wrapper, "_executor", executor)
+
+        def first() -> None:
+            started.set()
+            while True:
+                sync_client._raise_if_cancelled()
+                time.sleep(0.001)
+
+        try:
+            running = asyncio.create_task(wrapper._run_sync_in_worker(first))
+            assert await asyncio.to_thread(started.wait, 1)
+            running.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await running
+            assert await wrapper._run_sync_in_worker(lambda: "next") == "next"
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+
+
+def test_lazy_connect_send_receive_and_decode_share_one_monotonic_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ticks = iter(100.0 + index / 10 for index in range(20))
+    monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+    sock = _FakeSocket([_response(0x1C, b"\x34\x12")])
+    connect_timeouts: list[float] = []
+    socket_timeouts: list[float] = []
+    original_settimeout = sock.settimeout
+
+    def record_timeout(value: float) -> None:
+        socket_timeouts.append(value)
+        original_settimeout(value)
+
+    sock.settimeout = record_timeout  # type: ignore[method-assign]
+
+    def fake_create_connection(_endpoint: tuple[str, int], timeout: float) -> _FakeSocket:
+        connect_timeouts.append(timeout)
+        return sock
+
+    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp", timeout=3)
+
+    assert client.read_words(0, 1) == [0x1234]
+    assert connect_timeouts == [pytest.approx(2.9)]
+    assert socket_timeouts == pytest.approx([2.7, 2.6, 2.5])
+
+
+def test_state_change_is_not_unknown_when_transport_fails_before_send_attempt() -> None:
+    class SetTimeoutFailureSocket(_FakeSocket):
+        def settimeout(self, value: float) -> None:
+            raise OSError("cannot configure timeout")
+
+    sock = SetTimeoutFailureSocket([])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucTransportError):
+        client.write_words(0, [1])
+    assert sock.sent == []
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda client: client.read_words(0, 0x0201),
+        lambda client: client.write_words(0, [0] * 0x0201),
+        lambda client: client.read_bytes(0, 0x0401),
+        lambda client: client.write_bytes(0, bytes(0x0401)),
+        lambda client: client.read_words_multi(range(0x0081)),
+        lambda client: client.write_words_multi([(index, 0) for index in range(0x0081)]),
+        lambda client: client.read_bytes_multi(range(0x0081)),
+        lambda client: client.write_bytes_multi([(index, 0) for index in range(0x0081)]),
+        lambda client: client.read_ext_words(0, 0, 0x0201),
+        lambda client: client.write_ext_words(0, 0, [0] * 0x0201),
+        lambda client: client.read_ext_bytes(0, 0, 0x0401),
+        lambda client: client.write_ext_bytes(0, 0, bytes(0x0401)),
+        lambda client: client.read_ext_multi([(0, 0, index) for index in range(0x00B1)], [], []),
+        lambda client: client.write_ext_multi([(0, 0, index, False) for index in range(0x0081)], [], []),
+        lambda client: client.pc10_block_read(0, 0x03F1),
+        lambda client: client.pc10_block_write(0, bytes(0x03F1)),
+        lambda client: client.pc10_multi_read(bytes(0x0201)),
+        lambda client: client.pc10_multi_write(bytes(0x0201)),
+    ],
+)
+def test_every_over_capacity_client_call_fails_without_transport_or_diagnostic_state(operation) -> None:
+    sock = _FakeSocket([])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ValueError):
+        operation(client)
+
+    assert sock.sent == []
+    assert client.last_tx is None
+    assert client.last_rx is None
+    assert client.traffic_stats().request_count == 0
+
+
+def test_sync_operation_gate_is_fifo_and_independent_per_client() -> None:
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    other = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    first_entered = Event()
+    second_attempted = Event()
+    release = Event()
+    order: list[str] = []
+
+    def run(name: str) -> None:
+        if name == "second":
+            second_attempted.set()
+        with client._operation_turn():
+            order.append(name)
+            if name == "first":
+                first_entered.set()
+                release.wait(1)
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        first = executor.submit(run, "first")
+        assert first_entered.wait(1)
+        second = executor.submit(run, "second")
+        assert second_attempted.wait(1)
+        third = executor.submit(run, "third")
+        with other._operation_turn():
+            assert order == ["first"]
+        release.set()
+        first.result(timeout=1)
+        second.result(timeout=1)
+        third.result(timeout=1)
+
+    assert order == ["first", "second", "third"]
+
+
+def test_close_retires_active_and_queued_generation_but_allows_new_work() -> None:
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    active = Event()
+    queued = Event()
+    release = Event()
+
+    def first() -> None:
+        with client._operation_turn():
+            active.set()
+            release.wait(1)
+            client._raise_if_cancelled()
+
+    def second() -> None:
+        queued.set()
+        with client._operation_turn():
+            raise AssertionError("retired queued work must not execute")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(first)
+        assert active.wait(1)
+        second_future = executor.submit(second)
+        assert queued.wait(1)
+        client.close()
+        release.set()
+        with pytest.raises(ToyopucClosedError):
+            first_future.result(timeout=1)
+        with pytest.raises(ToyopucClosedError):
+            second_future.result(timeout=1)
+
+    with client._operation_turn():
+        pass
+
+
+def test_async_close_retires_admitted_generation_and_new_call_uses_next_generation() -> None:
+    client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+    active = Event()
+    release = Event()
+
+    def first(sync_client: ToyopucClient) -> str:
+        active.set()
+        release.wait(1)
+        sync_client._raise_if_cancelled()
+        return "first"
+
+    async def run() -> None:
+        first_task = asyncio.create_task(client._run_exclusive(first))
+        assert await asyncio.to_thread(active.wait, 1)
+        queued_task = asyncio.create_task(client._run_exclusive(lambda _client: "queued"))
+        await asyncio.sleep(0)
+        await client.close()
+        release.set()
+        with pytest.raises(ToyopucClosedError):
+            await first_task
+        with pytest.raises(ToyopucClosedError):
+            await queued_task
+        assert await client._run_exclusive(lambda _client: "new") == "new"
+
+    asyncio.run(run())
+
+
+def test_async_public_call_snapshots_mutable_input_before_waiting_in_fifo() -> None:
+    started = Event()
+    release = Event()
+
+    class SyncClient:
+        def __init__(self) -> None:
+            self.values: list[int] | None = None
+            self.cancel_event: Event | None = None
+
+        def first(self) -> None:
+            started.set()
+            release.wait(1)
+
+        def write_words(self, address: int, values: list[int] | tuple[int, ...]) -> None:
+            assert address == 0
+            self.values = list(values)
+
+        def _begin_operation_cancel_scope(self, cancel_event: Event) -> None:
+            self.cancel_event = cancel_event
+
+        def _end_operation_cancel_scope(self, cancel_event: Event) -> None:
+            assert self.cancel_event is cancel_event
+            self.cancel_event = None
+
+        def _cancel_pending_operation(self, cancel_event: Event) -> None:
+            cancel_event.set()
+
+    async def run() -> None:
+        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
+        sync_client = SyncClient()
+        executor = ThreadPoolExecutor(max_workers=1)
+        object.__setattr__(wrapper, "_client", sync_client)
+        object.__setattr__(wrapper, "_executor", executor)
+        try:
+            first_task = asyncio.create_task(wrapper._run_sync_in_worker(sync_client.first))
+            assert await asyncio.to_thread(started.wait, 1)
+            values = [1, 2]
+            write_task = asyncio.create_task(wrapper.write_words(0, values))
+            await asyncio.sleep(0)
+            values[0] = 9
+            values.append(3)
+            release.set()
+            await first_task
+            await write_task
+            assert sync_client.values == [1, 2]
         finally:
             release.set()
             executor.shutdown(wait=True, cancel_futures=True)
