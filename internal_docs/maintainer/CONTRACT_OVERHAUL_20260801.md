@@ -337,17 +337,20 @@ Machine-verifiable acceptance criteria:
 - [x] Implementation completed in this repository.
 - [x] Deterministic test code added or explicitly selected for every acceptance criterion.
 - [x] The exact Windows smoke cases passed locally as part of the full 369-test Windows gate.
-- [ ] The new Windows CI job passed on GitHub for the final source state.
+- [x] The new Windows CI job passed on GitHub for the final source state.
 - [x] Codex self-review completed after the requested verification run.
 - [x] Live PLC checks are not required; all selected behavior uses fake sockets and local lifecycle state.
 - [x] Maintainer CI documentation agrees with the workflow; no user migration note or changelog entry is required.
-- [ ] Final acceptance criteria verified and the item marked complete.
+- [x] Final acceptance criteria verified and the item marked complete.
 
 Verification disposition: the Windows Python 3.14 worktree source-archive gate
 passed Ruff, formatting, mypy, compilation, API-doc coverage, 369 tests,
 PyInstaller, wheel/sdist construction, and isolated-wheel consumption. The
-workflow's final GitHub-hosted Windows Python 3.13 result remains unchecked
-until publication is separately authorized.
+required GitHub-hosted Windows Python 3.13 job and the Ubuntu Python 3.10
+through 3.13 matrix passed on final merged source commit
+`f53224403071d5fa8b2efbd5f92ded155415fdcd` in
+[CI run 30705296425](https://github.com/fa-yoshinobu/plc-comm-computerlink-python/actions/runs/30705296425).
+This follow-up changes only the maintainer evidence record.
 
 Self-review disposition:
 
