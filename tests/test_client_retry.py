@@ -7,6 +7,7 @@ from threading import Event
 
 import pytest
 
+import toyopuc.client as client_module
 from toyopuc import (
     AsyncToyopucClient,
     ToyopucClient,
@@ -53,6 +54,11 @@ class _FakeSocket:
         self.options.append((level, optname, value))
 
 
+class _FragmentedSocket(_FakeSocket):
+    def recv_into(self, buffer, size: int = 0) -> int:
+        return super().recv_into(buffer, min(size or len(buffer), 1))
+
+
 class _FakeUdpSocket:
     def __init__(self, response: bytes) -> None:
         self._response = response
@@ -86,6 +92,7 @@ class _FakeUdpSocket:
 class _TimeoutAfterSendSocket(_FakeSocket):
     def __init__(self) -> None:
         super().__init__([])
+        self.closed = False
 
     def sendall(self, payload: bytes) -> None:
         self.sent.append(payload)
@@ -93,11 +100,32 @@ class _TimeoutAfterSendSocket(_FakeSocket):
     def recv_into(self, buffer, size: int = 0) -> int:
         raise TimeoutError("injected timeout")
 
+    def close(self) -> None:
+        self.closed = True
+
 
 class _TimeoutUdpSocket(_FakeUdpSocket):
     def recv(self, size: int) -> bytes:
         self.recv_sizes.append(size)
         raise TimeoutError("injected timeout")
+
+
+class _CloseTrackingSocket(_FakeSocket):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.closed = Event()
+
+    def close(self) -> None:
+        self.closed.set()
+
+
+class _CloseTrackingUdpSocket(_FakeUdpSocket):
+    def __init__(self) -> None:
+        super().__init__(_response(0x1C))
+        self.closed = Event()
+
+    def close(self) -> None:
+        self.closed.set()
 
 
 class _ReconnectClient(ToyopucClient):
@@ -122,6 +150,15 @@ def _relay_success_bytes(inner_cmd: int, inner_data: bytes) -> bytes:
     return bytes([0x80, 0x00]) + build_command(0x60, bytes([0x12, 0x02, 0x00, 0x06]) + inner_raw)[2:]
 
 
+def test_tcp_fragmented_header_and_body_are_received_under_one_request() -> None:
+    socket_ = _FragmentedSocket([_response(0x1C, bytes([0x34, 0x12]))])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = socket_
+
+    assert client.read_words(0, 1) == [0x1234]
+    assert len(socket_.sent) == 1
+
+
 def test_tcp_connect_enables_tcp_nodelay(monkeypatch: pytest.MonkeyPatch) -> None:
     sock = _FakeSocket([])
 
@@ -136,6 +173,284 @@ def test_tcp_connect_enables_tcp_nodelay(monkeypatch: pytest.MonkeyPatch) -> Non
     client.connect()
 
     assert sock.options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+
+
+def test_ipv4_literal_bypasses_resolver_for_tcp_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    sock = _FakeSocket([])
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args: pytest.fail("IPv4 literal must bypass DNS"))
+    monkeypatch.setattr(socket, "create_connection", lambda *_args: sock)
+
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client.connect()
+
+    assert client._sock is sock
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_delayed_dns_times_out_without_socket_or_late_adoption(
+    monkeypatch: pytest.MonkeyPatch,
+    lazy: bool,
+) -> None:
+    resolver_started = Event()
+    release_resolver = Event()
+    worker_finished = Event()
+    socket_calls: list[tuple[str, int]] = []
+    original_publish = client_module._publish_connection_attempt
+
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+        resolver_started.set()
+        release_resolver.wait(1)
+        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
+
+    def fake_create_connection(endpoint: tuple[str, int], _timeout: float) -> _FakeSocket:
+        socket_calls.append(endpoint)
+        return _FakeSocket([])
+
+    def publish_and_signal(*args: object) -> None:
+        try:
+            original_publish(*args)  # type: ignore[arg-type]
+        finally:
+            worker_finished.set()
+
+    monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
+    client = ToyopucClient("plc.test", 1025, transport="tcp", timeout=0.02)
+
+    try:
+        with pytest.raises(ToyopucTimeoutError, match="Connect timeout"):
+            if lazy:
+                client.read_words(0, 1)
+            else:
+                client.connect()
+        assert resolver_started.is_set()
+        assert client._sock is None
+        assert socket_calls == []
+    finally:
+        release_resolver.set()
+
+    assert worker_finished.wait(1)
+    assert client._sock is None
+    assert socket_calls == []
+
+
+@pytest.mark.parametrize("transport", ["tcp", "udp"])
+def test_late_socket_completion_is_closed_and_never_adopted(
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+) -> None:
+    socket_phase_started = Event()
+    release_socket_phase = Event()
+    worker_finished = Event()
+    original_publish = client_module._publish_connection_attempt
+
+    def publish_and_signal(*args: object) -> None:
+        try:
+            original_publish(*args)  # type: ignore[arg-type]
+        finally:
+            worker_finished.set()
+
+    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
+    if transport == "tcp":
+        late_socket: _CloseTrackingSocket | _CloseTrackingUdpSocket = _CloseTrackingSocket()
+
+        def delayed_create_connection(_endpoint: tuple[str, int], _timeout: float) -> _CloseTrackingSocket:
+            socket_phase_started.set()
+            release_socket_phase.wait(1)
+            return late_socket  # type: ignore[return-value]
+
+        monkeypatch.setattr(socket, "create_connection", delayed_create_connection)
+    else:
+        late_socket = _CloseTrackingUdpSocket()
+        original_bind = late_socket.bind
+
+        def delayed_bind(address: tuple[str, int]) -> None:
+            socket_phase_started.set()
+            release_socket_phase.wait(1)
+            original_bind(address)
+
+        late_socket.bind = delayed_bind  # type: ignore[method-assign]
+        monkeypatch.setattr(socket, "socket", lambda *_args: late_socket)
+
+    client = ToyopucClient("127.0.0.1", 1025, transport=transport, timeout=0.02)
+    try:
+        with pytest.raises(ToyopucTimeoutError, match="Connect timeout"):
+            client.connect()
+        assert socket_phase_started.is_set()
+        assert client._sock is None
+    finally:
+        release_socket_phase.set()
+
+    assert worker_finished.wait(1)
+    assert late_socket.closed.wait(1)
+    assert client._sock is None
+
+
+def test_native_connect_timeout_before_absolute_deadline_is_transport_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def early_native_timeout(_endpoint: tuple[str, int], _timeout: float) -> _FakeSocket:
+        raise TimeoutError("native candidate timeout")
+
+    monkeypatch.setattr(socket, "create_connection", early_native_timeout)
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp", timeout=3)
+
+    with pytest.raises(ToyopucTransportError) as caught:
+        client.connect()
+    assert isinstance(caught.value.__cause__, TimeoutError)
+    assert client._sock is None
+
+
+def test_pre_send_connect_retries_share_the_original_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    sock = _FakeSocket([])
+    deadlines: list[float] = []
+
+    def fake_attempt(
+        _host: str,
+        _port: int,
+        _transport: str,
+        _local_port: int,
+        deadline: float,
+        _cancellation_check: object,
+    ) -> _FakeSocket:
+        deadlines.append(deadline)
+        if len(deadlines) == 1:
+            raise OSError("first candidate failed")
+        return sock
+
+    monkeypatch.setattr(client_module, "_connection_attempt_before_deadline", fake_attempt)
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=1, retry_delay=0)
+    client.connect()
+
+    assert len(deadlines) == 2
+    assert deadlines[0] == deadlines[1]
+    assert client._sock is sock
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_async_connection_cancellation_does_not_wait_for_or_adopt_late_dns(
+    monkeypatch: pytest.MonkeyPatch,
+    lazy: bool,
+) -> None:
+    resolver_started = Event()
+    release_resolver = Event()
+    worker_finished = Event()
+    original_publish = client_module._publish_connection_attempt
+
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+        resolver_started.set()
+        release_resolver.wait(1)
+        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
+
+    def publish_and_signal(*args: object) -> None:
+        try:
+            original_publish(*args)  # type: ignore[arg-type]
+        finally:
+            worker_finished.set()
+
+    monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("late DNS must not connect"))
+    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
+
+    async def run() -> None:
+        client = AsyncToyopucClient("plc.test", 1025, transport="tcp", timeout=3)
+        task = asyncio.create_task(client.read_words(0, 1) if lazy else client.connect())
+        try:
+            assert await asyncio.to_thread(resolver_started.wait, 1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, 0.5)
+            assert client._client._sock is None
+            assert not worker_finished.is_set()
+        finally:
+            release_resolver.set()
+        assert await asyncio.to_thread(worker_finished.wait, 1)
+        assert client._client._sock is None
+        await client.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_async_explicit_and_lazy_connect_share_the_bounded_dns_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    lazy: bool,
+) -> None:
+    resolver_started = Event()
+    release_resolver = Event()
+    worker_finished = Event()
+    original_publish = client_module._publish_connection_attempt
+
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+        resolver_started.set()
+        release_resolver.wait(1)
+        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
+
+    def publish_and_signal(*args: object) -> None:
+        try:
+            original_publish(*args)  # type: ignore[arg-type]
+        finally:
+            worker_finished.set()
+
+    monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("late DNS must not connect"))
+    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
+
+    async def run() -> None:
+        client = AsyncToyopucClient("plc.test", 1025, transport="tcp", timeout=0.02)
+        try:
+            with pytest.raises(ToyopucTimeoutError, match="Connect timeout"):
+                if lazy:
+                    await client.read_words(0, 1)
+                else:
+                    await client.connect()
+            assert resolver_started.is_set()
+            assert client._client._sock is None
+        finally:
+            release_resolver.set()
+        assert await asyncio.to_thread(worker_finished.wait, 1)
+        assert client._client._sock is None
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_close_during_dns_is_distinct_and_cannot_adopt_late_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    resolver_started = Event()
+    release_resolver = Event()
+    worker_finished = Event()
+    original_publish = client_module._publish_connection_attempt
+
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+        resolver_started.set()
+        release_resolver.wait(1)
+        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
+
+    def publish_and_signal(*args: object) -> None:
+        try:
+            original_publish(*args)  # type: ignore[arg-type]
+        finally:
+            worker_finished.set()
+
+    monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("closed DNS must not connect"))
+    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
+    client = ToyopucClient("plc.test", 1025, transport="tcp", timeout=3)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            connecting = executor.submit(client.connect)
+            assert resolver_started.wait(1)
+            client.close()
+            with pytest.raises(ToyopucClosedError, match="retired by close"):
+                connecting.result(timeout=0.5)
+        assert client._sock is None
+        assert not worker_finished.is_set()
+    finally:
+        release_resolver.set()
+
+    assert worker_finished.wait(1)
+    assert client._sock is None
 
 
 def test_connect_retries_pre_send_socket_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -629,6 +944,21 @@ def test_graceful_eof_never_retries_and_write_outcome_is_unknown() -> None:
         write_client.write_words(0, [1])
 
 
+def test_timed_out_tcp_transport_can_explicitly_reconnect_and_exchange_on_same_client() -> None:
+    timed_out = _TimeoutAfterSendSocket()
+    recovered = _FakeSocket([_response(0x1C, b"\x34\x12")])
+    client = _ReconnectClient([timed_out, recovered], retries=0)
+
+    with pytest.raises(ToyopucTimeoutError):
+        client.read_words(0, 1)
+    assert timed_out.closed
+    assert client._sock is None
+
+    client.connect()
+    assert client.read_words(0, 1) == [0x1234]
+    assert client._sock is recovered
+
+
 def test_canceling_queued_async_call_does_not_cancel_running_call() -> None:
     started = Event()
     release = Event()
@@ -731,11 +1061,18 @@ def test_lazy_connect_send_receive_and_decode_share_one_monotonic_deadline(
 
     sock.settimeout = record_timeout  # type: ignore[method-assign]
 
-    def fake_create_connection(_endpoint: tuple[str, int], timeout: float) -> _FakeSocket:
-        connect_timeouts.append(timeout)
+    def fake_connection_attempt(
+        _host: str,
+        _port: int,
+        _transport: str,
+        _local_port: int,
+        deadline: float,
+        _cancellation_check: object,
+    ) -> _FakeSocket:
+        connect_timeouts.append(client_module._remaining_time(deadline, "Connect timeout"))
         return sock
 
-    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+    monkeypatch.setattr(client_module, "_connection_attempt_before_deadline", fake_connection_attempt)
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp", timeout=3)
 
     assert client.read_words(0, 1) == [0x1234]

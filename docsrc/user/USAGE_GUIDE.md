@@ -74,6 +74,19 @@ Connection is lazy: the first operation connects when necessary. `close()`
 interrupts the active operation and rejects operations already queued in that
 transport generation; a later new operation may connect again.
 
+The configured `timeout` is one absolute bound for explicit connection
+establishment and, separately, one absolute bound for each request. Connection
+timing starts before IPv4 DNS. The same deadline covers first-IPv4 selection,
+TCP/UDP socket creation, UDP bind/connect, TCP no-delay configuration, and final
+client adoption. An IPv4 literal bypasses DNS. No phase or retry receives a
+fresh timeout, and IPv6 is never attempted.
+
+If a platform resolver or socket call cannot be cancelled, timeout or async
+caller cancellation returns without adopting it. A late socket is closed by
+the isolated connection worker and cannot send a request or change client
+state. Absolute expiry raises `ToyopucTimeoutError`; a native connection failure
+that finishes before expiry raises `ToyopucTransportError` with its cause.
+
 ## Read single
 
 ```python
@@ -182,11 +195,11 @@ between the two requests.
 
 ## Timeouts, cancellation, and retry safety
 
-One monotonic deadline covers lazy connect, transmit, receive, and response
-decode for each request. Timeout and cancellation retire the current transport.
+One monotonic deadline covers IPv4 resolution, lazy connect, transmit, receive,
+and response decode for each request. Timeout and cancellation retire the current transport.
 Automatic retries are allowed only for connection failures proven to occur
-before a send attempt. After a request may have been sent, neither reads nor
-writes are automatically resent.
+before a send attempt, and those retries share the original deadline. After a
+request may have been sent, neither reads nor writes are automatically resent.
 
 Timeout, cancellation, explicit close, not-connected state, transport failure,
 malformed response, and PLC NG responses have distinct exception types. A

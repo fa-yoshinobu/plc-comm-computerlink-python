@@ -45,6 +45,15 @@ created. For a hostname with multiple results, the library uses the first IPv4
 result in resolver order; a hostname with no IPv4 result fails without falling
 back to IPv6.
 
+## Symptom: not every resolved or retried connection phase gets a full timeout
+
+This is intentional. One absolute connection deadline covers IPv4 DNS,
+first-IPv4 selection, socket creation, UDP bind/connect, TCP configuration, and
+client adoption. Pre-send retries use only the time remaining to that same
+deadline. An IPv4 literal bypasses DNS. If an operating-system resolver or
+socket call finishes after timeout or async cancellation, its result is not
+adopted and any late socket is closed.
+
 ## Symptom: a fixed-port UDP client cannot reconnect after a timeout
 
 Connection timeouts, retry delays, and polling intervals have a common
