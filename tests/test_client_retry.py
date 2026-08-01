@@ -1057,6 +1057,99 @@ def test_raw_command_never_retries_retryable_response() -> None:
     assert len(sock.sent) == 1
 
 
+@pytest.mark.parametrize("transport", ("tcp", "udp"))
+def test_data_bearing_ng_response_requires_matching_direct_command(transport: str) -> None:
+    read_frame = _response(0x1D, b"\x01", rc=0x10)
+    read_socket = _FakeSocket([read_frame]) if transport == "tcp" else _FakeUdpSocket(read_frame)
+    read_client = ToyopucClient("127.0.0.1", 1025, transport=transport)
+    read_client._sock = read_socket
+
+    with pytest.raises(ToyopucProtocolError, match="data-bearing error response command"):
+        read_client.read_words(0, 1)
+    assert read_client._sock is None
+
+    write_frame = _response(0x1C, b"\x01", rc=0x10)
+    write_socket = _FakeSocket([write_frame]) if transport == "tcp" else _FakeUdpSocket(write_frame)
+    write_client = ToyopucClient("127.0.0.1", 1025, transport=transport)
+    write_client._sock = write_socket
+
+    with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+        write_client.write_words(0, [1])
+    assert caught.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
+    assert isinstance(caught.value.cause, ToyopucProtocolError)
+    assert write_client._sock is None
+
+
+@pytest.mark.parametrize("transport", ("tcp", "udp"))
+def test_no_data_ng_response_preserves_special_rc_semantics_without_command_echo(transport: str) -> None:
+    frame = _response(0x1D, rc=0x10)
+    sock = _FakeSocket([frame]) if transport == "tcp" else _FakeUdpSocket(frame)
+    client = ToyopucClient("127.0.0.1", 1025, transport=transport)
+    client._sock = sock
+
+    with pytest.raises(ToyopucPlcError):
+        client.read_words(0, 1)
+    assert client._sock is sock
+
+
+@pytest.mark.parametrize("transport", ("tcp", "udp"))
+def test_async_data_bearing_ng_response_uses_same_command_correlation_contract(transport: str) -> None:
+    async def run() -> None:
+        read_frame = _response(0x1D, b"\x01", rc=0x10)
+        read_socket = _FakeSocket([read_frame]) if transport == "tcp" else _FakeUdpSocket(read_frame)
+        read_client = AsyncToyopucClient("127.0.0.1", 1025, transport=transport)
+        read_client._client._sock = read_socket
+        try:
+            with pytest.raises(ToyopucProtocolError, match="data-bearing error response command"):
+                await read_client.read_words(0, 1)
+            assert read_client._client._sock is None
+        finally:
+            await read_client.close()
+
+        write_frame = _response(0x1C, b"\x01", rc=0x10)
+        write_socket = _FakeSocket([write_frame]) if transport == "tcp" else _FakeUdpSocket(write_frame)
+        write_client = AsyncToyopucClient("127.0.0.1", 1025, transport=transport)
+        write_client._client._sock = write_socket
+        try:
+            with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+                await write_client.write_words(0, [1])
+            assert caught.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
+            assert write_client._client._sock is None
+        finally:
+            await write_client.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("transport", ("tcp", "udp"))
+@pytest.mark.parametrize(("command", "state_changing"), ((0x1C, False), (0x1D, True)))
+def test_matching_data_bearing_ng_response_remains_definitive_plc_error(
+    transport: str, command: int, state_changing: bool
+) -> None:
+    frame = _response(command, b"\x40", rc=0x10)
+    sock = _FakeSocket([frame]) if transport == "tcp" else _FakeUdpSocket(frame)
+    client = ToyopucClient("127.0.0.1", 1025, transport=transport)
+    client._sock = sock
+
+    with pytest.raises(ToyopucPlcError, match="error_code=0x40"):
+        if state_changing:
+            client.write_words(0, [1])
+        else:
+            client.read_words(0, 1)
+    assert client._sock is sock
+
+
+def test_fixed_port_udp_is_tainted_after_mismatched_data_bearing_ng_response() -> None:
+    frame = _response(0x1D, b"\x01", rc=0x10)
+    client = ToyopucClient("127.0.0.1", 1025, transport="udp", local_port=12000)
+    client._sock = _FakeUdpSocket(frame)
+
+    with pytest.raises(ToyopucProtocolError, match="data-bearing error response command"):
+        client.read_words(0, 1)
+    assert client._sock is None
+    assert client._fixed_udp_session_tainted
+
+
 def test_send_and_recv_exhausts_response_error_0x73_retries() -> None:
     sock = _FakeSocket([_response(0x73, rc=0x10)])
     client = ToyopucClient("127.0.0.1", 1025, transport="tcp", retries=0, retry_delay=0)
@@ -1532,6 +1625,98 @@ def test_canceling_running_async_call_does_not_cancel_the_next_generation() -> N
             with pytest.raises(asyncio.CancelledError):
                 await running
             assert await wrapper._run_sync_in_worker(lambda: "next") == "next"
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("worker_result", ("outcome_unknown", "success", "ordinary_error"))
+def test_async_cancellation_observes_already_completed_worker_outcome(worker_result: str) -> None:
+    worker_started = Event()
+    release_worker = Event()
+    worker_finished = Event()
+    outcome_unknown = ToyopucOperationOutcomeUnknownError(
+        ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE,
+        "completed worker outcome is unknown",
+    )
+
+    async def run() -> None:
+        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
+        executor = ThreadPoolExecutor(max_workers=1)
+        object.__setattr__(wrapper, "_client", sync_client)
+        object.__setattr__(wrapper, "_executor", executor)
+
+        def operation() -> str:
+            try:
+                worker_started.set()
+                assert release_worker.wait(2)
+                if worker_result == "outcome_unknown":
+                    raise outcome_unknown
+                if worker_result == "ordinary_error":
+                    raise ValueError("completed ordinary worker failure")
+                return "completed"
+            finally:
+                worker_finished.set()
+
+        try:
+            task = asyncio.create_task(wrapper._run_sync_in_worker(operation))
+            await asyncio.sleep(0)
+            assert worker_started.wait(2)
+            release_worker.set()
+            assert worker_finished.wait(2)
+            assert not task.done()
+            task.cancel()
+            expected = (
+                ToyopucOperationOutcomeUnknownError if worker_result == "outcome_unknown" else asyncio.CancelledError
+            )
+            with pytest.raises(expected) as caught:
+                await task
+            if worker_result == "outcome_unknown":
+                assert caught.value is outcome_unknown
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+
+
+def test_public_async_write_preserves_already_completed_unknown_outcome_during_cancellation() -> None:
+    worker_started = Event()
+    release_worker = Event()
+    worker_finished = Event()
+    outcome_unknown = ToyopucOperationOutcomeUnknownError(
+        ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE,
+        "public write outcome is unknown",
+    )
+
+    async def run() -> None:
+        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
+        executor = ThreadPoolExecutor(max_workers=1)
+        object.__setattr__(wrapper, "_client", sync_client)
+        object.__setattr__(wrapper, "_executor", executor)
+
+        def write_words(_address: int, _values: object) -> None:
+            try:
+                worker_started.set()
+                assert release_worker.wait(2)
+                raise outcome_unknown
+            finally:
+                worker_finished.set()
+
+        sync_client.write_words = write_words  # type: ignore[method-assign]
+        try:
+            task = asyncio.create_task(wrapper.write_words(0, [1]))
+            await asyncio.sleep(0)
+            assert worker_started.wait(2)
+            release_worker.set()
+            assert worker_finished.wait(2)
+            assert not task.done()
+            task.cancel()
+            with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+                await task
+            assert caught.value is outcome_unknown
         finally:
             executor.shutdown(wait=True, cancel_futures=True)
 

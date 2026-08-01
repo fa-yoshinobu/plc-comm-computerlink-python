@@ -69,20 +69,31 @@ class _AsyncToyopucClientBase:
         future = asyncio.wrap_future(concurrent_future, loop=loop)
         try:
             return await asyncio.shield(future)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as cancellation:
             if concurrent_future.cancel():
                 raise
             if concurrent_future.done():
-                raise
+                worker_error: BaseException | None = None
+                try:
+                    concurrent_future.result()
+                except BaseException as exc:
+                    worker_error = exc
+                if future.done() and not future.cancelled():
+                    future.exception()
+                else:
+                    future.cancel()
+                if isinstance(worker_error, ToyopucOperationOutcomeUnknownError):
+                    raise worker_error from None
+                raise cancellation
             self._client._cancel_pending_operation(operation_cancel)
-            worker_error: Exception | None = None
+            worker_error = None
             try:
                 await asyncio.shield(future)
-            except Exception as exc:
+            except BaseException as exc:
                 worker_error = exc
             if isinstance(worker_error, ToyopucOperationOutcomeUnknownError):
                 raise worker_error from None
-            raise
+            raise cancellation
         finally:
             if owns_executor:
                 executor.shutdown(wait=False, cancel_futures=True)

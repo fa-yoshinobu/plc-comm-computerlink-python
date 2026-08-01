@@ -207,6 +207,18 @@ state-changing operation that may have been sent raises
 `ToyopucOperationOutcomeUnknownError`; inspect its `reason` and reconcile PLC
 state before deciding whether another write is safe.
 
+A data-bearing PLC NG response is definitive only when its command echoes the
+active request. A mismatch is malformed, retires the transport, and is
+outcome-unknown for a state-changing request. The protocol's no-data `RC=0x10`
+special error form still uses the command byte as detailed PLC error data and is
+not subjected to command-echo correlation.
+
+If asyncio cancellation races with a worker that has already established
+`ToyopucOperationOutcomeUnknownError`, the unknown outcome is returned instead
+of cancellation. Reconcile PLC state even though the awaiting task was being
+cancelled. Completed success or another completed worker exception retains the
+caller-visible `asyncio.CancelledError`.
+
 ## Block reads
 
 ```python

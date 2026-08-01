@@ -75,6 +75,17 @@ requests. Write aggregates remain single-request-only. No public chunking or
 | Parsed payload types | `ClockData`, `CpuStatusData` |
 | Errors | `ToyopucError`, `ToyopucTimeoutError`, `ToyopucCancelledError`, `ToyopucClosedError`, `ToyopucNotConnectedError`, `ToyopucTransportError`, `ToyopucProtocolError`, `ToyopucPlcError`, `ToyopucOperationOutcomeUnknownError`, `ToyopucOutcomeUnknownReason` |
 
+A data-bearing NG response must echo the active request command. A mismatch is
+`ToyopucProtocolError` for reads and
+`ToyopucOperationOutcomeUnknownError(MALFORMED_RESPONSE)` for possibly applied
+state changes, and the transport is retired. Empty-data `RC=0x10` responses keep
+their special command-byte error-code semantics.
+
+When asyncio task cancellation races with an already-terminal worker,
+`ToyopucOperationOutcomeUnknownError` takes precedence if that is the worker's
+result. Completed success and ordinary worker exceptions preserve
+`asyncio.CancelledError`.
+
 ## Public Symbol Index
 
 The package exports these public names from `toyopuc.__all__`:
