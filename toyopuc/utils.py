@@ -42,7 +42,8 @@ class ToyopucConnectionOptions:
         port: TOYOPUC computer-link port.
         local_port: UDP source port. Leave zero for an ephemeral port.
         transport: ``"tcp"`` or ``"udp"``.
-        timeout: Socket timeout in seconds. Maximum ``2147483.647``.
+        timeout: Absolute connection and per-request timeout in seconds.
+            Maximum ``2147483.647``.
         retries: Number of retry attempts performed by the async client.
         retry_delay: Delay between retry attempts, in seconds. Maximum
             ``2147483.647``.

@@ -60,3 +60,33 @@ jobs:
         if: matrix.python-version == '3.10'
         shell: pwsh
         run: ./scripts/check_package_contents.ps1
+
+  windows-contract-smoke:
+    name: Windows representative contract smoke
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install smoke-test dependency
+        run: python -m pip install pytest
+
+      - name: Run representative Windows transport lifecycle contracts
+        run: >-
+          python -m pytest -q
+          tests/test_client_retry.py::test_tcp_fragmented_header_and_body_are_received_under_one_request
+          tests/test_client_retry.py::test_late_socket_completion_is_closed_and_never_adopted
+          tests/test_client_retry.py::test_native_connect_timeout_before_absolute_deadline_is_transport_failure
+          tests/test_client_retry.py::test_close_during_dns_is_distinct_and_cannot_adopt_late_result
+          tests/test_client_retry.py::test_connect_retries_pre_send_socket_failure
+          tests/test_client_retry.py::test_fixed_port_udp_session_is_terminal_after_uncertain_timeout
+          tests/test_client_retry.py::test_timed_out_tcp_transport_can_explicitly_reconnect_and_exchange_on_same_client
+          tests/test_client_retry.py::test_close_retires_active_and_queued_generation_but_allows_new_work
+          tests/test_client_retry.py::test_async_close_retires_admitted_generation_and_new_call_uses_next_generation

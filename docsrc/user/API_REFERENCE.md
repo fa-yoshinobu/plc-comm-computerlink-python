@@ -18,6 +18,16 @@ workflows.
 | Clock and CPU status | `read_clock`, `write_clock`, `read_cpu_status`, `read_cpu_status_a0`, `read_cpu_status_a0_raw` |
 | Scan control | `resume_scan`, `stop_scan`, `release_scan_stop` |
 
+`ToyopucConnectionOptions.timeout` is one monotonic absolute deadline for a
+complete explicit connection and, separately, for each admitted request. TCP
+and UDP connection timing begins before IPv4 DNS and includes first-IPv4
+selection, socket creation, UDP bind/connect, TCP no-delay configuration, and
+final adoption. Lazy connection reuses the request deadline through send,
+receive, and decode. IPv4 literals bypass DNS; IPv6 and alternate-family
+fallback remain unsupported. Deadline expiry is `ToyopucTimeoutError`, while a
+native connection failure completed before expiry is `ToyopucTransportError`.
+Late resolver and socket results are discarded and cannot create client state.
+
 ## Device Operations
 
 | Operation | Public API |

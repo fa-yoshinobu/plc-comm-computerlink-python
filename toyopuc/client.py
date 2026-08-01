@@ -4,6 +4,7 @@ import math
 import socket
 import struct
 import time
+from _thread import LockType
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -12,8 +13,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
 from ipaddress import ip_address
-from queue import Full, Queue
-from threading import Condition, Event, RLock, Thread, local
+from queue import Empty, Full, Queue
+from threading import Condition, Event, Lock, RLock, Thread, local
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .errors import (
@@ -262,6 +263,15 @@ def _normalize_ipv4_host(host: object, *, name: str = "host") -> str:
 
 
 def _resolve_ipv4_endpoint(host: str, port: int, socket_type: int) -> tuple[str, int]:
+    try:
+        literal = ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        if literal.version != 4:
+            raise socket.gaierror(f"host did not resolve to an IPv4 address: {host}")
+        return str(literal), port
+
     endpoints = socket.getaddrinfo(host, port, socket.AF_INET, socket_type)
     for family, resolved_type, _protocol, _canonical_name, sockaddr in endpoints:
         if family == socket.AF_INET and resolved_type == socket_type:
@@ -269,6 +279,128 @@ def _resolve_ipv4_endpoint(host: str, port: int, socket_type: int) -> tuple[str,
             if isinstance(address, str) and isinstance(resolved_port, int):
                 return address, resolved_port
     raise socket.gaierror(f"host did not resolve to an IPv4 address: {host}")
+
+
+def _close_connection_socket(sock: socket.socket | None) -> None:
+    if sock is None:
+        return
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def _open_ipv4_connection(
+    host: str,
+    port: int,
+    transport: str,
+    local_port: int,
+    deadline: float,
+    abandoned: Event,
+) -> socket.socket:
+    """Resolve, open, and configure one candidate without touching client state."""
+
+    sock: socket.socket | None = None
+    try:
+        socket_type = socket.SOCK_STREAM if transport == "tcp" else socket.SOCK_DGRAM
+        endpoint = _resolve_ipv4_endpoint(host, port, socket_type)
+        if abandoned.is_set():
+            raise ToyopucCancelledError("Connection attempt was abandoned")
+        _remaining_time(deadline, "Connect timeout")
+        if transport == "tcp":
+            sock = socket.create_connection(endpoint, _remaining_time(deadline, "Connect timeout"))
+            _remaining_time(deadline, "Connect timeout")
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(_remaining_time(deadline, "Connect timeout"))
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(_remaining_time(deadline, "Connect timeout"))
+            sock.bind(("", local_port))
+            _remaining_time(deadline, "Connect timeout")
+            sock.connect(endpoint)
+            sock.settimeout(_remaining_time(deadline, "Connect timeout"))
+        _remaining_time(deadline, "Connect timeout")
+        return sock
+    except Exception:
+        _close_connection_socket(sock)
+        raise
+
+
+def _publish_connection_attempt(
+    host: str,
+    port: int,
+    transport: str,
+    local_port: int,
+    deadline: float,
+    result_queue: Queue[tuple[socket.socket | None, Exception | None]],
+    abandoned: Event,
+    handoff_lock: LockType,
+) -> None:
+    candidate: socket.socket | None = None
+    error: Exception | None = None
+    try:
+        candidate = _open_ipv4_connection(host, port, transport, local_port, deadline, abandoned)
+    except Exception as exc:
+        error = exc
+
+    with handoff_lock:
+        if abandoned.is_set():
+            _close_connection_socket(candidate)
+            return
+        result_queue.put_nowait((candidate, error))
+
+
+def _connection_attempt_before_deadline(
+    host: str,
+    port: int,
+    transport: str,
+    local_port: int,
+    deadline: float,
+    cancellation_check: Callable[[], None],
+) -> socket.socket:
+    """Bound an uncancellable platform resolver/socket call and reject late output."""
+
+    result_queue: Queue[tuple[socket.socket | None, Exception | None]] = Queue(maxsize=1)
+    abandoned = Event()
+    handoff_lock = Lock()
+    worker = Thread(
+        target=_publish_connection_attempt,
+        args=(host, port, transport, local_port, deadline, result_queue, abandoned, handoff_lock),
+        name="ToyopucConnect",
+        daemon=True,
+    )
+    worker.start()
+
+    received_socket: socket.socket | None = None
+    try:
+        while True:
+            cancellation_check()
+            remaining = _remaining_time(deadline, "Connect timeout")
+            try:
+                received_socket, error = result_queue.get(timeout=min(remaining, 0.05))
+                break
+            except Empty:
+                continue
+        cancellation_check()
+        _remaining_time(deadline, "Connect timeout")
+        if error is not None:
+            raise error
+        if received_socket is None:
+            raise OSError("Connection attempt returned no socket")
+        connected = received_socket
+        received_socket = None
+        return connected
+    except BaseException:
+        _close_connection_socket(received_socket)
+        with handoff_lock:
+            abandoned.set()
+            try:
+                queued_socket, _queued_error = result_queue.get_nowait()
+            except Empty:
+                pass
+            else:
+                _close_connection_socket(queued_socket)
+        raise
 
 
 def _normalize_word_values(values: Iterable[int]) -> list[int]:
@@ -501,7 +633,7 @@ class ToyopucClient:
         self.close()
 
     def connect(self) -> None:
-        """Open the configured TCP or UDP socket if it is not already open."""
+        """Open TCP or UDP within one absolute DNS-through-adoption deadline."""
 
         with self._operation_turn():
             self._connect(time.monotonic() + self._operation_timeout())
@@ -522,41 +654,40 @@ class ToyopucClient:
             self._raise_if_cancelled()
             sock: socket.socket | None = None
             try:
-                if self.transport == "tcp":
-                    endpoint = _resolve_ipv4_endpoint(self.host, self.port, socket.SOCK_STREAM)
-                    sock = socket.create_connection(
-                        endpoint,
-                        _remaining_time(deadline, "Connect timeout"),
-                    )
-                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                else:
-                    endpoint = _resolve_ipv4_endpoint(self.host, self.port, socket.SOCK_DGRAM)
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.bind(("", self.local_port))
-                    sock.connect(endpoint)
-                    sock.settimeout(_remaining_time(deadline, "Connect timeout"))
-                _remaining_time(deadline, "Connect timeout")
+                sock = _connection_attempt_before_deadline(
+                    self.host,
+                    self.port,
+                    self.transport,
+                    self.local_port,
+                    deadline,
+                    self._raise_if_cancelled,
+                )
                 with self._operation_condition:
                     self._raise_if_cancelled()
+                    _remaining_time(deadline, "Connect timeout")
                     self._sock = sock
+                    sock = None
                 return
-            except (TimeoutError, ToyopucTimeoutError) as exc:
-                if sock is not None:
-                    sock.close()
+            except ToyopucTimeoutError as exc:
+                _close_connection_socket(sock)
                 if attempt <= self.retries:
-                    self._wait_retry_delay(deadline)
+                    try:
+                        self._wait_retry_delay(deadline)
+                    except ToyopucTimeoutError as deadline_exc:
+                        raise ToyopucTimeoutError("Connect timeout") from deadline_exc
                     continue
                 raise ToyopucTimeoutError("Connect timeout") from exc
             except OSError as exc:
-                if sock is not None:
-                    sock.close()
+                _close_connection_socket(sock)
                 if attempt <= self.retries:
-                    self._wait_retry_delay(deadline)
+                    try:
+                        self._wait_retry_delay(deadline)
+                    except ToyopucTimeoutError as deadline_exc:
+                        raise ToyopucTimeoutError("Connect timeout") from deadline_exc
                     continue
                 raise ToyopucTransportError("Socket connection failed") from exc
             except (ToyopucCancelledError, ToyopucClosedError):
-                if sock is not None:
-                    sock.close()
+                _close_connection_socket(sock)
                 raise
 
     def close(self) -> None:
