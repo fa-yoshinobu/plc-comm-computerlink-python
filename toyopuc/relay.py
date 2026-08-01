@@ -21,32 +21,40 @@ class RelayLayer:
 
 
 def parse_relay_hops(text: str) -> list[tuple[int, int]]:
-    """Parse relay hops from `P1-L2:N2` or `0x12:0x0002` style text."""
+    """Parse relay hops using decimal-only component or direct-link notation."""
     hops: list[tuple[int, int]] = []
     for part in text.split(","):
         item = part.strip()
         if not item:
             raise ValueError("relay route must not contain an empty hop")
         m = re.fullmatch(
-            r"P([0-9A-Fa-f])[-:]L([0-9A-Fa-f])\s*:\s*N([0-9A-Fa-fx]+)",
+            r"P([0-9]+)[-:]L([0-9]+)\s*:\s*N([0-9]+)",
             item,
             re.IGNORECASE,
         )
         if m:
-            link = (int(m.group(1), 16) << 4) | int(m.group(2), 16)
-            station = int(m.group(3), 0)
+            page = int(m.group(1), 10)
+            line = int(m.group(2), 10)
+            if not 0 <= page <= 15 or not 0 <= line <= 15:
+                raise ValueError("relay P and L components must be in the range 0..15")
+            link = (page << 4) | line
+            station = int(m.group(3), 10)
             hops.append(_validate_relay_hop(link, station))
             continue
-        m = re.fullmatch(r"([0-9A-Fa-f])[-:]([0-9A-Fa-f]):([0-9A-Fa-fx]+)", item)
+        m = re.fullmatch(r"([0-9]+)-([0-9]+):([0-9]+)", item)
         if m:
-            link = (int(m.group(1), 16) << 4) | int(m.group(2), 16)
-            station = int(m.group(3), 0)
+            page = int(m.group(1), 10)
+            line = int(m.group(2), 10)
+            if not 0 <= page <= 15 or not 0 <= line <= 15:
+                raise ValueError("relay P and L components must be in the range 0..15")
+            link = (page << 4) | line
+            station = int(m.group(3), 10)
             hops.append(_validate_relay_hop(link, station))
             continue
-        if ":" not in item:
+        m = re.fullmatch(r"([0-9]+):([0-9]+)", item)
+        if not m:
             raise ValueError("each hop must be LINK:STATION or P1-L2:N2")
-        link_text, station_text = item.split(":", 1)
-        hops.append(_validate_relay_hop(int(link_text, 0), int(station_text, 0)))
+        hops.append(_validate_relay_hop(int(m.group(1), 10), int(m.group(2), 10)))
     if not hops:
         raise ValueError("at least one hop is required")
     return hops
@@ -67,7 +75,7 @@ def normalize_relay_hops(
 def format_relay_hop(link: int, station: int) -> str:
     """Format one relay hop in the preferred `P1-L2:N2` style."""
     link, station = _validate_relay_hop(link, station)
-    return f"P{link >> 4:X}-L{link & 0x0F:X}:N{station} (0x{link:02X}:0x{station:04X})"
+    return f"P{link >> 4}-L{link & 0x0F}:N{station}"
 
 
 def parse_relay_inner_response(inner_raw: bytes) -> tuple[ResponseFrame, bytes]:

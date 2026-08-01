@@ -32,11 +32,15 @@ def _read_pc10_multi_bits(client: ToyopucClient, addrs32: Sequence[int]) -> list
     for addr32 in addrs32:
         payload.extend(_require_pc10_address(addr32).to_bytes(4, "little"))
     raw = client.pc10_multi_read(bytes(payload))
-    expected = 4 + (len(addrs32) + 7) // 8
+    return client._decode_post_send_result(lambda: _parse_pc10_multi_bit_data(raw, len(addrs32)))
+
+
+def _parse_pc10_multi_bit_data(raw: bytes, count: int) -> list[int]:
+    expected = 4 + (count + 7) // 8
     if len(raw) != expected:
         raise ToyopucProtocolError(f"PC10 multi-bit response size mismatch: expected={expected}, actual={len(raw)}")
     data = raw[4:]
-    return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(len(addrs32))]
+    return [(data[i // 8] >> (i % 8)) & 0x01 for i in range(count)]
 
 
 def _parse_ext_multi_bit_data(data: bytes, count: int) -> list[int]:
@@ -64,12 +68,12 @@ def _parse_pc10_multi_word_data(data: bytes, count: int) -> list[int]:
 
 def _read_pc10_multi_words(client: ToyopucClient, addrs32: Sequence[int]) -> list[int]:
     data = client.pc10_multi_read(_build_pc10_multi_word_read_payload(addrs32))
-    return _parse_pc10_multi_word_data(data, len(addrs32))
+    return client._decode_post_send_result(lambda: _parse_pc10_multi_word_data(data, len(addrs32)))
 
 
 def _read_pc10_block_word(client: ToyopucClient, addr32: int) -> int:
     data = client.pc10_block_read(addr32, 2)
-    return int.from_bytes(data, "little")
+    return client._decode_post_send_result(lambda: int.from_bytes(data, "little"))
 
 
 def _write_pc10_block_word(client: ToyopucClient, addr32: int, value: int) -> None:

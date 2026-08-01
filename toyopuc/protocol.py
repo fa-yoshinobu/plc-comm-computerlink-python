@@ -804,8 +804,15 @@ def build_fr_register(ex_no: int) -> bytes:
 
 
 # Relay command (CMD=60) helpers
-def _normalize_inner_payload(inner_payload: bytes) -> bytes:
-    """Ensure the payload is in `[LL, LH, CMD, ...]` form for relay wrapping."""
+@dataclass(frozen=True)
+class _RelayInnerRequest:
+    trimmed_payload: bytes
+    command: int
+    body: bytes
+
+
+def _parse_relay_inner_request(inner_payload: bytes) -> _RelayInnerRequest:
+    """Parse a complete or trimmed Relay command request."""
     if len(inner_payload) < 3:
         raise ValueError("inner payload must contain at least LL, LH, and CMD bytes")
     is_full_command = (
@@ -814,29 +821,35 @@ def _normalize_inner_payload(inner_payload: bytes) -> bytes:
         and inner_payload[1] == 0x00
         and (inner_payload[2] | (inner_payload[3] << 8)) + 4 == len(inner_payload)
     )
+    is_trimmed = (inner_payload[0] | (inner_payload[1] << 8)) + 2 == len(inner_payload)
     if is_full_command:
-        trimmed = inner_payload[2:]
+        trimmed = bytes(inner_payload[2:])
+    elif is_trimmed:
+        trimmed = bytes(inner_payload)
     else:
-        trimmed = inner_payload
+        raise ValueError(
+            "inner payload must be either a complete command frame with FT=0x00, RC=0x00, "
+            "and an exact declared length, or an exact LL/LH/CMD payload"
+        )
+    return _RelayInnerRequest(trimmed, trimmed[2], trimmed[3:])
 
-    if len(trimmed) < 3:
-        raise ValueError("inner payload must contain LL, LH, and CMD bytes")
-    inner_length = trimmed[0] | (trimmed[1] << 8)
-    if inner_length + 2 != len(trimmed):
-        raise ValueError(f"inner payload length mismatch: len={len(trimmed)} vs expected {inner_length + 2}")
-    return trimmed
+
+def _normalize_inner_payload(inner_payload: bytes) -> bytes:
+    """Ensure the payload is in `[LL, LH, CMD, ...]` form for relay wrapping."""
+    return _parse_relay_inner_request(inner_payload).trimmed_payload
 
 
 def _frame_to_inner_payload(frame: bytes) -> bytes:
-    if len(frame) < 5 or frame[0] != FT_COMMAND or frame[1] != 0x00:
-        raise ValueError("relay frame must be a normal command request")
-    return frame[2:]
+    return _parse_relay_inner_request(frame).trimmed_payload
 
 
 def build_relay_command(link_no: int, station_no: int, inner_payload: bytes) -> bytes:
     """Build a single-hop relay command (`CMD=60`)."""
     link_no, station_no = _validate_relay_hop(link_no, station_no)
-    inner = _normalize_inner_payload(inner_payload)
+    return _build_relay_command_trimmed(link_no, station_no, _normalize_inner_payload(inner_payload))
+
+
+def _build_relay_command_trimmed(link_no: int, station_no: int, inner: bytes) -> bytes:
     data = (
         bytes(
             [
@@ -854,15 +867,18 @@ def build_relay_command(link_no: int, station_no: int, inner_payload: bytes) -> 
 
 def build_relay_nested(hops: Sequence[tuple[int, int]], inner_payload: bytes) -> bytes:
     """Build a nested relay command by wrapping an inner payload through each hop."""
+    return _build_relay_nested_parsed(hops, _parse_relay_inner_request(inner_payload))
 
+
+def _build_relay_nested_parsed(hops: Sequence[tuple[int, int]], request: _RelayInnerRequest) -> bytes:
     hops = list(hops)
     if not hops:
         raise ValueError("at least one relay hop is required")
     validated_hops = [_validate_relay_hop(link, station) for link, station in hops]
-    inner = _normalize_inner_payload(inner_payload)
+    inner = request.trimmed_payload
     frame: bytes | None = None
     for link_no, station_no in reversed(validated_hops):
-        frame = build_relay_command(link_no, station_no, inner)
+        frame = _build_relay_command_trimmed(link_no, station_no, inner)
         inner = _frame_to_inner_payload(frame)
     assert frame is not None
     return frame

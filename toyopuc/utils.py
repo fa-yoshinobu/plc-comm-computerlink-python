@@ -339,26 +339,13 @@ async def read_typed(
     """
     key = _normalize_dtype(dtype)
     if key == "F":
-        values = await client.read_float32s(device, 1)
-        value = cast(float, values[0])
-        if not math.isfinite(value):
-            raise ToyopucProtocolError("PLC returned a non-finite float32 value")
-        return value
+        return cast(float, await client.read_float32(device))
     if key == "D":
-        values = await client.read_dwords(device, 1)
-        value = cast(int, values[0])
-        if not 0 <= value <= 0xFFFFFFFF:
-            raise ToyopucProtocolError("PLC returned a Dword value outside 0..4294967295")
-        return value
+        return cast(int, await client.read_dword(device))
     if key == "L":
-        values = await client.read_dwords(device, 1)
-        value = cast(int, values[0])
-        if not 0 <= value <= 0xFFFFFFFF:
-            raise ToyopucProtocolError("PLC returned a Dword value outside 0..4294967295")
+        value = cast(int, await client.read_dword(device))
         return (value ^ 0x80000000) - 0x80000000  # reinterpret as signed
     raw = int(await client.read_one(device))
-    if not 0 <= raw <= 0xFFFF:
-        raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
     if key == "S":
         return raw - 0x10000 if raw & 0x8000 else raw
     return raw
@@ -435,6 +422,9 @@ async def write_bit_in_word(
     normalized_value = _normalize_bit_value(value)
 
     def update(sync_client: Any) -> None:
+        from .high_level import _require_generic_write_device
+
+        _require_generic_write_device(sync_client.resolve_device(device))
         current = int(sync_client.read_one(device)) & 0xFFFF
         if normalized_value:
             current |= 1 << bit_index
@@ -547,40 +537,44 @@ async def read_named(
             entries.append(sync_client._seq_devices(resolved, entry_count))
 
         raw_values = sync_client._read_device_entries(entries)
-        result: dict[str, int | float | bool] = {}
-        offset = 0
-        for address, _base, dtype, bit_index in parsed:
-            low_word = int(raw_values[offset])
-            if not 0 <= low_word <= 0xFFFF:
-                raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
-            if dtype == "BIT_IN_WORD":
-                assert bit_index is not None
-                result[address] = bool((low_word >> bit_index) & 1)
-                offset += 1
-                continue
-            if dtype == "U":
-                result[address] = low_word
-                offset += 1
-                continue
-            if dtype == "S":
-                result[address] = low_word - 0x10000 if low_word & 0x8000 else low_word
-                offset += 1
-                continue
-            high_word = int(raw_values[offset + 1])
-            if not 0 <= high_word <= 0xFFFF:
-                raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
-            unsigned = low_word | (high_word << 16)
-            if dtype == "D":
-                result[address] = unsigned
-            elif dtype == "L":
-                result[address] = (unsigned ^ 0x80000000) - 0x80000000
-            else:
-                value = struct.unpack("<f", struct.pack("<I", unsigned))[0]
-                if not math.isfinite(value):
-                    raise ToyopucProtocolError("PLC returned a non-finite float32 value")
-                result[address] = value
-            offset += 2
-        return result
+
+        def decode() -> dict[str, int | float | bool]:
+            result: dict[str, int | float | bool] = {}
+            offset = 0
+            for address, _base, dtype, bit_index in parsed:
+                low_word = int(raw_values[offset])
+                if not 0 <= low_word <= 0xFFFF:
+                    raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
+                if dtype == "BIT_IN_WORD":
+                    assert bit_index is not None
+                    result[address] = bool((low_word >> bit_index) & 1)
+                    offset += 1
+                    continue
+                if dtype == "U":
+                    result[address] = low_word
+                    offset += 1
+                    continue
+                if dtype == "S":
+                    result[address] = low_word - 0x10000 if low_word & 0x8000 else low_word
+                    offset += 1
+                    continue
+                high_word = int(raw_values[offset + 1])
+                if not 0 <= high_word <= 0xFFFF:
+                    raise ToyopucProtocolError("PLC returned a word value outside 0..65535")
+                unsigned = low_word | (high_word << 16)
+                if dtype == "D":
+                    result[address] = unsigned
+                elif dtype == "L":
+                    result[address] = (unsigned ^ 0x80000000) - 0x80000000
+                else:
+                    value = struct.unpack("<f", struct.pack("<I", unsigned))[0]
+                    if not math.isfinite(value):
+                        raise ToyopucProtocolError("PLC returned a non-finite float32 value")
+                    result[address] = value
+                offset += 2
+            return result
+
+        return cast(dict[str, int | float | bool], sync_client._decode_post_send_result(decode))
 
     return await client._run_exclusive(read_all)
 

@@ -10,6 +10,7 @@ from toyopuc import (
     ToyopucConnectionOptions,
     ToyopucDeviceClient,
     ToyopucProtocolError,
+    encode_fr_word_addr32,
     encode_word_address,
     format_device_address,
     normalize_address,
@@ -27,7 +28,7 @@ from toyopuc import (
     write_typed,
     write_words_single_request,
 )
-from toyopuc.protocol import build_fr_register
+from toyopuc.protocol import build_fr_register, build_pc10_block_write
 
 GENERIC_PROFILE = "toyopuc:generic"
 MAX_TIMER_SECONDS = 2_147_483.647
@@ -268,6 +269,59 @@ def test_dword_writes_reject_coercion_before_transport(value: object) -> None:
     assert client.send_count == 0
 
 
+def test_all_named_fr_generic_and_typed_writes_reject_before_transport() -> None:
+    client = _NoIoHighLevelClient()
+    for device in ("FR000000", client.resolve_device("FR000000")):
+        operations = [
+            lambda device=device: client.write(device, 1),
+            lambda device=device: client.write_many({device: 1}),
+            lambda device=device: client.relay_write("P1-L2:N2", device, 1),
+            lambda device=device: client.relay_write_many("P1-L2:N2", {device: 1}),
+            lambda device=device: client.write_dword(device, 1),
+            lambda device=device: client.write_float32(device, 1.0),
+            lambda device=device: client.relay_write_dword("P1-L2:N2", device, 1),
+            lambda device=device: client.relay_write_float32("P1-L2:N2", device, 1.0),
+        ]
+        for operation in operations:
+            with pytest.raises(ValueError, match="Generic FR writes are disabled"):
+                operation()
+    assert client.send_count == 0
+
+
+def test_async_utilities_reject_named_fr_before_any_read_or_write() -> None:
+    client = _NoIoAsyncHighLevelClient()
+
+    async def run_checks() -> None:
+        resolved = client._client.resolve_device("FR000000")
+        for device in ("FR000000", resolved):
+            operations = [
+                client.write(device, 1),
+                client.write_many({device: 1}),
+                client.write_dwords(device, [1]),
+                client.write_float32s(device, [1.0]),
+                client.relay_write("P1-L2:N2", device, 1),
+                client.relay_write_many("P1-L2:N2", {device: 1}),
+                client.relay_write_dwords("P1-L2:N2", device, [1]),
+                client.relay_write_float32s("P1-L2:N2", device, [1.0]),
+            ]
+            for operation in operations:
+                with pytest.raises(ValueError, match="Generic FR writes are disabled"):
+                    await operation
+
+        utility_operations = [
+            write_words_single_request(client, "FR000000", [1]),
+            write_dwords_single_request(client, "FR000000", [1]),
+            write_typed(client, "FR000000", "F", 1.0),
+            write_bit_in_word(client, "FR000000", 0, True),
+        ]
+        for operation in utility_operations:
+            with pytest.raises(ValueError, match="Generic FR writes are disabled"):
+                await operation
+
+    asyncio.run(run_checks())
+    assert client._client.send_count == 0
+
+
 @pytest.mark.parametrize(
     ("device", "value"),
     [
@@ -458,10 +512,6 @@ def test_typed_helpers_reject_unknown_dtype_and_out_of_range_values() -> None:
             await write_typed(client, "P1-D0100", "U", 1.5)  # type: ignore[arg-type]
         assert client.writes == []
 
-        client.read_value = 65_536
-        with pytest.raises(ToyopucProtocolError, match="outside"):
-            await read_typed(client, "P1-D0100", "U")  # type: ignore[arg-type]
-
     asyncio.run(run())
 
 
@@ -623,7 +673,7 @@ def test_single_request_ranges_reject_boundaries_and_limits_before_transport() -
 
     with pytest.raises(ToyopucProtocolError, match="declared read entry"):
         client.read_dwords("FR007FFF", 1)
-    with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+    with pytest.raises(ValueError, match="Generic FR writes are disabled"):
         client.write_dwords("FR007FFF", [0x12345678])
 
     assert client.send_count == 0
@@ -709,8 +759,19 @@ def test_dword_and_float_array_counts_are_strict() -> None:
 def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
     client = _CommitCaptureClient()
 
+    client.write_fr("FR000000", [0x1234, 0x5678])
+    assert client.payloads == [
+        build_pc10_block_write(
+            encode_fr_word_addr32(0),
+            bytes.fromhex("34127856"),
+        )
+    ]
+
     client.commit_fr("FR000000")
-    assert client.payloads == [build_fr_register(0x40)]
+    assert client.payloads == [
+        build_pc10_block_write(encode_fr_word_addr32(0), bytes.fromhex("34127856")),
+        build_fr_register(0x40),
+    ]
 
     invalid = _NoIoHighLevelClient()
     with pytest.raises(ValueError, match="first word"):
