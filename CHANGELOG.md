@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### BREAKING
 
+- Library: Named, aggregate, typed dword/float, bit-in-word, direct, relay, sync, and async generic write paths now reject FR addresses before transport. Migrate intentional FR updates to `write_fr` / `relay_write_fr`; low-level numeric/raw and explicit FR APIs remain available.
+- Library: Relay route strings and `format_relay_hop()` are now decimal-only. Migrate hexadecimal route text such as `PA-LB:N20` or `0xAB:0x20` to `P10-L11:N20` or `171:32`.
 - Library: Automatic post-send retries were removed for every command, including reads and relay collision responses. Applications that intentionally retry must reconcile the prior request and issue a new explicit call.
 - Library: Read aggregates can now span multiple protocol requests while preserving order and one FIFO client turn. Callers that require one wire request must use a `*_single_request` helper; callers that require one atomic observation must provide PLC-side consistency control.
 - Library: Concurrent sync calls are serialized, and `close()` rejects active and already queued operations from the retired generation with dedicated structured errors.
@@ -45,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Library: Full and header-trimmed relay requests now share one strict parser, including a zero length-low byte, and every command-specific response validator runs inside the post-send lifecycle boundary. Malformed reads retire the transport and raise `ToyopucProtocolError`; malformed state-changing calls raise outcome-unknown with the protocol error preserved as the cause.
+- Library: Public PC10 multi-bit reads retain one Boolean per requested device while now enforcing their exact `4 + ceil(count / 8)` response size; malformed responses raise `ToyopucProtocolError` instead of leaking `IndexError`.
 - Library: Random/sparse write duplicate detection now uses the complete encoded wire identity, including extended and relay routes.
 - Library: Sync and async state-changing operations now classify EOF and malformed post-send responses as `ToyopucOperationOutcomeUnknownError`; affected fixed-endpoint UDP clients are tainted before reuse.
 - Library: Async cancellation is generation-scoped, waits for the active worker to finish, and cannot leak a stale cancellation request into a later operation.

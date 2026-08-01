@@ -15,9 +15,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
-from toyopuc.errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
+from toyopuc.errors import ToyopucError, ToyopucTimeoutError, ToyopucTransportError
 
-RETRYABLE_ERRORS = (OSError, ConnectionError, TimeoutError, EOFError, asyncio.TimeoutError, ToyopucTimeoutError)
+RETRYABLE_ERRORS = (OSError, TimeoutError, EOFError, asyncio.TimeoutError, ToyopucTimeoutError, ToyopucTransportError)
 
 
 def positive_float(value: str) -> float:
@@ -51,11 +51,7 @@ def log_state(state: str, message: str) -> None:
 
 
 def is_retryable(exc: BaseException) -> bool:
-    if isinstance(exc, RETRYABLE_ERRORS):
-        return True
-    if isinstance(exc, ToyopucProtocolError) and str(exc) == "Connection closed while receiving":
-        return True
-    return isinstance(exc, ToyopucError) and str(exc) == "Socket error"
+    return isinstance(exc, RETRYABLE_ERRORS)
 
 
 async def close_quietly(client: Any | None) -> None:

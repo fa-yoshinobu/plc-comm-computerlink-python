@@ -3,8 +3,10 @@ from datetime import datetime
 import pytest
 
 from toyopuc import (
+    ResolvedDevice,
     ToyopucClient,
     ToyopucDeviceClient,
+    encode_fr_word_addr32,
     encode_word_address,
     parse_address,
 )
@@ -12,7 +14,9 @@ from toyopuc import (
     resolve_device as _resolve_device,
 )
 from toyopuc.client import _extract_relay_nak_error_code
+from toyopuc.errors import ToyopucOperationOutcomeUnknownError, ToyopucProtocolError
 from toyopuc.protocol import (
+    build_byte_write,
     build_clock_write,
     build_command,
     build_ext_byte_write,
@@ -86,7 +90,7 @@ class _DummyRelayClient(ToyopucClient):
         self.last_hops = None
         self.last_inner = None
 
-    def relay_nested(self, hops, inner_payload):
+    def _relay_nested_request(self, hops, request, inner_payload):
         self.last_hops = list(hops)
         self.last_inner = inner_payload
         return self.response
@@ -100,7 +104,7 @@ class _DummyRelayHighLevelClient(ToyopucDeviceClient):
         self.last_inner = None
         self.inner_calls = []
 
-    def relay_nested(self, hops, inner_payload):
+    def _relay_nested_request(self, hops, request, inner_payload):
         self.last_hops = list(hops)
         self.last_inner = inner_payload
         self.inner_calls.append(inner_payload)
@@ -225,7 +229,91 @@ def test_parse_hops_rejects_empty_route_elements():
 
 
 def test_format_hop_uses_p_style():
-    assert format_relay_hop(0x12, 0x0002) == "P1-L2:N2 (0x12:0x0002)"
+    assert format_relay_hop(0x12, 0x0002) == "P1-L2:N2"
+
+
+def test_relay_hop_text_is_decimal_only():
+    assert parse_relay_hops("P10-L11:N20") == [(0xAB, 20)]
+    assert parse_relay_hops("171:32") == [(0xAB, 32)]
+    for value in ("0x12:0x20", "P1-LA:N20", "P1-L2:Nff"):
+        with pytest.raises(ValueError):
+            parse_relay_hops(value)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("P1-L2:N20", [(0x12, 20)]),
+        ("P0-L0:N1", [(0x00, 1)]),
+        ("P15-L15:N65535", [(0xFF, 0xFFFF)]),
+        ("0:1", [(0x00, 1)]),
+        ("255:65535", [(0xFF, 0xFFFF)]),
+    ],
+)
+def test_relay_hop_decimal_text_accepts_exact_boundaries(text, expected):
+    assert parse_relay_hops(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "P16-L0:N1",
+        "P0-L16:N1",
+        "256:1",
+        "0:0",
+        "0:65536",
+        "P0-L0:N0",
+        "P0-L0:N65536",
+    ],
+)
+def test_relay_hop_decimal_text_rejects_out_of_range_values(text):
+    with pytest.raises(ValueError):
+        parse_relay_hops(text)
+
+
+def test_format_hop_emits_decimal_for_hexadecimal_wire_values():
+    assert format_relay_hop(0xAB, 20) == "P10-L11:N20"
+
+
+def test_send_via_relay_accepts_trimmed_payload_with_zero_length_low_byte():
+    outer = _relay_success_response(0x1F, b"")
+    client = _DummyRelayClient(outer)
+    complete = build_byte_write(0x1234, bytes(253))
+    client.send_via_relay("P1-L2:N2", complete[2:])
+    assert client.last_inner == complete[2:]
+
+
+@pytest.mark.parametrize("field", ["ft", "rc", "full_length", "trimmed_length"])
+def test_relay_request_parser_rejects_malformed_forms_before_transport(field):
+    complete = bytearray(build_word_read(_word_addr("D0100"), 1))
+    if field == "ft":
+        complete[0] = 0x80
+        malformed = bytes(complete)
+    elif field == "rc":
+        complete[1] = 0x01
+        malformed = bytes(complete)
+    elif field == "full_length":
+        complete[2] += 1
+        malformed = bytes(complete)
+    else:
+        trimmed = bytearray(complete[2:])
+        trimmed[0] += 1
+        malformed = bytes(trimmed)
+
+    client = _DummyRelayClient(_relay_success_response(0x1C, bytes.fromhex("3412")))
+    with pytest.raises(ValueError):
+        client.send_via_relay("P1-L2:N2", malformed)
+    assert client.last_hops is None
+    assert client.last_inner is None
+
+
+def test_relay_valid_state_response_is_not_false_unknown_and_command_mismatch_is_protocol_error():
+    write_client = _DummyRelayClient(_relay_success_response(0x1D, b""))
+    write_client.relay_write_words("P1-L2:N2", 0, [1])
+
+    mismatch_client = _DummyRelayClient(_relay_success_response(0x1E, bytes.fromhex("3412")))
+    with pytest.raises(ToyopucProtocolError, match="Unexpected relay response command"):
+        mismatch_client.relay_read_words("P1-L2:N2", 0, 1)
 
 
 @pytest.mark.parametrize(
@@ -365,13 +453,93 @@ def test_high_level_relay_read_accepts_fr_word_device():
     assert client.last_inner == build_pc10_block_read(resolved.addr32, 2)
 
 
-def test_high_level_relay_write_allows_fr_ram_update():
+def test_high_level_relay_write_rejects_fr_before_transport():
     outer = parse_response(bytes.fromhex("8000080060120200060100c3"))
     client = _DummyRelayHighLevelClient(outer)
     resolved = resolve_device("FR000000", profile="toyopuc:generic")
-    client.relay_write("P1-L2:N2", resolved, 0x1234)
-    assert client.last_hops == [(0x12, 0x0002)]
-    assert client.last_inner == build_pc10_block_write(resolved.addr32, bytes.fromhex("3412"))
+    with pytest.raises(ValueError, match="Generic FR writes are disabled"):
+        client.relay_write("P1-L2:N2", resolved, 0x1234)
+    assert client.last_hops is None
+
+
+def _manual_pc10_bit_devices(count: int) -> list[ResolvedDevice]:
+    return [
+        ResolvedDevice(
+            text=f"manual-{index}",
+            scheme="pc10-bit",
+            unit="bit",
+            area="manual",
+            index=index,
+            addr32=index,
+            plc_profile=GENERIC_PROFILE,
+        )
+        for index in range(count)
+    ]
+
+
+def test_public_relay_pc10_bit_route_decodes_exact_response_in_caller_order():
+    client = _DummyRelayHighLevelClient(_relay_success_response(0xC4, bytes(4) + bytes([0x55, 0x03])))
+    assert client.relay_read_devices("P1-L2:N2", _manual_pc10_bit_devices(10)) == [
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        True,
+    ]
+
+
+class _DirectPc10ResponseClient(ToyopucDeviceClient):
+    def __init__(self, data: bytes):
+        super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
+        self.data = data
+
+    def _send_and_decode(self, payload, decode, *, state_changing=False):
+        del payload, state_changing
+        command = build_command(0xC4, self.data)
+        return decode(parse_response(bytes([0x80, 0x00]) + command[2:]))
+
+
+def test_public_direct_pc10_bit_route_decodes_exact_response_in_caller_order():
+    client = _DirectPc10ResponseClient(bytes(4) + bytes([0x55, 0x03]))
+    assert client.read_devices(_manual_pc10_bit_devices(10)) == [
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        True,
+        True,
+    ]
+
+
+@pytest.mark.parametrize("data", [bytes(4), bytes(5), bytes(7)])
+def test_public_relay_pc10_bit_route_rejects_wrong_response_size(data: bytes):
+    client = _DummyRelayHighLevelClient(_relay_success_response(0xC4, data))
+    with pytest.raises(ToyopucProtocolError):
+        client.relay_read_devices("P1-L2:N2", _manual_pc10_bit_devices(10))
+
+
+@pytest.mark.parametrize("data", [bytes(4), bytes(5), bytes(7)])
+def test_public_direct_pc10_bit_route_rejects_wrong_response_size_without_index_error(data: bytes):
+    client = _DirectPc10ResponseClient(data)
+    with pytest.raises(ToyopucProtocolError):
+        client.read_devices(_manual_pc10_bit_devices(10))
+
+
+def test_relay_state_change_malformed_response_is_outcome_unknown():
+    client = _DummyRelayClient(_relay_success_response(0x1D, b"unexpected"))
+    with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+        client.relay_write_words("P1-L2:N2", 0, [1])
+    assert caught.value.reason.value == "malformed_response"
+    assert isinstance(caught.value.cause, ToyopucProtocolError)
 
 
 def test_high_level_relay_commit_fr_uses_ca():
@@ -380,6 +548,12 @@ def test_high_level_relay_commit_fr_uses_ca():
     client.relay_commit_fr("P1-L2:N2", "FR000000")
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_fr_register(0x40)
+
+
+def test_high_level_relay_write_fr_stages_once_without_implicit_commit():
+    client = _DummyRelayHighLevelClient(_relay_success_response(0xC3, b""))
+    client.relay_write_fr("P1-L2:N2", "FR000000", [0x1234, 0x5678])
+    assert client.inner_calls == [build_pc10_block_write(encode_fr_word_addr32(0), bytes.fromhex("34127856"))]
 
 
 def test_high_level_relay_read_many_preserves_input_order():

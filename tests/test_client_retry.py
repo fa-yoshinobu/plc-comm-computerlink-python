@@ -4,23 +4,313 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from threading import Event
+from types import SimpleNamespace
 
 import pytest
 
+import samples._operational_common as operational_sample
+import samples.polling_reconnect as polling_sample
+import toyopuc
 import toyopuc.client as client_module
+from samples._operational_common import is_retryable as operational_is_retryable
+from samples.polling_reconnect import is_retryable as polling_is_retryable
 from toyopuc import (
     AsyncToyopucClient,
     ToyopucClient,
     ToyopucClosedError,
+    ToyopucDeviceClient,
     ToyopucError,
     ToyopucOperationOutcomeUnknownError,
     ToyopucOutcomeUnknownReason,
+    ToyopucPlcError,
     ToyopucProtocolError,
     ToyopucTimeoutError,
     ToyopucTransportError,
 )
 from toyopuc.client import _is_read_only_payload
-from toyopuc.protocol import ResponseFrame, build_command, build_scan_resume, build_scan_stop, build_scan_stop_release
+from toyopuc.protocol import (
+    ResponseFrame,
+    build_command,
+    build_scan_resume,
+    build_scan_stop,
+    build_scan_stop_release,
+)
+
+
+@pytest.mark.parametrize("classify", [polling_is_retryable, operational_is_retryable])
+def test_reconnect_samples_classify_existing_exception_types(classify) -> None:
+    assert classify(ToyopucTransportError("Socket connection failed"))
+    assert classify(ToyopucTransportError("Host resolution failed"))
+    assert classify(ToyopucTimeoutError("Connect timeout"))
+    assert not classify(ToyopucProtocolError("Malformed response"))
+    assert not classify(ToyopucError("PLC error"))
+    assert not classify(asyncio.CancelledError())
+
+
+def test_retry_classifier_remains_sample_only_and_is_not_public_runtime_api() -> None:
+    assert "is_retryable" not in toyopuc.__all__
+    assert not hasattr(ToyopucClient, "is_retryable")
+    assert not hasattr(AsyncToyopucClient, "is_retryable")
+
+
+class _SampleClient:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+def _polling_args() -> SimpleNamespace:
+    return SimpleNamespace(
+        host="plc.test",
+        port=1025,
+        local_port=0,
+        transport="tcp",
+        timeout=3.0,
+        profile="toyopuc:generic",
+        device="B0000",
+        dtype="U",
+        interval=1.0,
+        initial_backoff=0.25,
+        max_backoff=1.0,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ToyopucTransportError("connection refused"),
+        ToyopucTransportError("DNS resolution failed"),
+        ToyopucTimeoutError("connect timeout"),
+    ],
+)
+def test_polling_reconnect_loop_backs_off_for_retryable_types_without_message_matching(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    client = _SampleClient()
+    open_calls = 0
+    sleeps: list[float] = []
+
+    async def fake_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        if open_calls == 1:
+            raise failure
+        return client
+
+    async def cancel_after_reconnect(*_args):
+        raise asyncio.CancelledError
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(polling_sample, "open_and_connect", fake_open)
+    monkeypatch.setattr(polling_sample, "read_typed", cancel_after_reconnect)
+    monkeypatch.setattr(polling_sample.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(polling_sample.poll_forever(_polling_args()))
+    assert open_calls == 2
+    assert sleeps == [0.25]
+    assert client.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ToyopucPlcError("PLC NG"), ValueError("bad argument"), ToyopucProtocolError("malformed")],
+)
+def test_polling_reconnect_loop_does_not_retry_plc_argument_or_protocol_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    client = _SampleClient()
+    open_calls = 0
+    sleeps: list[float] = []
+
+    async def fake_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        return client
+
+    async def fail_read(*_args):
+        raise failure
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(polling_sample, "open_and_connect", fake_open)
+    monkeypatch.setattr(polling_sample, "read_typed", fail_read)
+    monkeypatch.setattr(polling_sample.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(type(failure)):
+        asyncio.run(polling_sample.poll_forever(_polling_args()))
+    assert open_calls == 1
+    assert sleeps == []
+    assert client.close_calls == 1
+
+
+def test_polling_reconnect_shutdown_cancellation_exits_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    open_calls = 0
+    sleeps: list[float] = []
+
+    async def cancel_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        raise asyncio.CancelledError
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(polling_sample, "open_and_connect", cancel_open)
+    monkeypatch.setattr(polling_sample.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(polling_sample.poll_forever(_polling_args()))
+    assert open_calls == 1
+    assert sleeps == []
+
+
+def test_operational_monitor_loop_retries_transport_then_completes_one_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _SampleClient()
+    open_calls = 0
+    sleeps: list[float] = []
+    snapshots: list[dict[str, object]] = []
+
+    async def fake_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        if open_calls == 1:
+            raise ToyopucTransportError("DNS wording is irrelevant")
+        return client
+
+    async def fake_read(*_args):
+        return 0x1234
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async def capture(_endpoint, snapshot):
+        snapshots.append(dict(snapshot))
+
+    endpoint = operational_sample.PlcEndpoint(
+        name="test",
+        host="plc.test",
+        plc_profile="toyopuc:generic",
+        port=1025,
+        transport="tcp",
+    )
+    monkeypatch.setattr(operational_sample, "open_and_connect", fake_open)
+    monkeypatch.setattr(operational_sample, "read_typed", fake_read)
+    monkeypatch.setattr(operational_sample.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(
+        operational_sample.monitor_endpoint(
+            endpoint,
+            [operational_sample.TagSpec("value", "B0000:U")],
+            cycles=1,
+            initial_backoff=0.5,
+            max_backoff=2.0,
+            handle_snapshot=capture,
+        )
+    )
+    assert open_calls == 2
+    assert sleeps == [0.5]
+    assert snapshots == [{"value": 0x1234}]
+    assert client.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ToyopucPlcError("PLC NG"), ValueError("bad argument"), ToyopucProtocolError("malformed")],
+)
+def test_operational_monitor_does_not_retry_plc_argument_or_protocol_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    client = _SampleClient()
+    open_calls = 0
+    sleeps: list[float] = []
+
+    async def fake_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        return client
+
+    async def fail_read(*_args):
+        raise failure
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    async def ignore(_endpoint, _snapshot):
+        return None
+
+    endpoint = operational_sample.PlcEndpoint(
+        name="test",
+        host="plc.test",
+        plc_profile="toyopuc:generic",
+        port=1025,
+        transport="tcp",
+    )
+    monkeypatch.setattr(operational_sample, "open_and_connect", fake_open)
+    monkeypatch.setattr(operational_sample, "read_typed", fail_read)
+    monkeypatch.setattr(operational_sample.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(type(failure)):
+        asyncio.run(
+            operational_sample.monitor_endpoint(
+                endpoint,
+                [operational_sample.TagSpec("value", "B0000:U")],
+                cycles=1,
+                initial_backoff=0.5,
+                max_backoff=2.0,
+                handle_snapshot=ignore,
+            )
+        )
+    assert open_calls == 1
+    assert sleeps == []
+    assert client.close_calls == 1
+
+
+def test_operational_monitor_shutdown_cancellation_exits_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    open_calls = 0
+    sleeps: list[float] = []
+
+    async def cancel_open(_options):
+        nonlocal open_calls
+        open_calls += 1
+        raise asyncio.CancelledError
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    endpoint = operational_sample.PlcEndpoint(
+        name="test",
+        host="plc.test",
+        plc_profile="toyopuc:generic",
+        port=1025,
+        transport="tcp",
+    )
+    monkeypatch.setattr(operational_sample, "open_and_connect", cancel_open)
+    monkeypatch.setattr(operational_sample.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            operational_sample.monitor_endpoint(
+                endpoint,
+                [operational_sample.TagSpec("value", "B0000:U")],
+                cycles=1,
+                initial_backoff=0.5,
+                max_backoff=2.0,
+                handle_snapshot=operational_sample.ignore_snapshot,
+            )
+        )
+    assert open_calls == 1
+    assert sleeps == []
 
 
 class _FakeSocket:
@@ -692,16 +982,18 @@ def test_cpu_status_read_methods_are_classified_read_only() -> None:
             super().__init__("127.0.0.1", 1025, transport="tcp")
             self.state_changing_values: list[bool] = []
 
-        def _send_and_recv(
+        def _send_and_recv_admitted(
             self,
             payload: bytes,
             *,
-            state_changing: bool = False,
-        ) -> ResponseFrame:
+            state_changing: bool,
+            decode,
+        ):
             self.state_changing_values.append(state_changing)
             cmd = payload[4]
             data = b"\x11\x00" + bytes(8) if cmd == 0x32 else b"\x00\x11\x00" + bytes(8)
-            return ResponseFrame(ft=0x80, rc=0, cmd=cmd, data=data)
+            response = ResponseFrame(ft=0x80, rc=0, cmd=cmd, data=data)
+            return response if decode is None else decode(response)
 
     client = CaptureClient()
     client.read_cpu_status()
@@ -736,6 +1028,22 @@ def test_fixed_size_word_read_rejects_short_and_long_responses(data: bytes) -> N
 
     with pytest.raises(ToyopucProtocolError, match="response data size mismatch"):
         client.read_words(0, 1)
+    assert client._sock is None
+
+
+def test_pre_send_argument_and_relay_route_failures_preserve_socket_and_fixed_udp_session() -> None:
+    sock = _FakeUdpSocket(_response(0x1C, bytes.fromhex("3412")))
+    client = ToyopucClient("127.0.0.1", 1025, transport="udp", local_port=20000)
+    client._sock = sock
+
+    with pytest.raises(ValueError):
+        client.read_words(0, 0)
+    with pytest.raises(ValueError):
+        client.relay_read_words("P16-L0:N1", 0, 1)
+
+    assert client._sock is sock
+    assert not client._fixed_udp_session_tainted
+    assert sock.sent == []
 
 
 def test_raw_command_never_retries_retryable_response() -> None:
@@ -825,6 +1133,8 @@ def test_direct_and_relay_write_response_bodies_are_exact_and_unknown_when_malfo
     with pytest.raises(ToyopucOperationOutcomeUnknownError) as direct_error:
         direct.write_words(0, [1])
     assert direct_error.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
+    assert isinstance(direct_error.value.cause, ToyopucProtocolError)
+    assert direct._sock is None
 
     relay_socket = _FakeSocket([_relay_success_bytes(0x1D, b"\x00")])
     relay = ToyopucClient("127.0.0.1", 1025, transport="tcp")
@@ -833,6 +1143,154 @@ def test_direct_and_relay_write_response_bodies_are_exact_and_unknown_when_malfo
     with pytest.raises(ToyopucOperationOutcomeUnknownError) as relay_error:
         relay.relay_write_words("P1-L2:N2", 0, [1])
     assert relay_error.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
+    assert isinstance(relay_error.value.cause, ToyopucProtocolError)
+    assert relay._sock is None
+
+
+def test_high_level_direct_and_relay_semantic_read_errors_retire_transport() -> None:
+    non_finite = bytes.fromhex("0000c07f")
+
+    direct_socket = _FakeSocket([_response(0x94, non_finite)])
+    direct = ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile="toyopuc:generic",
+    )
+    direct._sock = direct_socket
+    with pytest.raises(ToyopucProtocolError, match="non-finite"):
+        direct.read_float32("P1-D0000")
+    assert direct._sock is None
+
+    relay_socket = _FakeSocket([_relay_success_bytes(0x94, non_finite)])
+    relay = ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile="toyopuc:generic",
+    )
+    relay._sock = relay_socket
+    with pytest.raises(ToyopucProtocolError, match="non-finite"):
+        relay.relay_read_float32("P1-L2:N2", "P1-D0000")
+    assert relay._sock is None
+
+
+def test_direct_semantic_decode_retains_fifo_turn_until_transport_is_retired() -> None:
+    semantic_decode_started = Event()
+    release_semantic_decode = Event()
+    waiter_attempted = Event()
+    waiter_entered = Event()
+    waiter_saw_retired_transport: list[bool] = []
+
+    class BlockingSemanticDecodeClient(ToyopucDeviceClient):
+        def _decode_post_send_result(self, decode):
+            if getattr(decode, "__name__", "") == "<lambda>":
+                semantic_decode_started.set()
+                assert release_semantic_decode.wait(1)
+            return super()._decode_post_send_result(decode)
+
+    client = BlockingSemanticDecodeClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile="toyopuc:generic",
+    )
+    client._sock = _FakeSocket([_response(0x94, bytes.fromhex("0000c07f"))])
+
+    def wait_for_turn() -> None:
+        waiter_attempted.set()
+        with client._operation_turn():
+            waiter_saw_retired_transport.append(client._sock is None)
+            waiter_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        malformed = executor.submit(client.read_float32, "P1-D0000")
+        assert semantic_decode_started.wait(1)
+        waiting = executor.submit(wait_for_turn)
+        assert waiter_attempted.wait(1)
+        try:
+            deadline = time.monotonic() + 1
+            queued_operations = 0
+            while time.monotonic() < deadline:
+                with client._operation_condition:
+                    queued_operations = len(client._operation_queue)
+                if queued_operations >= 2 or waiter_entered.is_set():
+                    break
+                time.sleep(0.001)
+
+            assert queued_operations >= 2
+            assert not waiter_entered.is_set()
+        finally:
+            release_semantic_decode.set()
+
+        with pytest.raises(ToyopucProtocolError, match="non-finite"):
+            malformed.result(timeout=1)
+        waiting.result(timeout=1)
+
+    assert waiter_entered.is_set()
+    assert waiter_saw_retired_transport == [True]
+
+
+def test_relay_semantic_decode_retains_fifo_turn_until_transport_is_retired() -> None:
+    semantic_decode_started = Event()
+    release_semantic_decode = Event()
+    waiter_attempted = Event()
+    waiter_entered = Event()
+    waiter_saw_retired_transport: list[bool] = []
+
+    class BlockingRelaySemanticDecodeClient(ToyopucDeviceClient):
+        def _run_post_send_decode(
+            self, decode, *, state_changing, failure_message="Command-specific response decode failed"
+        ):
+            if failure_message == "Command-specific Relay response decode failed":
+                semantic_decode_started.set()
+                assert release_semantic_decode.wait(1)
+            return super()._run_post_send_decode(
+                decode,
+                state_changing=state_changing,
+                failure_message=failure_message,
+            )
+
+    client = BlockingRelaySemanticDecodeClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile="toyopuc:generic",
+    )
+    client._sock = _FakeSocket([_relay_success_bytes(0x94, bytes.fromhex("0000c07f"))])
+
+    def wait_for_turn() -> None:
+        waiter_attempted.set()
+        with client._operation_turn():
+            waiter_saw_retired_transport.append(client._sock is None)
+            waiter_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        malformed = executor.submit(client.relay_read_float32, "P1-L2:N2", "P1-D0000")
+        assert semantic_decode_started.wait(1)
+        waiting = executor.submit(wait_for_turn)
+        assert waiter_attempted.wait(1)
+        try:
+            deadline = time.monotonic() + 1
+            queued_operations = 0
+            while time.monotonic() < deadline:
+                with client._operation_condition:
+                    queued_operations = len(client._operation_queue)
+                if queued_operations >= 2 or waiter_entered.is_set():
+                    break
+                time.sleep(0.001)
+
+            assert queued_operations >= 2
+            assert not waiter_entered.is_set()
+        finally:
+            release_semantic_decode.set()
+
+        with pytest.raises(ToyopucProtocolError, match="non-finite"):
+            malformed.result(timeout=1)
+        waiting.result(timeout=1)
+
+    assert waiter_entered.is_set()
+    assert waiter_saw_retired_transport == [True]
 
 
 def test_clock_write_requires_explicit_matching_century_and_naive_value() -> None:
@@ -926,6 +1384,41 @@ def test_fixed_port_udp_session_is_terminal_after_malformed_write_response() -> 
 
     with pytest.raises(ToyopucOperationOutcomeUnknownError):
         client.write_words(0, [1])
+    with pytest.raises(ToyopucError, match="cannot be reused"):
+        client.connect()
+
+
+def test_fixed_port_udp_session_is_terminal_after_high_level_semantic_read_error() -> None:
+    sock = _FakeUdpSocket(_response(0x94, bytes.fromhex("0000c07f")))
+    client = ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="udp",
+        local_port=20000,
+        plc_profile="toyopuc:generic",
+    )
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="non-finite"):
+        client.read_float32("P1-D0000")
+    with pytest.raises(ToyopucError, match="cannot be reused"):
+        client.connect()
+
+
+def test_fixed_port_udp_session_is_terminal_after_relay_semantic_read_error() -> None:
+    sock = _FakeUdpSocket(_relay_success_bytes(0x94, bytes.fromhex("0000c07f")))
+    client = ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="udp",
+        local_port=20000,
+        plc_profile="toyopuc:generic",
+    )
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="non-finite"):
+        client.relay_read_float32("P1-L2:N2", "P1-D0000")
+    assert client._fixed_udp_session_tainted
     with pytest.raises(ToyopucError, match="cannot be reused"):
         client.connect()
 

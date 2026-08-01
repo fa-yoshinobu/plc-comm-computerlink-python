@@ -15,11 +15,13 @@ from functools import wraps
 from ipaddress import ip_address
 from queue import Empty, Full, Queue
 from threading import Condition, Event, Lock, RLock, Thread, local
+from typing import TypeVar, cast
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .errors import (
     ToyopucCancelledError,
     ToyopucClosedError,
+    ToyopucError,
     ToyopucNotConnectedError,
     ToyopucOperationOutcomeUnknownError,
     ToyopucOutcomeUnknownReason,
@@ -29,11 +31,14 @@ from .errors import (
     ToyopucTransportError,
 )
 from .protocol import (
-    FT_COMMAND,
     FT_RESPONSE,
     ClockData,
     CpuStatusData,
     ResponseFrame,
+    _build_relay_command_trimmed,
+    _build_relay_nested_parsed,
+    _parse_relay_inner_request,
+    _RelayInnerRequest,
     build_bit_read,
     build_bit_write,
     build_byte_read,
@@ -58,8 +63,6 @@ from .protocol import (
     build_pc10_block_write,
     build_pc10_multi_read,
     build_pc10_multi_write,
-    build_relay_command,
-    build_relay_nested,
     build_scan_resume,
     build_scan_stop,
     build_scan_stop_release,
@@ -77,6 +80,8 @@ from .relay import (
     parse_relay_inner_response,
     unwrap_relay_response_chain,
 )
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -432,7 +437,10 @@ def _pack_uint32_low_word_first_words(values: Iterable[int]) -> list[int]:
 def _unpack_float32_low_word_first_words(words: Iterable[int]) -> list[float]:
     values: list[float] = []
     for bits in _unpack_uint32_low_word_first_words(words):
-        values.append(struct.unpack("<f", struct.pack("<I", bits))[0])
+        value = struct.unpack("<f", struct.pack("<I", bits))[0]
+        if not math.isfinite(value):
+            raise ToyopucProtocolError("PLC returned a non-finite float32 value")
+        values.append(value)
     return values
 
 
@@ -479,35 +487,32 @@ def _response_error_code(resp: ResponseFrame) -> int | None:
 
 
 def _is_read_only_payload(payload: bytes) -> bool:
-    command: int
-    body: bytes
-    if (
-        len(payload) >= 5
-        and payload[0] == FT_COMMAND
-        and payload[1] == 0x00
-        and (payload[2] | (payload[3] << 8)) + 4 == len(payload)
-    ):
-        command = payload[4]
-        body = payload[5:]
-    elif len(payload) >= 3 and (payload[0] | (payload[1] << 8)) + 2 == len(payload):
-        command = payload[2]
-        body = payload[3:]
-    else:
+    try:
+        request = _parse_relay_inner_request(payload)
+    except ValueError:
         return False
+    return _is_read_only_request(request)
+
+
+def _is_read_only_request(request: _RelayInnerRequest) -> bool:
+    command = request.command
+    body = request.body
     if command in {0x1C, 0x1E, 0x20, 0x22, 0x24, 0x94, 0x96, 0x98, 0xA0, 0xC2, 0xC4}:
         return True
     return command == 0x32 and body[:2] in {bytes([0x70, 0x00]), bytes([0x11, 0x00])}
 
 
 def _expected_state_response_data(payload: bytes) -> bytes | None:
-    if len(payload) >= 5 and payload[0] == FT_COMMAND and (payload[2] | (payload[3] << 8)) + 4 == len(payload):
-        command = payload[4]
-        body = payload[5:]
-    elif len(payload) >= 3 and (payload[0] | (payload[1] << 8)) + 2 == len(payload):
-        command = payload[2]
-        body = payload[3:]
-    else:
+    try:
+        request = _parse_relay_inner_request(payload)
+    except ValueError:
         return None
+    return _expected_state_response_data_request(request)
+
+
+def _expected_state_response_data_request(request: _RelayInnerRequest) -> bytes | None:
+    command = request.command
+    body = request.body
     if command in _EMPTY_STATE_RESPONSE_COMMANDS:
         return b""
     if command == 0x32 and body[:2] in {
@@ -516,6 +521,47 @@ def _expected_state_response_data(payload: bytes) -> bytes | None:
         bytes([0x02, 0x00]),
     }:
         return body[:2]
+    return None
+
+
+def _expected_read_response_size(payload: bytes) -> int | None:
+    request = _parse_relay_inner_request(payload)
+    return _expected_read_response_size_request(request)
+
+
+def _expected_read_response_size_request(request: _RelayInnerRequest) -> int | None:
+    command = request.command
+    body = request.body
+
+    def u16(offset: int) -> int:
+        if offset < 0 or offset + 2 > len(body):
+            raise ValueError("request body is too short to derive its response size")
+        return body[offset] | (body[offset + 1] << 8)
+
+    if command == 0x1C:
+        return u16(2) * 2
+    if command == 0x1E:
+        return u16(2)
+    if command == 0x20:
+        return 1
+    if command == 0x22:
+        return len(body)
+    if command == 0x24:
+        return len(body) // 2
+    if command == 0x94:
+        return u16(3) * 2
+    if command == 0x96:
+        return u16(3)
+    if command == 0x98:
+        if len(body) < 3:
+            raise ValueError("extended multi-read request body is too short")
+        return ((body[0] + 7) // 8) + body[1] + body[2] * 2
+    if command == 0xC2:
+        return u16(4)
+    if command == 0xC4:
+        if len(body) < 4:
+            raise ValueError("PC10 multi-read request body is too short")
+        return 4 + ((body[0] + 7) // 8) + body[1] + body[2] * 2
     return None
 
 
@@ -911,14 +957,63 @@ class ToyopucClient:
         state_changing: bool = False,
     ) -> ResponseFrame:
         with self._operation_turn():
-            return self._send_and_recv_admitted(payload, state_changing=state_changing)
+            return cast(
+                ResponseFrame,
+                self._send_and_recv_admitted(payload, state_changing=state_changing, decode=None),
+            )
+
+    def _send_and_decode(
+        self,
+        payload: bytes,
+        decode: Callable[[ResponseFrame], _T],
+        *,
+        state_changing: bool = False,
+    ) -> _T:
+        with self._operation_turn():
+            return cast(
+                _T,
+                self._send_and_recv_admitted(
+                    payload,
+                    state_changing=state_changing,
+                    decode=decode,
+                ),
+            )
+
+    def _decode_post_send_result(self, decode: Callable[[], _T]) -> _T:
+        """Decode after send while the caller retains the originating operation turn."""
+
+        return self._run_post_send_decode(decode, state_changing=False)
+
+    def _run_post_send_decode(
+        self,
+        decode: Callable[[], _T],
+        *,
+        state_changing: bool,
+        failure_message: str = "Command-specific response decode failed",
+    ) -> _T:
+        """Apply the one transport-retirement boundary to every post-send decoder."""
+
+        try:
+            return decode()
+        except ToyopucProtocolError as exc:
+            self._raise_post_send_protocol_error(exc, state_changing=state_changing)
+        except ToyopucError:
+            raise
+        except Exception as exc:
+            error = ToyopucProtocolError(failure_message)
+            error.__cause__ = exc
+            self._raise_post_send_protocol_error(error, state_changing=state_changing)
+        raise AssertionError("unreachable response decode path")
 
     def _send_and_recv_admitted(
         self,
         payload: bytes,
         *,
         state_changing: bool,
-    ) -> ResponseFrame:
+        decode: Callable[[ResponseFrame], object] | None,
+    ) -> object:
+        request = _parse_relay_inner_request(payload)
+        expected_read_size = None if state_changing else _expected_read_response_size_request(request)
         deadline = time.monotonic() + self._operation_timeout()
         self._raise_if_cancelled()
         if not self._sock:
@@ -1004,7 +1099,7 @@ class ToyopucClient:
                 ) from cause
             raise transport_error from exc
 
-        try:
+        def validate_and_decode() -> object:
             self._fire_trace(ToyopucTraceDirection.RECEIVE, frame)
             self._last_rx = frame
             resp = parse_response(frame)
@@ -1013,20 +1108,23 @@ class ToyopucClient:
                 raise ToyopucProtocolError(f"Unexpected frame type: 0x{resp.ft:02X}")
             if resp.rc != 0x00:
                 raise ToyopucPlcError(format_response_error(resp))
-            if len(payload) >= 5 and resp.cmd != payload[4]:
+            if resp.cmd != request.command:
                 raise ToyopucProtocolError(
-                    f"Unexpected response command: expected 0x{payload[4]:02X}, got 0x{resp.cmd:02X}"
+                    f"Unexpected response command: expected 0x{request.command:02X}, got 0x{resp.cmd:02X}"
                 )
-            expected_state_data = _expected_state_response_data(payload) if state_changing else None
+            expected_state_data = _expected_state_response_data_request(request) if state_changing else None
             if expected_state_data is not None and resp.data != expected_state_data:
                 raise ToyopucProtocolError(
                     "State-changing response data mismatch: "
                     f"expected={expected_state_data.hex()}, actual={resp.data.hex()}"
                 )
-            return resp
-        except ToyopucProtocolError as exc:
-            self._raise_post_send_protocol_error(exc, state_changing=state_changing)
-        raise AssertionError("unreachable response path")
+            if expected_read_size is not None:
+                _require_response_data_size(request.command, resp.data, expected_read_size)
+            if decode is None:
+                return resp
+            return decode(resp)
+
+        return self._run_post_send_decode(validate_and_decode, state_changing=state_changing)
 
     def _raise_post_send_protocol_error(
         self,
@@ -1045,19 +1143,6 @@ class ToyopucClient:
             ) from error
         raise error
 
-    def _validate_state_changing_response(
-        self,
-        response: ResponseFrame,
-        expected_cmd: int,
-        expected_data: bytes,
-        message: str,
-    ) -> None:
-        try:
-            if response.cmd != expected_cmd or response.data != expected_data:
-                raise ToyopucProtocolError(message)
-        except ToyopucProtocolError as exc:
-            self._raise_post_send_protocol_error(exc, state_changing=True)
-
     def _send_raw(self, cmd: int, data: bytes) -> ResponseFrame:
         """Maintainer-only raw command path."""
 
@@ -1070,50 +1155,36 @@ class ToyopucClient:
 
     def read_words(self, addr: int, count: int) -> list[int]:
         """Read one or more basic-area words with `CMD=1C`."""
-        resp = self._send_and_recv(build_word_read(addr, count))
-        if resp.cmd != 0x1C:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x1C, resp.data, count * 2)
-        return unpack_u16_le(resp.data)
+        return self._send_and_decode(
+            build_word_read(addr, count),
+            lambda response: unpack_u16_le(response.data),
+        )
 
     def write_words(self, addr: int, values: Iterable[int]) -> None:
         """Write one or more basic-area words with `CMD=1D`."""
-        resp = self._send_and_recv(build_word_write(addr, values), state_changing=True)
-        if resp.cmd != 0x1D:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_word_write(addr, values), state_changing=True)
 
     def read_bytes(self, addr: int, count: int) -> bytes:
         """Read one or more basic-area bytes with `CMD=1E`."""
-        resp = self._send_and_recv(build_byte_read(addr, count))
-        if resp.cmd != 0x1E:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x1E, resp.data, count)
-        return resp.data
+        return self._send_and_decode(build_byte_read(addr, count), lambda response: response.data)
 
     def write_bytes(self, addr: int, values: Iterable[int]) -> None:
         """Write one or more basic-area bytes with `CMD=1F`."""
-        resp = self._send_and_recv(build_byte_write(addr, values), state_changing=True)
-        if resp.cmd != 0x1F:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_byte_write(addr, values), state_changing=True)
 
     def read_bit(self, addr: int) -> bool:
         """Read one basic-area bit with `CMD=20`."""
-        resp = self._send_and_recv(build_bit_read(addr))
-        if resp.cmd != 0x20:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if len(resp.data) != 1:
-            raise ToyopucProtocolError("Bit read response must be 1 byte")
-        return resp.data[0] != 0
+        return self._send_and_decode(build_bit_read(addr), lambda response: response.data[0] != 0)
 
     def write_bit(self, addr: int, value: bool) -> None:
         """Write one basic-area bit with `CMD=21`; *value* must be `bool`."""
-        resp = self._send_and_recv(build_bit_write(addr, _normalize_bit_value(value)), state_changing=True)
-        if resp.cmd != 0x21:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_bit_write(addr, _normalize_bit_value(value)), state_changing=True)
 
     def read_dword(self, addr: int) -> int:
         """Read one 32-bit value from two consecutive words."""
-        return self.read_dwords(addr, 1)[0]
+        with self._operation_turn():
+            values = self.read_dwords(addr, 1)
+            return self._decode_post_send_result(lambda: values[0])
 
     def write_dword(self, addr: int, value: int) -> None:
         """Write one 32-bit value to two consecutive words."""
@@ -1123,8 +1194,9 @@ class ToyopucClient:
         """Read one or more 32-bit values from consecutive words."""
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError("count must be an integer >= 1")
-        points = count
-        return _unpack_uint32_low_word_first_words(self.read_words(addr, points * 2))
+        with self._operation_turn():
+            words = self.read_words(addr, count * 2)
+            return self._decode_post_send_result(lambda: _unpack_uint32_low_word_first_words(words))
 
     def write_dwords(self, addr: int, values: Iterable[int]) -> None:
         """Write one or more 32-bit values to consecutive words."""
@@ -1132,7 +1204,9 @@ class ToyopucClient:
 
     def read_float32(self, addr: int) -> float:
         """Read one IEEE-754 float32 from two consecutive words."""
-        return self.read_float32s(addr, 1)[0]
+        with self._operation_turn():
+            values = self.read_float32s(addr, 1)
+            return self._decode_post_send_result(lambda: values[0])
 
     def write_float32(self, addr: int, value: float) -> None:
         """Write one IEEE-754 float32 to two consecutive words."""
@@ -1142,8 +1216,9 @@ class ToyopucClient:
         """Read one or more IEEE-754 float32 values from consecutive words."""
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
             raise ValueError("count must be an integer >= 1")
-        points = count
-        return _unpack_float32_low_word_first_words(self.read_words(addr, points * 2))
+        with self._operation_turn():
+            words = self.read_words(addr, count * 2)
+            return self._decode_post_send_result(lambda: _unpack_float32_low_word_first_words(words))
 
     def write_float32s(self, addr: int, values: Iterable[float]) -> None:
         """Write one or more IEEE-754 float32 values to consecutive words."""
@@ -1152,60 +1227,48 @@ class ToyopucClient:
     def read_words_multi(self, addrs: Iterable[int]) -> list[int]:
         """Read multiple non-contiguous basic-area words with `CMD=22`."""
         address_list = list(addrs)
-        resp = self._send_and_recv(build_multi_word_read(address_list))
-        if resp.cmd != 0x22:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x22, resp.data, len(address_list) * 2)
-        return unpack_u16_le(resp.data)
+        return self._send_and_decode(
+            build_multi_word_read(address_list),
+            lambda response: unpack_u16_le(response.data),
+        )
 
     def write_words_multi(self, pairs: Iterable[tuple[int, int]]) -> None:
         """Write multiple non-contiguous basic-area words with `CMD=23`."""
-        resp = self._send_and_recv(build_multi_word_write(pairs), state_changing=True)
-        if resp.cmd != 0x23:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_multi_word_write(pairs), state_changing=True)
 
     def read_bytes_multi(self, addrs: Iterable[int]) -> bytes:
         """Read multiple non-contiguous basic-area bytes with `CMD=24`."""
         address_list = list(addrs)
-        resp = self._send_and_recv(build_multi_byte_read(address_list))
-        if resp.cmd != 0x24:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x24, resp.data, len(address_list))
-        return resp.data
+        return self._send_and_decode(
+            build_multi_byte_read(address_list),
+            lambda response: response.data,
+        )
 
     def write_bytes_multi(self, pairs: Iterable[tuple[int, int]]) -> None:
         """Write multiple non-contiguous basic-area bytes with `CMD=25`."""
-        resp = self._send_and_recv(build_multi_byte_write(pairs), state_changing=True)
-        if resp.cmd != 0x25:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_multi_byte_write(pairs), state_changing=True)
 
     def read_ext_words(self, no: int, addr: int, count: int) -> list[int]:
         """Read extended-area words with `CMD=94` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_word_read(no, addr, count))
-        if resp.cmd != 0x94:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x94, resp.data, count * 2)
-        return unpack_u16_le(resp.data)
+        return self._send_and_decode(
+            build_ext_word_read(no, addr, count),
+            lambda response: unpack_u16_le(response.data),
+        )
 
     def write_ext_words(self, no: int, addr: int, values: Iterable[int]) -> None:
         """Write extended-area words with `CMD=95` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_word_write(no, addr, values), state_changing=True)
-        if resp.cmd != 0x95:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_ext_word_write(no, addr, values), state_changing=True)
 
     def read_ext_bytes(self, no: int, addr: int, count: int) -> bytes:
         """Read extended-area bytes with `CMD=96` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_byte_read(no, addr, count))
-        if resp.cmd != 0x96:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x96, resp.data, count)
-        return resp.data
+        return self._send_and_decode(
+            build_ext_byte_read(no, addr, count),
+            lambda response: response.data,
+        )
 
     def write_ext_bytes(self, no: int, addr: int, values: Iterable[int]) -> None:
         """Write extended-area bytes with `CMD=97` using `(No., addr)`."""
-        resp = self._send_and_recv(build_ext_byte_write(no, addr, values), state_changing=True)
-        if resp.cmd != 0x97:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_ext_byte_write(no, addr, values), state_changing=True)
 
     def read_ext_multi(
         self,
@@ -1226,11 +1289,10 @@ class ToyopucClient:
         bits = list(bit_points)
         bytes_ = list(byte_points)
         words = list(word_points)
-        resp = self._send_and_recv(build_ext_multi_read(bits, bytes_, words))
-        if resp.cmd != 0x98:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        _require_response_data_size(0x98, resp.data, (len(bits) + 7) // 8 + len(bytes_) + len(words) * 2)
-        return resp.data
+        return self._send_and_decode(
+            build_ext_multi_read(bits, bytes_, words),
+            lambda response: response.data,
+        )
 
     def write_ext_multi(
         self,
@@ -1245,41 +1307,29 @@ class ToyopucClient:
         point value must be an actual `bool`.
         """
         bits = [(no, bit_no, addr, _normalize_bit_value(value)) for no, bit_no, addr, value in bit_points]
-        resp = self._send_and_recv(
-            build_ext_multi_write(bits, list(byte_points), list(word_points)), state_changing=True
-        )
-        if resp.cmd != 0x99:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_ext_multi_write(bits, list(byte_points), list(word_points)), state_changing=True)
 
     def pc10_block_read(self, addr32: int, count: int) -> bytes:
         """Read PC10 block data with `CMD=C2` from a 32-bit byte address."""
-        resp = self._send_and_recv(build_pc10_block_read(addr32, count))
-        if resp.cmd != 0xC2:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        if len(resp.data) != count:
-            raise ToyopucProtocolError(
-                f"PC10 block-read response size mismatch: expected={count}, actual={len(resp.data)}"
-            )
-        return resp.data
+        return self._send_and_decode(
+            build_pc10_block_read(addr32, count),
+            lambda response: response.data,
+        )
 
     def pc10_block_write(self, addr32: int, data_bytes: bytes) -> None:
         """Write PC10 block data with `CMD=C3` to a 32-bit byte address."""
-        resp = self._send_and_recv(build_pc10_block_write(addr32, data_bytes), state_changing=True)
-        if resp.cmd != 0xC3:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_pc10_block_write(addr32, data_bytes), state_changing=True)
 
     def pc10_multi_read(self, payload: bytes) -> bytes:
         """Read PC10 multi-point data with `CMD=C4` using a prebuilt payload."""
-        resp = self._send_and_recv(build_pc10_multi_read(payload))
-        if resp.cmd != 0xC4:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        return resp.data
+        return self._send_and_decode(
+            build_pc10_multi_read(payload),
+            lambda response: response.data,
+        )
 
     def pc10_multi_write(self, payload: bytes) -> None:
         """Write PC10 multi-point data with `CMD=C5` using a prebuilt payload."""
-        resp = self._send_and_recv(build_pc10_multi_write(payload), state_changing=True)
-        if resp.cmd != 0xC5:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_pc10_multi_write(payload), state_changing=True)
 
     def read_fr_words(self, index: int, count: int) -> list[int]:
         """Read FR words via exactly one PC10 block-read request (`CMD=C2`).
@@ -1288,8 +1338,10 @@ class ToyopucClient:
         `Ex No.=0x40-0x7F`, not `CMD=94`.
         """
         start, word_count = _validate_fr_single_request(index, count)
-        data = self.pc10_block_read(encode_fr_word_addr32(start), word_count * 2)
-        return unpack_u16_le(data)
+        return self._send_and_decode(
+            build_pc10_block_read(encode_fr_word_addr32(start), word_count * 2),
+            lambda response: unpack_u16_le(response.data),
+        )
 
     def write_fr_words(self, index: int, values: Iterable[int]) -> None:
         """Update the FR work area with exactly one PC10 block-write request.
@@ -1309,16 +1361,14 @@ class ToyopucClient:
     ) -> None:
         """Commit exactly one explicitly selected FR block with `CMD=CA`."""
         block_start = _validate_fr_block_start(block_start_index)
-        resp = self._send_and_recv(build_fr_register(fr_block_ex_no(block_start)), state_changing=True)
-        if resp.cmd != 0xCA:
-            raise ToyopucProtocolError("Unexpected CMD in response")
+        self._send_and_recv(build_fr_register(fr_block_ex_no(block_start)), state_changing=True)
 
     def relay_command(self, link_no: int, station_no: int, inner_payload: bytes) -> ResponseFrame:
         """Wrap a command in one relay hop using `CMD=60`."""
-        read_only = _is_read_only_payload(inner_payload)
+        request = _parse_relay_inner_request(inner_payload)
         return self._send_and_recv(
-            build_relay_command(link_no, station_no, inner_payload),
-            state_changing=not read_only,
+            _build_relay_command_trimmed(link_no, station_no, request.trimmed_payload),
+            state_changing=not _is_read_only_request(request),
         )
 
     def relay_nested(
@@ -1327,14 +1377,41 @@ class ToyopucClient:
         inner_payload: bytes,
     ) -> ResponseFrame:
         """Wrap a command in multiple relay hops using nested `CMD=60` frames."""
-        read_only = _is_read_only_payload(inner_payload)
+        request = _parse_relay_inner_request(inner_payload)
+        return self._relay_nested_request(tuple(hops), request, inner_payload)
+
+    def _relay_nested_request(
+        self,
+        hops: Iterable[tuple[int, int]],
+        request: _RelayInnerRequest,
+        original_payload: bytes,
+    ) -> ResponseFrame:
+        del original_payload
         return self._send_and_recv(
-            build_relay_nested(list(hops), inner_payload),
-            state_changing=not read_only,
+            _build_relay_nested_parsed(list(hops), request),
+            state_changing=not _is_read_only_request(request),
         )
 
     def send_via_relay(self, hops: str | Iterable[tuple[int, int]], inner_payload: bytes) -> ResponseFrame:
         """Send a command through relay hops and return the final inner response."""
+        return self._send_via_relay_decoded(hops, inner_payload, lambda response: response)
+
+    def _send_via_relay_decoded(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        inner_payload: bytes,
+        decode: Callable[[ResponseFrame], _T],
+    ) -> _T:
+        with self._operation_turn():
+            return self._send_via_relay_decoded_admitted(hops, inner_payload, decode)
+
+    def _send_via_relay_decoded_admitted(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        inner_payload: bytes,
+        decode: Callable[[ResponseFrame], _T],
+    ) -> _T:
+        request = _parse_relay_inner_request(inner_payload)
         normalized: tuple[tuple[int, int], ...]
         if isinstance(hops, str):
             cached = self._relay_hops_cache.get(hops)
@@ -1347,59 +1424,64 @@ class ToyopucClient:
                 normalized = cached
         else:
             normalized = tuple(normalize_relay_hops(hops))
-        state_changing = not _is_read_only_payload(inner_payload)
-        outer = self.relay_nested(normalized, inner_payload)
-        try:
-            layers, final = unwrap_relay_response_chain(outer)
-        except ToyopucProtocolError as exc:
-            self._raise_post_send_protocol_error(exc, state_changing=state_changing)
+        state_changing = not _is_read_only_request(request)
+        outer = self._relay_nested_request(normalized, request, inner_payload)
+        layers, final = self._run_post_send_decode(
+            lambda: unwrap_relay_response_chain(outer),
+            state_changing=state_changing,
+            failure_message="Relay response unwrap failed",
+        )
         if final is None:
             last = layers[-1]
             raise ToyopucProtocolError(
                 f"Relay NAK at link=0x{last.link_no:02X}, station=0x{last.station_no:04X}, ack=0x{last.ack:02X}"
             )
-        expected_cmd = inner_payload[4] if inner_payload[0] == FT_COMMAND else inner_payload[2]
-        if final.cmd != expected_cmd:
-            self._raise_post_send_protocol_error(
-                ToyopucProtocolError(
-                    f"Unexpected relay response command: expected 0x{expected_cmd:02X}, got 0x{final.cmd:02X}"
-                ),
-                state_changing=state_changing,
-            )
-        expected_state_data = _expected_state_response_data(inner_payload) if state_changing else None
-        if expected_state_data is not None and final.data != expected_state_data:
-            self._raise_post_send_protocol_error(
-                ToyopucProtocolError(
+
+        def validate_and_decode_relay() -> _T:
+            if final.cmd != request.command:
+                raise ToyopucProtocolError(
+                    f"Unexpected relay response command: expected 0x{request.command:02X}, got 0x{final.cmd:02X}"
+                )
+            expected_state_data = _expected_state_response_data_request(request) if state_changing else None
+            if expected_state_data is not None and final.data != expected_state_data:
+                raise ToyopucProtocolError(
                     "Relay state-changing response data mismatch: "
                     f"expected={expected_state_data.hex()}, actual={final.data.hex()}"
-                ),
-                state_changing=True,
-            )
-        return final
+                )
+            if not state_changing:
+                expected_read_size = _expected_read_response_size_request(request)
+                if expected_read_size is not None and len(final.data) != expected_read_size:
+                    raise ToyopucProtocolError(
+                        f"CMD={request.command:02X} relay response data size mismatch: "
+                        f"expected={expected_read_size}, actual={len(final.data)}"
+                    )
+            return decode(final)
+
+        return self._run_post_send_decode(
+            validate_and_decode_relay,
+            state_changing=state_changing,
+            failure_message="Command-specific Relay response decode failed",
+        )
 
     def relay_read_words(self, hops: str | Iterable[tuple[int, int]], addr: int, count: int) -> list[int]:
         """Read one or more basic-area words through relay hops."""
-        resp = self.send_via_relay(hops, build_word_read(addr, count))
-        if resp.cmd != 0x1C:
-            raise ToyopucProtocolError("Unexpected CMD in relay word-read response")
-        _require_response_data_size(0x1C, resp.data, count * 2)
-        return unpack_u16_le(resp.data)
+        return self._send_via_relay_decoded(
+            hops,
+            build_word_read(addr, count),
+            lambda response: unpack_u16_le(response.data),
+        )
 
     def relay_write_words(self, hops: str | Iterable[tuple[int, int]], addr: int, values: Iterable[int]) -> None:
         """Write one or more basic-area words through relay hops."""
-        resp = self.send_via_relay(hops, build_word_write(addr, values))
-        if resp.cmd != 0x1D:
-            raise ToyopucProtocolError("Unexpected CMD in relay word-write response")
+        self.send_via_relay(hops, build_word_write(addr, values))
 
     def relay_read_clock(self, hops: str | Iterable[tuple[int, int]]) -> ClockData:
         """Read the CPU clock through relay hops."""
-        resp = self.send_via_relay(hops, build_clock_read())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay clock response")
-        try:
-            return parse_clock_data(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse relay clock response data={resp.data.hex()}") from e
+        return self._send_via_relay_decoded(
+            hops,
+            build_clock_read(),
+            lambda response: parse_clock_data(response.data),
+        )
 
     def relay_write_clock(
         self,
@@ -1411,7 +1493,7 @@ class ToyopucClient:
         """Set the CPU clock through relay hops via `CMD=32 / 71 00`."""
         self._validate_clock_write(value, year_base)
         weekday = (value.weekday() + 1) % 7
-        resp = self.send_via_relay(
+        self.send_via_relay(
             hops,
             build_clock_write(
                 value.second,
@@ -1423,54 +1505,42 @@ class ToyopucClient:
                 weekday,
             ),
         )
-        self._validate_state_changing_response(resp, 0x32, bytes([0x71, 0x00]), "Unexpected relay clock-write response")
 
     def relay_resume_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Resume CPU scan through relay hops via `CMD=32 / 01 00`."""
-        resp = self.send_via_relay(hops, build_scan_resume())
-        self._validate_state_changing_response(resp, 0x32, bytes([0x01, 0x00]), "Unexpected relay scan-resume response")
+        self.send_via_relay(hops, build_scan_resume())
 
     def relay_stop_scan(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Stop CPU scan through relay hops via `CMD=32 / 02 00 01`."""
-        resp = self.send_via_relay(hops, build_scan_stop())
-        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected relay scan-stop response")
+        self.send_via_relay(hops, build_scan_stop())
 
     def relay_release_scan_stop(self, hops: str | Iterable[tuple[int, int]]) -> None:
         """Release CPU scan stop through relay hops via `CMD=32 / 02 00 00`."""
-        resp = self.send_via_relay(hops, build_scan_stop_release())
-        self._validate_state_changing_response(
-            resp, 0x32, bytes([0x02, 0x00]), "Unexpected relay scan-stop-release response"
-        )
+        self.send_via_relay(hops, build_scan_stop_release())
 
     def relay_read_cpu_status(self, hops: str | Iterable[tuple[int, int]]) -> CpuStatusData:
         """Read the 8-byte CPU status block through relay hops."""
-        resp = self.send_via_relay(hops, build_cpu_status_read())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in relay CPU status response")
-        try:
-            return parse_cpu_status_data(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse relay CPU status response data={resp.data.hex()}") from e
+        return self._send_via_relay_decoded(
+            hops,
+            build_cpu_status_read(),
+            lambda response: parse_cpu_status_data(response.data),
+        )
 
     def relay_read_cpu_status_a0_raw(self, hops: str | Iterable[tuple[int, int]]) -> bytes:
         """Read raw 8-byte CPU status through relay hops via `CMD=A0 / 00 11 00`."""
-        resp = self.send_via_relay(hops, build_cpu_status_read_a0())
-        if resp.cmd != 0xA0:
-            raise ToyopucProtocolError("Unexpected CMD in relay A0 CPU status response")
-        try:
-            return parse_cpu_status_data_a0_raw(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse relay A0 CPU status response data={resp.data.hex()}") from e
+        return self._send_via_relay_decoded(
+            hops,
+            build_cpu_status_read_a0(),
+            lambda response: parse_cpu_status_data_a0_raw(response.data),
+        )
 
     def relay_read_cpu_status_a0(self, hops: str | Iterable[tuple[int, int]]) -> CpuStatusData:
         """Read decoded CPU status through relay hops via `CMD=A0 / 00 11 00`."""
-        resp = self.send_via_relay(hops, build_cpu_status_read_a0())
-        if resp.cmd != 0xA0:
-            raise ToyopucProtocolError("Unexpected CMD in relay A0 CPU status response")
-        try:
-            return parse_cpu_status_data_a0(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse relay A0 CPU status response data={resp.data.hex()}") from e
+        return self._send_via_relay_decoded(
+            hops,
+            build_cpu_status_read_a0(),
+            lambda response: parse_cpu_status_data_a0(response.data),
+        )
 
     def relay_write_fr_words(
         self,
@@ -1482,9 +1552,7 @@ class ToyopucClient:
         vals = _normalize_fr_word_values(values)
         start, _ = _validate_fr_single_request(index, len(vals))
         data = b"".join(v.to_bytes(2, "little") for v in vals)
-        resp = self.send_via_relay(hops, build_pc10_block_write(encode_fr_word_addr32(start), data))
-        if resp.cmd != 0xC3:
-            raise ToyopucProtocolError("Unexpected CMD in relay FR block-write response")
+        self.send_via_relay(hops, build_pc10_block_write(encode_fr_word_addr32(start), data))
 
     def relay_commit_fr_block(
         self,
@@ -1493,29 +1561,18 @@ class ToyopucClient:
     ) -> None:
         """Commit exactly one explicitly selected remote FR block."""
         block_start = _validate_fr_block_start(block_start_index)
-        resp = self.send_via_relay(hops, build_fr_register(fr_block_ex_no(block_start)))
-        if resp.cmd != 0xCA:
-            raise ToyopucProtocolError("Unexpected CMD in relay FR-register response")
+        self.send_via_relay(hops, build_fr_register(fr_block_ex_no(block_start)))
 
     def read_clock(self) -> ClockData:
         """Read the CPU clock via `CMD=32 / 70 00`."""
-        resp = self._send_and_recv(build_clock_read())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        try:
-            return parse_clock_data(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse clock response data={resp.data.hex()}") from e
+        return self._send_and_decode(build_clock_read(), lambda response: parse_clock_data(response.data))
 
     def read_cpu_status(self) -> CpuStatusData:
         """Read the 8-byte CPU status block via `CMD=32 / 11 00`."""
-        resp = self._send_and_recv(build_cpu_status_read())
-        if resp.cmd != 0x32:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        try:
-            return parse_cpu_status_data(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse CPU status response data={resp.data.hex()}") from e
+        return self._send_and_decode(
+            build_cpu_status_read(),
+            lambda response: parse_cpu_status_data(response.data),
+        )
 
     def read_cpu_status_a0_raw(self) -> bytes:
         """Read raw 8-byte CPU status via `CMD=A0 / 00 11 00`.
@@ -1524,23 +1581,17 @@ class ToyopucClient:
         currently returns the 8 raw status bytes because the exact bit mapping
         for this path has not been finalized yet.
         """
-        resp = self._send_and_recv(build_cpu_status_read_a0())
-        if resp.cmd != 0xA0:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        try:
-            return parse_cpu_status_data_a0_raw(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse A0 CPU status response data={resp.data.hex()}") from e
+        return self._send_and_decode(
+            build_cpu_status_read_a0(),
+            lambda response: parse_cpu_status_data_a0_raw(response.data),
+        )
 
     def read_cpu_status_a0(self) -> CpuStatusData:
         """Read decoded CPU status via `CMD=A0 / 00 11 00`."""
-        resp = self._send_and_recv(build_cpu_status_read_a0())
-        if resp.cmd != 0xA0:
-            raise ToyopucProtocolError("Unexpected CMD in response")
-        try:
-            return parse_cpu_status_data_a0(resp.data)
-        except Exception as e:
-            raise ToyopucProtocolError(f"Failed to parse A0 CPU status response data={resp.data.hex()}") from e
+        return self._send_and_decode(
+            build_cpu_status_read_a0(),
+            lambda response: parse_cpu_status_data_a0(response.data),
+        )
 
     @staticmethod
     def _validate_clock_write(value: datetime, year_base: int) -> None:
@@ -1555,7 +1606,7 @@ class ToyopucClient:
         """Set the CPU clock via `CMD=32 / 71 00`."""
         self._validate_clock_write(value, year_base)
         weekday = (value.weekday() + 1) % 7  # Python Monday=0, PLC Sunday=0
-        resp = self._send_and_recv(
+        self._send_and_recv(
             build_clock_write(
                 value.second,
                 value.minute,
@@ -1567,22 +1618,18 @@ class ToyopucClient:
             ),
             state_changing=True,
         )
-        self._validate_state_changing_response(resp, 0x32, bytes([0x71, 0x00]), "Unexpected clock write response")
 
     def resume_scan(self) -> None:
         """Resume CPU scan via `CMD=32 / 01 00`."""
-        resp = self._send_and_recv(build_scan_resume(), state_changing=True)
-        self._validate_state_changing_response(resp, 0x32, bytes([0x01, 0x00]), "Unexpected scan-resume response")
+        self._send_and_recv(build_scan_resume(), state_changing=True)
 
     def stop_scan(self) -> None:
         """Stop CPU scan via `CMD=32 / 02 00 01`."""
-        resp = self._send_and_recv(build_scan_stop(), state_changing=True)
-        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected scan-stop response")
+        self._send_and_recv(build_scan_stop(), state_changing=True)
 
     def release_scan_stop(self) -> None:
         """Release CPU scan stop via `CMD=32 / 02 00 00`."""
-        resp = self._send_and_recv(build_scan_stop_release(), state_changing=True)
-        self._validate_state_changing_response(resp, 0x32, bytes([0x02, 0x00]), "Unexpected scan-stop-release response")
+        self._send_and_recv(build_scan_stop_release(), state_changing=True)
 
 
 _FIFO_OPERATION_METHODS = (

@@ -26,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from toyopuc import (
+    AsyncToyopucDeviceClient,
     ToyopucConnectionOptions,
     format_device_address,
     normalize_address,
@@ -101,9 +102,10 @@ async def demo_open_and_connect(host: str, port: int, transport: str, profile: s
     Use case: the simplest way to start an async session without manually
               constructing AsyncToyopucDeviceClient and calling connect().
     """
-    async with await open_and_connect(
+    plc = await open_and_connect(
         ToyopucConnectionOptions(host=host, port=port, transport=transport, plc_profile=profile)
-    ) as plc:
+    )
+    async with plc:
         print(f"[open_and_connect] Connected to {host}:{port}")
         val = await plc.read_one("P1-D0100")
         print(f"[open_and_connect] P1-D0100 = {val}")
@@ -116,7 +118,7 @@ def demo_normalize_address() -> None:
     print(f"[format_device_address] parsed -> {format_device_address(parsed)}")
 
 
-async def demo_typed_rw(plc) -> None:
+async def demo_typed_rw(plc: AsyncToyopucDeviceClient) -> None:
     """
     read_typed / write_typed - single device with automatic type conversion.
 
@@ -149,7 +151,7 @@ async def demo_typed_rw(plc) -> None:
         await write_typed(plc, "P1-D0100", "U", original_u)
 
 
-async def demo_array_reads(plc) -> None:
+async def demo_array_reads(plc: AsyncToyopucDeviceClient) -> None:
     """
     Explicit contiguous helpers.
 
@@ -166,7 +168,7 @@ async def demo_array_reads(plc) -> None:
     print(f"[read_dwords_single_request] P1-D0000-D0007 (as 4 x uint32) = {dwords}")
 
 
-async def demo_bit_in_word(plc) -> None:
+async def demo_bit_in_word(plc: AsyncToyopucDeviceClient) -> None:
     """
     write_bit_in_word - set/clear one bit inside a word device.
 
@@ -187,7 +189,7 @@ async def demo_bit_in_word(plc) -> None:
         await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=original_bit)
 
 
-async def demo_read_named(plc) -> None:
+async def demo_read_named(plc: AsyncToyopucDeviceClient) -> None:
     """
     read_named - read one named device with an explicit value view.
 
@@ -207,7 +209,7 @@ async def demo_read_named(plc) -> None:
             print(f"[read_named] {addr} = {value!r}")
 
 
-async def demo_poll(plc, count: int) -> None:
+async def demo_poll(plc: AsyncToyopucDeviceClient, count: int) -> None:
     """
     poll - async generator that yields a snapshot dict every *interval* seconds.
 
@@ -236,14 +238,15 @@ async def run(args: argparse.Namespace) -> None:
     await demo_open_and_connect(args.host, args.port, args.transport, args.profile)
 
     # 2-6. connect once, run all remaining demos
-    async with await open_and_connect(
+    plc = await open_and_connect(
         ToyopucConnectionOptions(
             host=args.host,
             port=args.port,
             transport=args.transport,
             plc_profile=args.profile,
         )
-    ) as plc:
+    )
+    async with plc:
         await demo_typed_rw(plc)
         await demo_array_reads(plc)
         await demo_bit_in_word(plc)

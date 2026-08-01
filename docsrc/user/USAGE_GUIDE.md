@@ -352,9 +352,20 @@ if __name__ == "__main__":
 
 FR work-area values must be integers in `0..65535`. The library rejects negative, overflowing, Boolean, fractional, and string values instead of masking or converting them.
 
+Use only `write_fr` / `relay_write_fr` for FR writes. Generic `write` and
+`write_many`, typed dword/float, and bit-in-word write helpers reject FR before
+transport. This is a breaking contract: callers that previously passed FR to a
+generic or typed write must migrate to the explicit FR work-area API and invoke
+`commit_fr` separately only when persistence is intended.
+
 ## Relay helpers
 
 Relay hops are not probed automatically. Pass the hops you intend to use.
+
+Relay strings use decimal values only. Component notation accepts `P0..P15`,
+`L0..L15`, and station `N1..N65535`, for example `P10-L11:N20`. Direct notation
+accepts link `0..255` and station `1..65535`, for example `171:32`.
+Hexadecimal prefixes/suffixes and A-F digits are invalid.
 
 ```python
 from toyopuc import ToyopucDeviceClient

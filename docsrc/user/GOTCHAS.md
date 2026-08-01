@@ -72,6 +72,13 @@ late response; prefer `local_port=0` unless a fixed source port is required.
 When a state-changing request may already have reached the PLC, Python raises
 `ToyopucOperationOutcomeUnknownError`. Reconcile PLC state before retrying.
 
+Malformed command-specific data is handled inside the same post-send
+lifecycle. Reads raise `ToyopucProtocolError`; state-changing calls raise
+`ToyopucOperationOutcomeUnknownError` with malformed-response reason and the
+protocol error as their cause. The affected transport is retired, and a
+fixed-local-port UDP client is tainted. Validation failures found before send do
+not retire the transport.
+
 ## Symptom: a multi-address `read_named` result changes between entries
 
 | Root cause | Fix |
@@ -139,6 +146,12 @@ asyncio.run(main())
 | `write_fr(...)` updates only the FR work area. It never commits flash. | Call `commit_fr()` separately with the first word of exactly one block only when persistence is intended. |
 | An FR word is an unsigned 16-bit value. | Pass an integer in `0..65535`; Boolean, fractional, string, negative, and overflowing values are rejected before communication. |
 
+FR writes are intentionally available only through `write_fr` /
+`relay_write_fr`. Generic, aggregate, typed dword/float, and bit-in-word write
+APIs reject an FR address before opening or using the transport. Migrate an
+intentional FR write to the explicit FR work-area API so its separate commit
+lifecycle remains visible.
+
 ```python
 from toyopuc import ToyopucDeviceClient
 
@@ -181,6 +194,11 @@ if __name__ == "__main__":
 | Root cause | Fix |
 | --- | --- |
 | Relay hops are not probed automatically because automatic routing can hide configuration mistakes. | Pass the exact relay hop string to the relay helper you call. |
+
+Relay text is decimal-only. Use `P10-L11:N20` for component notation or
+`171:32` for a direct link/station pair. Hexadecimal prefixes, hexadecimal
+suffixes, and A-F digits are rejected; `format_relay_hop()` also returns decimal
+text.
 
 ```python
 from toyopuc import ToyopucDeviceClient
