@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- BREAKING: A data-bearing NG response must echo the active request command before it can be published as a definitive PLC error. A mismatch is malformed, retires the transport, and becomes outcome-unknown for a possibly applied state change; the no-data `RC=0x10` special error form retains its existing command-byte meaning.
+- Library: Async task cancellation no longer hides an already-completed worker `ToyopucOperationOutcomeUnknownError`. That established unknown outcome wins the race, while completed success and ordinary worker failures still preserve `asyncio.CancelledError`.
+- Tests: Added sync/async data-bearing NG command-correlation and deterministic completed-worker cancellation-race regressions.
 - Library: Explicit and lazy TCP/UDP connection establishment now uses one monotonic absolute deadline covering IPv4 DNS, first-IPv4 selection, socket creation, UDP bind/connect, TCP configuration, and final adoption. Late resolver/socket results cannot mutate client state and abandoned sockets are closed; deadline expiry remains Timeout while a pre-deadline native connection failure remains Transport.
 - Library: Sync and async clients now serialize ordinary operations in arrival-order FIFO turns, snapshot timeout and transport generation at admission, lazily connect, and let `close()` retire active and already queued work without coupling independent client instances.
 - Library: Connect, transmit, receive, and response decode now share one monotonic request deadline. Timeout and cancellation retire the transport, and no request is automatically resent after it may have been sent, including reads and PLC retry-required responses.

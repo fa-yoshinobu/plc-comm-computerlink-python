@@ -1106,6 +1106,11 @@ class ToyopucClient:
             _remaining_time(deadline, "Response decode timeout")
             if resp.ft != FT_RESPONSE:
                 raise ToyopucProtocolError(f"Unexpected frame type: 0x{resp.ft:02X}")
+            if resp.rc != 0x00 and resp.data and resp.cmd != request.command:
+                raise ToyopucProtocolError(
+                    "Unexpected data-bearing error response command: "
+                    f"expected 0x{request.command:02X}, got 0x{resp.cmd:02X}"
+                )
             if resp.rc != 0x00:
                 raise ToyopucPlcError(format_response_error(resp))
             if resp.cmd != request.command:
