@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any, TypeVar, cast
@@ -168,16 +168,16 @@ class _AsyncToyopucClientBase:
             self._client._last_rx = None
             self._client._fire_trace(ToyopucTraceDirection.SEND, payload)
             sent = True
-            async with asyncio.timeout_at(deadline):
-                await asyncio.get_running_loop().sock_sendall(sock, payload)
-                self._client._request_count += 1
-                self._client._tx_bytes += len(payload)
-                if self._client.transport == "tcp":
-                    header = await self._recv_exact(sock, 4)
-                    length = header[2] | (header[3] << 8)
-                    frame = header + await self._recv_exact(sock, length)
-                else:
-                    frame = await asyncio.get_running_loop().sock_recv(sock, _UDP_RECEIVE_BUFFER_SIZE)
+            loop = asyncio.get_running_loop()
+            await self._await_until_deadline(loop.sock_sendall(sock, payload), deadline)
+            self._client._request_count += 1
+            self._client._tx_bytes += len(payload)
+            if self._client.transport == "tcp":
+                header = await self._await_until_deadline(self._recv_exact(sock, 4), deadline)
+                length = header[2] | (header[3] << 8)
+                frame = header + await self._await_until_deadline(self._recv_exact(sock, length), deadline)
+            else:
+                frame = await self._await_until_deadline(loop.sock_recv(sock, _UDP_RECEIVE_BUFFER_SIZE), deadline)
             if generation != self._generation:
                 raise ToyopucClosedError("Operation was interrupted by close()")
             self._client._last_rx = bytes(frame)
@@ -194,7 +194,7 @@ class _AsyncToyopucClientBase:
                     cause=exc,
                 ) from exc
             raise
-        except TimeoutError as exc:
+        except asyncio.TimeoutError as exc:
             self._mark_udp_tainted(sent)
             self._retire_after_failure(require_explicit_reconnect=False)
             if state_changing and sent:
@@ -232,6 +232,11 @@ class _AsyncToyopucClientBase:
             offset += len(chunk)
         return bytes(data)
 
+    @staticmethod
+    async def _await_until_deadline(awaitable: Awaitable[_T], deadline: float) -> _T:
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+        return await asyncio.wait_for(awaitable, timeout=remaining)
+
     async def _open_socket(self, deadline: float, generation: int) -> None:
         loop = asyncio.get_running_loop()
         if self._client._fixed_udp_session_tainted:
@@ -243,13 +248,15 @@ class _AsyncToyopucClientBase:
                 try:
                     literal = ip_address(self._client.host)
                 except ValueError:
-                    async with asyncio.timeout_at(deadline):
-                        addresses = await loop.getaddrinfo(
+                    addresses = await self._await_until_deadline(
+                        loop.getaddrinfo(
                             self._client.host,
                             self._client.port,
                             family=socket.AF_INET,
                             type=socket.SOCK_STREAM if self._client.transport == "tcp" else socket.SOCK_DGRAM,
-                        )
+                        ),
+                        deadline,
+                    )
                     if not addresses:
                         raise OSError("Hostname did not resolve to IPv4") from None
                     endpoint = addresses[0][4]
@@ -264,13 +271,12 @@ class _AsyncToyopucClientBase:
                     candidate.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 elif self._client.local_port:
                     candidate.bind(("0.0.0.0", int(self._client.local_port)))
-                async with asyncio.timeout_at(deadline):
-                    await loop.sock_connect(candidate, endpoint)
+                await self._await_until_deadline(loop.sock_connect(candidate, endpoint), deadline)
                 if generation != self._generation:
                     raise ToyopucClosedError("Operation was interrupted by close()")
                 object.__setattr__(self, "_socket", candidate)
                 return
-            except TimeoutError as exc:
+            except asyncio.TimeoutError as exc:
                 last_error = exc
             except (OSError, ToyopucClosedError) as exc:
                 last_error = exc
@@ -284,7 +290,7 @@ class _AsyncToyopucClientBase:
                 if remaining <= 0:
                     raise ToyopucTimeoutError("Connect timeout") from last_error
                 await asyncio.sleep(min(float(self._client.retry_delay), remaining))
-        if isinstance(last_error, TimeoutError):
+        if isinstance(last_error, asyncio.TimeoutError):
             raise ToyopucTimeoutError("Connect timeout") from last_error
         raise ToyopucTransportError("Socket connection failed") from last_error
 

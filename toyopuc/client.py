@@ -626,7 +626,7 @@ def _expected_read_response_size_request(request: _RelayInnerRequest) -> int | N
     return None
 
 
-def _require_response_data_size(command: int, data: bytes, expected: int) -> None:
+def _require_response_data_size(command: int, data: bytes | memoryview, expected: int) -> None:
     if len(data) != expected:
         raise ToyopucProtocolError(
             f"CMD={command:02X} response data size mismatch: expected={expected}, actual={len(data)}"

@@ -466,7 +466,7 @@ def pack_u16_le(value: int) -> bytes:
     return bytes([normalized & 0xFF, (normalized >> 8) & 0xFF])
 
 
-def unpack_u16_le(data: bytes) -> list[int]:
+def unpack_u16_le(data: bytes | memoryview) -> list[int]:
     """Unpack little-endian 16-bit words from a byte payload."""
 
     if len(data) % 2 != 0:
@@ -564,7 +564,7 @@ def build_clock_write(
     return build_command(0x32, data)
 
 
-def parse_clock_data(data: bytes) -> ClockData:
+def parse_clock_data(data: bytes | memoryview) -> ClockData:
     """Parse a clock-read payload into `ClockData`."""
     if len(data) != 9 or data[0] != 0x70 or data[1] != 0x00:
         raise ToyopucProtocolError("Clock read response must be 9 bytes starting with 70 00")
@@ -579,7 +579,7 @@ def parse_clock_data(data: bytes) -> ClockData:
     )
 
 
-def parse_cpu_status_data(data: bytes) -> CpuStatusData:
+def parse_cpu_status_data(data: bytes | memoryview) -> CpuStatusData:
     """Parse a CPU-status payload into `CpuStatusData`."""
     if len(data) != 10 or data[0] != 0x11 or data[1] != 0x00:
         raise ToyopucProtocolError("CPU status response must be 10 bytes starting with 11 00")
@@ -595,7 +595,7 @@ def parse_cpu_status_data(data: bytes) -> CpuStatusData:
     )
 
 
-def parse_cpu_status_data_a0(data: bytes) -> CpuStatusData:
+def parse_cpu_status_data_a0(data: bytes | memoryview) -> CpuStatusData:
     """Parse a `CMD=A0 / 00 11 00` CPU-status payload into `CpuStatusData`."""
     if len(data) != 11 or data[:3] != bytes([0x00, 0x11, 0x00]):
         raise ToyopucProtocolError("A0 CPU status response must be 11 bytes starting with 00 11 00")
@@ -611,7 +611,7 @@ def parse_cpu_status_data_a0(data: bytes) -> CpuStatusData:
     )
 
 
-def parse_cpu_status_data_a0_raw(data: bytes) -> bytes:
+def parse_cpu_status_data_a0_raw(data: bytes | memoryview) -> bytes:
     """Parse `CMD=A0 / 00 11 00` CPU-status payload and return raw status bytes."""
     return parse_cpu_status_data_a0(data).raw_bytes
 

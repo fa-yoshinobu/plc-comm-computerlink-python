@@ -43,6 +43,11 @@ Acceptance criteria:
 ## Self-review disposition
 
 - Accepted and fixed: the first native-async aggregate adapter reused encoded payloads but replayed completed segment decode and reallocated the final list. Direct and relay async aggregates now execute one native prepared sequence, and the performance contract test requires each segment to be encoded, exchanged, and decoded exactly once.
+- Accepted and fixed after the first GitHub gate: Python 3.10 does not provide
+  `asyncio.timeout_at`, and the borrowed response view widened several private
+  decoder inputs without widening their annotations. Native waits now use
+  `asyncio.wait_for` with the same absolute deadline, and bytes/view-capable
+  decoder annotations pass the Python 3.10 sample type-check gate.
 
 ## Evidence checklist
 
