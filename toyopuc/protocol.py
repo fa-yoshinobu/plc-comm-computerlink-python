@@ -87,6 +87,19 @@ class ResponseFrame:
 
 
 @dataclass(frozen=True)
+class _ResponseFrameView:
+    """Private response metadata borrowing the client-owned complete frame."""
+
+    ft: int
+    rc: int
+    cmd: int
+    data: memoryview
+
+    def to_owned(self) -> ResponseFrame:
+        return ResponseFrame(self.ft, self.rc, self.cmd, bytes(self.data))
+
+
+@dataclass(frozen=True)
 class ClockData:
     """Raw PLC clock fields returned by ``CMD=32 / 70 00``.
 
@@ -429,15 +442,21 @@ def build_command(cmd: int, data: bytes) -> bytes:
 
 def parse_response(frame: bytes) -> ResponseFrame:
     """Parse a raw response frame into a `ResponseFrame`."""
-    if len(frame) < 5:
+    return _parse_response_view(frame).to_owned()
+
+
+def _parse_response_view(frame: bytes | memoryview) -> _ResponseFrameView:
+    """Validate a complete response and borrow its payload for immediate typed decode."""
+
+    source = memoryview(frame)
+    if len(source) < 5:
         raise ToyopucProtocolError("Response too short")
-    ft, rc, ll, lh, cmd = frame[:5]
+    ft, rc, ll, lh, cmd = source[:5]
     length = ll | (lh << 8)
     expected = 4 + length
-    if len(frame) != expected:
-        raise ToyopucProtocolError(f"Invalid length: expected {expected} bytes, got {len(frame)} bytes")
-    data = frame[5:]
-    return ResponseFrame(ft=ft, rc=rc, cmd=cmd, data=data)
+    if len(source) != expected:
+        raise ToyopucProtocolError(f"Invalid length: expected {expected} bytes, got {len(source)} bytes")
+    return _ResponseFrameView(ft=ft, rc=rc, cmd=cmd, data=source[5:])
 
 
 def pack_u16_le(value: int) -> bytes:

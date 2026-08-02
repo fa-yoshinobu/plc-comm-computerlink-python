@@ -6,7 +6,7 @@ import struct
 import time
 from _thread import LockType
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,7 +15,7 @@ from functools import wraps
 from ipaddress import ip_address
 from queue import Empty, Full, Queue
 from threading import Condition, Event, Lock, RLock, Thread, local
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from .address import encode_fr_word_addr32, fr_block_ex_no
 from .errors import (
@@ -38,7 +38,9 @@ from .protocol import (
     _build_relay_command_trimmed,
     _build_relay_nested_parsed,
     _parse_relay_inner_request,
+    _parse_response_view,
     _RelayInnerRequest,
+    _ResponseFrameView,
     build_bit_read,
     build_bit_write,
     build_byte_read,
@@ -76,6 +78,7 @@ from .protocol import (
     unpack_u16_le,
 )
 from .relay import (
+    _unwrap_relay_response_chain_view,
     normalize_relay_hops,
     parse_relay_inner_response,
     unwrap_relay_response_chain,
@@ -91,6 +94,15 @@ class ToyopucTrafficStats:
     request_count: int
     tx_bytes: int
     rx_bytes: int
+
+
+@dataclass(frozen=True)
+class _PreparedRelayRead:
+    """Owned relay request prepared before an aggregate operation sends anything."""
+
+    outer_payload: bytes
+    request: _RelayInnerRequest
+    normalized_hops: tuple[tuple[int, int], ...]
 
 
 class ToyopucTraceDirection(Enum):
@@ -185,7 +197,7 @@ def _snapshot_operation_argument(value: object) -> object:
 
 @dataclass(frozen=True)
 class _PreparedOperationArguments:
-    """Detached public inputs that may cross the FIFO or worker boundary once."""
+    """Detached public inputs that may cross the FIFO admission boundary once."""
 
     args: tuple[object, ...]
     kwargs: dict[str, object]
@@ -516,7 +528,7 @@ def _pack_float32_low_word_first_words(values: Iterable[float]) -> list[int]:
     return words
 
 
-def format_response_error(resp: ResponseFrame) -> str:
+def format_response_error(resp: ResponseFrame | _ResponseFrameView) -> str:
     """Return a human-readable description for a non-OK response frame."""
 
     msg = f"Response error rc=0x{resp.rc:02X}"
@@ -715,6 +727,7 @@ class ToyopucClient:
         self._request_count = 0
         self._tx_bytes = 0
         self._rx_bytes = 0
+        self._async_transport_script: object | None = None
 
     def traffic_stats(self) -> ToyopucTrafficStats:
         """Return an immutable lifetime traffic-counter snapshot."""
@@ -850,7 +863,7 @@ class ToyopucClient:
 
     @property
     def _cancel_event(self) -> Event:
-        """Compatibility view of the current worker's private cancellation scope."""
+        """Compatibility view of the current operation's private cancellation scope."""
 
         return self._operation_cancel_event()
 
@@ -1014,7 +1027,7 @@ class ToyopucClient:
     def _send_and_decode(
         self,
         payload: bytes,
-        decode: Callable[[ResponseFrame], _T],
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
         *,
         state_changing: bool = False,
     ) -> _T:
@@ -1059,10 +1072,22 @@ class ToyopucClient:
         payload: bytes,
         *,
         state_changing: bool,
-        decode: Callable[[ResponseFrame], object] | None,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], object] | None,
     ) -> object:
         request = _parse_relay_inner_request(payload)
         expected_read_size = None if state_changing else _expected_read_response_size_request(request)
+        script = self._async_transport_script
+        if script is not None:
+            frame = script.exchange(payload, state_changing)  # type: ignore[attr-defined]
+            return self._decode_received_frame(
+                request,
+                expected_read_size,
+                state_changing,
+                decode,
+                frame,
+                deadline=None,
+                record_diagnostics=False,
+            )
         deadline = time.monotonic() + self._operation_timeout()
         self._raise_if_cancelled()
         if not self._sock:
@@ -1148,11 +1173,34 @@ class ToyopucClient:
                 ) from cause
             raise transport_error from exc
 
+        return self._decode_received_frame(
+            request,
+            expected_read_size,
+            state_changing,
+            decode,
+            frame,
+            deadline=deadline,
+            record_diagnostics=True,
+        )
+
+    def _decode_received_frame(
+        self,
+        request: _RelayInnerRequest,
+        expected_read_size: int | None,
+        state_changing: bool,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], object] | None,
+        frame: bytes,
+        *,
+        deadline: float | None,
+        record_diagnostics: bool,
+    ) -> object:
         def validate_and_decode() -> object:
-            self._fire_trace(ToyopucTraceDirection.RECEIVE, frame)
-            self._last_rx = frame
-            resp = parse_response(frame)
-            _remaining_time(deadline, "Response decode timeout")
+            if record_diagnostics:
+                self._fire_trace(ToyopucTraceDirection.RECEIVE, frame)
+                self._last_rx = frame
+            resp = parse_response(frame) if decode is None else _parse_response_view(frame)
+            if deadline is not None:
+                _remaining_time(deadline, "Response decode timeout")
             if resp.ft != FT_RESPONSE:
                 raise ToyopucProtocolError(f"Unexpected frame type: 0x{resp.ft:02X}")
             if resp.rc != 0x00 and resp.data and resp.cmd != request.command:
@@ -1220,7 +1268,7 @@ class ToyopucClient:
 
     def read_bytes(self, addr: int, count: int) -> bytes:
         """Read one or more basic-area bytes with `CMD=1E`."""
-        return self._send_and_decode(build_byte_read(addr, count), lambda response: response.data)
+        return self._send_and_decode(build_byte_read(addr, count), lambda response: bytes(response.data))
 
     def write_bytes(self, addr: int, values: Iterable[int]) -> None:
         """Write one or more basic-area bytes with `CMD=1F`."""
@@ -1295,7 +1343,7 @@ class ToyopucClient:
         address_list = list(addrs)
         return self._send_and_decode(
             build_multi_byte_read(address_list),
-            lambda response: response.data,
+            lambda response: bytes(response.data),
         )
 
     def write_bytes_multi(self, pairs: Iterable[tuple[int, int]]) -> None:
@@ -1317,7 +1365,7 @@ class ToyopucClient:
         """Read extended-area bytes with `CMD=96` using `(No., addr)`."""
         return self._send_and_decode(
             build_ext_byte_read(no, addr, count),
-            lambda response: response.data,
+            lambda response: bytes(response.data),
         )
 
     def write_ext_bytes(self, no: int, addr: int, values: Iterable[int]) -> None:
@@ -1345,7 +1393,7 @@ class ToyopucClient:
         words = list(word_points)
         return self._send_and_decode(
             build_ext_multi_read(bits, bytes_, words),
-            lambda response: response.data,
+            lambda response: bytes(response.data),
         )
 
     def write_ext_multi(
@@ -1367,7 +1415,7 @@ class ToyopucClient:
         """Read PC10 block data with `CMD=C2` from a 32-bit byte address."""
         return self._send_and_decode(
             build_pc10_block_read(addr32, count),
-            lambda response: response.data,
+            lambda response: bytes(response.data),
         )
 
     def pc10_block_write(self, addr32: int, data_bytes: bytes) -> None:
@@ -1378,7 +1426,7 @@ class ToyopucClient:
         """Read PC10 multi-point data with `CMD=C4` using a prebuilt payload."""
         return self._send_and_decode(
             build_pc10_multi_read(payload),
-            lambda response: response.data,
+            lambda response: bytes(response.data),
         )
 
     def pc10_multi_write(self, payload: bytes) -> None:
@@ -1448,13 +1496,17 @@ class ToyopucClient:
 
     def send_via_relay(self, hops: str | Iterable[tuple[int, int]], inner_payload: bytes) -> ResponseFrame:
         """Send a command through relay hops and return the final inner response."""
-        return self._send_via_relay_decoded(hops, inner_payload, lambda response: response)
+        return self._send_via_relay_decoded(
+            hops,
+            inner_payload,
+            lambda response: response.to_owned() if isinstance(response, _ResponseFrameView) else response,
+        )
 
     def _send_via_relay_decoded(
         self,
         hops: str | Iterable[tuple[int, int]],
         inner_payload: bytes,
-        decode: Callable[[ResponseFrame], _T],
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
     ) -> _T:
         with self._operation_turn():
             return self._send_via_relay_decoded_admitted(hops, inner_payload, decode)
@@ -1463,21 +1515,21 @@ class ToyopucClient:
         self,
         hops: str | Iterable[tuple[int, int]],
         inner_payload: bytes,
-        decode: Callable[[ResponseFrame], _T],
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
+    ) -> _T:
+        if type(self)._relay_nested_request is not ToyopucClient._relay_nested_request:
+            return self._send_via_relay_decoded_legacy(hops, inner_payload, decode)
+        prepared = self._prepare_relay_read(hops, inner_payload)
+        return self._send_prepared_relay_read_decoded_admitted(prepared, decode)
+
+    def _send_via_relay_decoded_legacy(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        inner_payload: bytes,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
     ) -> _T:
         request = _parse_relay_inner_request(inner_payload)
-        normalized: tuple[tuple[int, int], ...]
-        if isinstance(hops, str):
-            cached = self._relay_hops_cache.get(hops)
-            if cached is None:
-                normalized = tuple(normalize_relay_hops(hops))
-                if len(self._relay_hops_cache) >= 128:
-                    self._relay_hops_cache.clear()
-                self._relay_hops_cache[hops] = normalized
-            else:
-                normalized = cached
-        else:
-            normalized = tuple(normalize_relay_hops(hops))
+        normalized = tuple(normalize_relay_hops(hops))
         state_changing = not _is_read_only_request(request)
         outer = self._relay_nested_request(normalized, request, inner_payload)
         layers, final = self._run_post_send_decode(
@@ -1490,7 +1542,16 @@ class ToyopucClient:
             raise ToyopucProtocolError(
                 f"Relay NAK at link=0x{last.link_no:02X}, station=0x{last.station_no:04X}, ack=0x{last.ack:02X}"
             )
+        return self._validate_and_decode_relay(request, final, decode, state_changing=state_changing)
 
+    def _validate_and_decode_relay(
+        self,
+        request: _RelayInnerRequest,
+        final: ResponseFrame | _ResponseFrameView,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
+        *,
+        state_changing: bool,
+    ) -> _T:
         def validate_and_decode_relay() -> _T:
             if final.cmd != request.command:
                 raise ToyopucProtocolError(
@@ -1516,6 +1577,95 @@ class ToyopucClient:
             state_changing=state_changing,
             failure_message="Command-specific Relay response decode failed",
         )
+
+    def _prepare_relay_read(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        inner_payload: bytes,
+    ) -> _PreparedRelayRead:
+        request = _parse_relay_inner_request(inner_payload)
+        normalized: tuple[tuple[int, int], ...]
+        if isinstance(hops, str):
+            cached = self._relay_hops_cache.get(hops)
+            if cached is None:
+                normalized = tuple(normalize_relay_hops(hops))
+                if len(self._relay_hops_cache) >= 128:
+                    self._relay_hops_cache.clear()
+                self._relay_hops_cache[hops] = normalized
+            else:
+                normalized = cached
+        else:
+            normalized = tuple(normalize_relay_hops(hops))
+        return self._prepare_relay_read_normalized(normalized, inner_payload, request=request)
+
+    @staticmethod
+    def _prepare_relay_read_normalized(
+        normalized: tuple[tuple[int, int], ...],
+        inner_payload: bytes,
+        *,
+        request: _RelayInnerRequest | None = None,
+    ) -> _PreparedRelayRead:
+        parsed = _parse_relay_inner_request(inner_payload) if request is None else request
+        return _PreparedRelayRead(
+            outer_payload=_build_relay_nested_parsed(list(normalized), parsed),
+            request=parsed,
+            normalized_hops=normalized,
+        )
+
+    def _send_prepared_relay_read_decoded(
+        self,
+        prepared: _PreparedRelayRead,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
+    ) -> _T:
+        with self._operation_turn():
+            return self._send_prepared_relay_read_decoded_admitted(prepared, decode)
+
+    def _send_prepared_relay_read_decoded_admitted(
+        self,
+        prepared: _PreparedRelayRead,
+        decode: Callable[[ResponseFrame | _ResponseFrameView], _T],
+    ) -> _T:
+        request = prepared.request
+        state_changing = not _is_read_only_request(request)
+        outer = cast(
+            _ResponseFrameView,
+            self._send_and_recv_admitted(
+                prepared.outer_payload,
+                state_changing=state_changing,
+                decode=lambda response: response,
+            ),
+        )
+        layers, final = self._run_post_send_decode(
+            lambda: _unwrap_relay_response_chain_view(outer),
+            state_changing=state_changing,
+            failure_message="Relay response unwrap failed",
+        )
+        if final is None:
+            last = layers[-1]
+            raise ToyopucProtocolError(
+                f"Relay NAK at link=0x{last.link_no:02X}, station=0x{last.station_no:04X}, ack=0x{last.ack:02X}"
+            )
+
+        self._validate_relay_route(layers, prepared.normalized_hops)
+
+        return self._validate_and_decode_relay(request, final, decode, state_changing=state_changing)
+
+    @staticmethod
+    def _validate_relay_route(
+        layers: Sequence[Any],
+        expected_hops: Sequence[tuple[int, int]],
+    ) -> None:
+        if len(layers) != len(expected_hops):
+            raise ToyopucProtocolError(
+                f"Unexpected relay response depth: expected {len(expected_hops)}, got {len(layers)}"
+            )
+        for index, (layer, expected) in enumerate(zip(layers, expected_hops, strict=True)):
+            if (layer.link_no, layer.station_no) != expected:
+                raise ToyopucProtocolError(
+                    f"Unexpected relay response route at layer {index}: "
+                    f"expected link=0x{expected[0]:02X}, station=0x{expected[1]:04X}; "
+                    f"got link=0x{layer.link_no:02X}, station=0x{layer.station_no:04X}"
+                )
 
     def relay_read_words(self, hops: str | Iterable[tuple[int, int]], addr: int, count: int) -> list[int]:
         """Read one or more basic-area words through relay hops."""

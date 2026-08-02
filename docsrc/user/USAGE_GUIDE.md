@@ -81,10 +81,11 @@ TCP/UDP socket creation, UDP bind/connect, TCP no-delay configuration, and final
 client adoption. An IPv4 literal bypasses DNS. No phase or retry receives a
 fresh timeout, and IPv6 is never attempted.
 
-If a platform resolver or socket call cannot be cancelled, timeout or async
-caller cancellation returns without adopting it. A late socket is closed by
-the isolated connection worker and cannot send a request or change client
-state. Absolute expiry raises `ToyopucTimeoutError`; a native connection failure
+If a platform resolver cannot be cancelled internally, timeout or async caller
+cancellation still prevents its result from being adopted. Native asyncio
+socket waits are cancellable and do not reserve one client-owned worker thread.
+A canceled candidate socket cannot send a request or change client state.
+Absolute expiry raises `ToyopucTimeoutError`; a native connection failure
 that finishes before expiry raises `ToyopucTransportError` with its cause.
 
 ## Read single
@@ -213,14 +214,13 @@ outcome-unknown for a state-changing request. The protocol's no-data `RC=0x10`
 special error form still uses the command byte as detailed PLC error data and is
 not subjected to command-echo correlation.
 
-If asyncio cancellation races with a worker that has already established
-`ToyopucOperationOutcomeUnknownError`, the unknown outcome is returned instead
-of cancellation. Reconcile PLC state even though the awaiting task was being
-cancelled. Completed success or another completed worker exception retains the
-caller-visible `asyncio.CancelledError`.
+Async cancellation directly interrupts the active native socket wait. If a
+state-changing request may already have been sent, the operation raises
+`ToyopucOperationOutcomeUnknownError` instead of implying that the write was
+not applied.
 
-Mutable inputs to async operations are snapshotted exactly once before worker
-submission. A generator is consumed during that admission step, and changing
+Mutable inputs to async operations are snapshotted exactly once before FIFO
+admission. A generator is consumed during that admission step, and changing
 the original list, mapping, buffer, or nested value afterward cannot change the
 request. Direct synchronous calls also snapshot once, so every public
 operation observes one stable logical snapshot.

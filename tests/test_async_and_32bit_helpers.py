@@ -1,5 +1,4 @@
 import asyncio
-from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -115,7 +114,7 @@ class _DummyAsyncSurfaceClient(AsyncToyopucDeviceClient):
     def __init__(self) -> None:
         object.__setattr__(self, "_client", _DummySurfaceSyncClient())
 
-    async def _run_sync_in_worker(self, func, /, *args, **kwargs):
+    async def _run_native_callable(self, func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
 
@@ -133,7 +132,7 @@ class _NoIoAsyncHighLevelClient(AsyncToyopucDeviceClient):
     def __init__(self) -> None:
         object.__setattr__(self, "_client", _NoIoHighLevelClient())
 
-    async def _run_sync_in_worker(self, func, /, *args, **kwargs):
+    async def _run_native_callable(self, func, /, *args, **kwargs):
         return func(*args, **kwargs)
 
 
@@ -828,27 +827,12 @@ def test_removed_fr_combined_and_range_surfaces_are_not_public() -> None:
         assert not hasattr(client, name)
 
 
-def test_async_cancellation_stops_worker_before_returning() -> None:
+def test_async_client_has_no_private_worker_execution_surface() -> None:
     client = AsyncToyopucDeviceClient(
         "127.0.0.1",
         1025,
         transport="tcp",
         plc_profile=GENERIC_PROFILE,
     )
-    started = Event()
-
-    def blocking_operation() -> None:
-        started.set()
-        client._client._cancel_event.wait()
-        client._client._raise_if_cancelled()
-
-    async def run() -> None:
-        task = asyncio.create_task(client._run_sync_in_worker(blocking_operation))
-        await asyncio.to_thread(started.wait, 1)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        assert not client._client._cancel_event.is_set()
-        assert await client._run_sync_in_worker(lambda: 42) == 42
-
-    asyncio.run(run())
+    assert not hasattr(client, "_run_sync_in_worker")
+    assert not hasattr(client, "_executor")

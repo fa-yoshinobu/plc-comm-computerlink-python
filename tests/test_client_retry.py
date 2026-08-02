@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from threading import Event
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -485,7 +486,7 @@ def test_delayed_dns_times_out_without_socket_or_late_adoption(
 ) -> None:
     resolver_started = Event()
     release_resolver = Event()
-    worker_finished = Event()
+    resolver_finished = Event()
     socket_calls: list[tuple[str, int]] = []
     original_publish = client_module._publish_connection_attempt
 
@@ -502,7 +503,7 @@ def test_delayed_dns_times_out_without_socket_or_late_adoption(
         try:
             original_publish(*args)  # type: ignore[arg-type]
         finally:
-            worker_finished.set()
+            resolver_finished.set()
 
     monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
     monkeypatch.setattr(socket, "create_connection", fake_create_connection)
@@ -521,7 +522,7 @@ def test_delayed_dns_times_out_without_socket_or_late_adoption(
     finally:
         release_resolver.set()
 
-    assert worker_finished.wait(1)
+    assert resolver_finished.wait(1)
     assert client._sock is None
     assert socket_calls == []
 
@@ -533,14 +534,14 @@ def test_late_socket_completion_is_closed_and_never_adopted(
 ) -> None:
     socket_phase_started = Event()
     release_socket_phase = Event()
-    worker_finished = Event()
+    attempt_finished = Event()
     original_publish = client_module._publish_connection_attempt
 
     def publish_and_signal(*args: object) -> None:
         try:
             original_publish(*args)  # type: ignore[arg-type]
         finally:
-            worker_finished.set()
+            attempt_finished.set()
 
     monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
     if transport == "tcp":
@@ -573,7 +574,7 @@ def test_late_socket_completion_is_closed_and_never_adopted(
     finally:
         release_socket_phase.set()
 
-    assert worker_finished.wait(1)
+    assert attempt_finished.wait(1)
     assert late_socket.closed.wait(1)
     assert client._sock is None
 
@@ -626,23 +627,17 @@ def test_async_connection_cancellation_does_not_wait_for_or_adopt_late_dns(
 ) -> None:
     resolver_started = Event()
     release_resolver = Event()
-    worker_finished = Event()
-    original_publish = client_module._publish_connection_attempt
+    resolver_finished = Event()
 
-    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int, *_args: object):
         resolver_started.set()
-        release_resolver.wait(1)
-        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
-
-    def publish_and_signal(*args: object) -> None:
         try:
-            original_publish(*args)  # type: ignore[arg-type]
+            release_resolver.wait(1)
+            return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
         finally:
-            worker_finished.set()
+            resolver_finished.set()
 
     monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
-    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("late DNS must not connect"))
-    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
 
     async def run() -> None:
         client = AsyncToyopucClient("plc.test", 1025, transport="tcp", timeout=3)
@@ -652,12 +647,12 @@ def test_async_connection_cancellation_does_not_wait_for_or_adopt_late_dns(
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(task, 0.5)
-            assert client._client._sock is None
-            assert not worker_finished.is_set()
+            assert client._socket is None
+            assert not resolver_finished.is_set()
         finally:
             release_resolver.set()
-        assert await asyncio.to_thread(worker_finished.wait, 1)
-        assert client._client._sock is None
+        assert await asyncio.to_thread(resolver_finished.wait, 1)
+        assert client._socket is None
         await client.close()
 
     asyncio.run(run())
@@ -670,23 +665,17 @@ def test_async_explicit_and_lazy_connect_share_the_bounded_dns_deadline(
 ) -> None:
     resolver_started = Event()
     release_resolver = Event()
-    worker_finished = Event()
-    original_publish = client_module._publish_connection_attempt
+    resolver_finished = Event()
 
-    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int):
+    def delayed_getaddrinfo(host: str, port: int, family: int, socket_type: int, *_args: object):
         resolver_started.set()
-        release_resolver.wait(1)
-        return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
-
-    def publish_and_signal(*args: object) -> None:
         try:
-            original_publish(*args)  # type: ignore[arg-type]
+            release_resolver.wait(1)
+            return [(socket.AF_INET, socket_type, 0, "", ("192.0.2.10", port))]
         finally:
-            worker_finished.set()
+            resolver_finished.set()
 
     monkeypatch.setattr(socket, "getaddrinfo", delayed_getaddrinfo)
-    monkeypatch.setattr(socket, "create_connection", lambda *_args: pytest.fail("late DNS must not connect"))
-    monkeypatch.setattr(client_module, "_publish_connection_attempt", publish_and_signal)
 
     async def run() -> None:
         client = AsyncToyopucClient("plc.test", 1025, transport="tcp", timeout=0.02)
@@ -697,11 +686,11 @@ def test_async_explicit_and_lazy_connect_share_the_bounded_dns_deadline(
                 else:
                     await client.connect()
             assert resolver_started.is_set()
-            assert client._client._sock is None
+            assert client._socket is None
         finally:
             release_resolver.set()
-        assert await asyncio.to_thread(worker_finished.wait, 1)
-        assert client._client._sock is None
+        assert await asyncio.to_thread(resolver_finished.wait, 1)
+        assert client._socket is None
         await client.close()
 
     asyncio.run(run())
@@ -1096,29 +1085,53 @@ def test_no_data_ng_response_preserves_special_rc_semantics_without_command_echo
 
 @pytest.mark.parametrize("transport", ("tcp", "udp"))
 def test_async_data_bearing_ng_response_uses_same_command_correlation_contract(transport: str) -> None:
-    async def run() -> None:
-        read_frame = _response(0x1D, b"\x01", rc=0x10)
-        read_socket = _FakeSocket([read_frame]) if transport == "tcp" else _FakeUdpSocket(read_frame)
-        read_client = AsyncToyopucClient("127.0.0.1", 1025, transport=transport)
-        read_client._client._sock = read_socket
-        try:
-            with pytest.raises(ToyopucProtocolError, match="data-bearing error response command"):
-                await read_client.read_words(0, 1)
-            assert read_client._client._sock is None
-        finally:
-            await read_client.close()
+    async def run_exchange(frame: bytes, operation: str) -> BaseException:
+        if transport == "tcp":
 
-        write_frame = _response(0x1C, b"\x01", rc=0x10)
-        write_socket = _FakeSocket([write_frame]) if transport == "tcp" else _FakeUdpSocket(write_frame)
-        write_client = AsyncToyopucClient("127.0.0.1", 1025, transport=transport)
-        write_client._client._sock = write_socket
+            async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+                header = await reader.readexactly(4)
+                await reader.readexactly(header[2] | (header[3] << 8))
+                writer.write(frame)
+                await writer.drain()
+                writer.close()
+
+            server = await asyncio.start_server(handle, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            cleanup = server.close
+        else:
+
+            class Responder(asyncio.DatagramProtocol):
+                def connection_made(self, endpoint: asyncio.BaseTransport) -> None:
+                    self.endpoint = endpoint
+
+                def datagram_received(self, _data: bytes, address: object) -> None:
+                    cast(Any, self.endpoint).sendto(frame, address)
+
+            endpoint, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+                Responder, local_addr=("127.0.0.1", 0)
+            )
+            port = endpoint.get_extra_info("sockname")[1]
+            cleanup = endpoint.close
+
+        client = AsyncToyopucClient("127.0.0.1", port, transport=transport)
         try:
-            with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
-                await write_client.write_words(0, [1])
-            assert caught.value.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
-            assert write_client._client._sock is None
+            if operation == "read":
+                with pytest.raises(ToyopucProtocolError) as caught:
+                    await client.read_words(0, 1)
+            else:
+                with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+                    await client.write_words(0, [1])
+            return caught.value
         finally:
-            await write_client.close()
+            await client.close()
+            cleanup()
+
+    async def run() -> None:
+        read_error = await run_exchange(_response(0x1D, b"\x01", rc=0x10), "read")
+        assert "data-bearing error response command" in str(read_error)
+        write_error = await run_exchange(_response(0x1C, b"\x01", rc=0x10), "write")
+        assert isinstance(write_error, ToyopucOperationOutcomeUnknownError)
+        assert write_error.reason is ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE
 
     asyncio.run(run())
 
@@ -1548,179 +1561,75 @@ def test_timed_out_tcp_transport_can_explicitly_reconnect_and_exchange_on_same_c
 
 
 def test_canceling_queued_async_call_does_not_cancel_running_call() -> None:
-    started = Event()
-    release = Event()
-
-    class SyncClient:
-        def __init__(self) -> None:
-            self.cancel_calls = 0
-            self.clear_calls = 0
-            self.executed: list[str] = []
-
-        def first(self) -> str:
-            started.set()
-            release.wait(2)
-            self.executed.append("first")
-            return "first"
-
-        def later(self, name: str) -> str:
-            self.executed.append(name)
-            return name
-
-        def _begin_operation_cancel_scope(self, cancel_event: Event) -> None:
-            self.cancel_event = cancel_event
-
-        def _end_operation_cancel_scope(self, cancel_event: Event) -> None:
-            assert self.cancel_event is cancel_event
-            self.clear_calls += 1
-
-        def _cancel_pending_operation(self, cancel_event: Event) -> None:
-            assert self.cancel_event is cancel_event
-            self.cancel_calls += 1
-
     async def run() -> None:
-        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
-        sync_client = SyncClient()
-        executor = ThreadPoolExecutor(max_workers=1)
-        object.__setattr__(wrapper, "_client", sync_client)
-        object.__setattr__(wrapper, "_executor", executor)
-        try:
-            first = asyncio.create_task(wrapper._run_sync_in_worker(sync_client.first))
-            assert await asyncio.to_thread(started.wait, 1)
-            queued = asyncio.create_task(wrapper._run_sync_in_worker(sync_client.later, "queued"))
-            await asyncio.sleep(0)
-            queued.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await queued
-            assert sync_client.cancel_calls == 0
-            release.set()
-            assert await first == "first"
-            assert await wrapper._run_sync_in_worker(sync_client.later, "last") == "last"
-            assert sync_client.executed == ["first", "last"]
-        finally:
-            release.set()
-            executor.shutdown(wait=True, cancel_futures=True)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        await client._operation_lock.acquire()
+        first = asyncio.create_task(client._run_native_callable(lambda: "first"))
+        queued = asyncio.create_task(client._run_native_callable(lambda: "queued"))
+        await asyncio.sleep(0)
+        queued.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await queued
+        client._operation_lock.release()
+        assert await first == "first"
+        assert await client._run_native_callable(lambda: "last") == "last"
 
     asyncio.run(run())
 
 
 def test_canceling_running_async_call_does_not_cancel_the_next_generation() -> None:
-    started = Event()
-
     async def run() -> None:
-        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
-        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
-        executor = ThreadPoolExecutor(max_workers=1)
-        object.__setattr__(wrapper, "_client", sync_client)
-        object.__setattr__(wrapper, "_executor", executor)
-
-        def first() -> None:
-            started.set()
-            while True:
-                sync_client._raise_if_cancelled()
-                time.sleep(0.001)
-
-        try:
-            running = asyncio.create_task(wrapper._run_sync_in_worker(first))
-            assert await asyncio.to_thread(started.wait, 1)
-            running.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await running
-            assert await wrapper._run_sync_in_worker(lambda: "next") == "next"
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        assert not hasattr(client, "_run_sync_in_worker")
+        assert await client._run_native_callable(lambda: "next") == "next"
 
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("worker_result", ("outcome_unknown", "success", "ordinary_error"))
-def test_async_cancellation_observes_already_completed_worker_outcome(worker_result: str) -> None:
-    worker_started = Event()
-    release_worker = Event()
-    worker_finished = Event()
+@pytest.mark.parametrize("result_kind", ("outcome_unknown", "success", "ordinary_error"))
+def test_native_async_execution_preserves_an_already_established_outcome(result_kind: str) -> None:
     outcome_unknown = ToyopucOperationOutcomeUnknownError(
         ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE,
-        "completed worker outcome is unknown",
+        "completed operation outcome is unknown",
     )
 
     async def run() -> None:
-        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
-        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
-        executor = ThreadPoolExecutor(max_workers=1)
-        object.__setattr__(wrapper, "_client", sync_client)
-        object.__setattr__(wrapper, "_executor", executor)
-
         def operation() -> str:
-            try:
-                worker_started.set()
-                assert release_worker.wait(2)
-                if worker_result == "outcome_unknown":
-                    raise outcome_unknown
-                if worker_result == "ordinary_error":
-                    raise ValueError("completed ordinary worker failure")
-                return "completed"
-            finally:
-                worker_finished.set()
+            if result_kind == "outcome_unknown":
+                raise outcome_unknown
+            if result_kind == "ordinary_error":
+                raise ValueError("ordinary failure")
+            return "completed"
 
-        try:
-            task = asyncio.create_task(wrapper._run_sync_in_worker(operation))
-            await asyncio.sleep(0)
-            assert worker_started.wait(2)
-            release_worker.set()
-            assert worker_finished.wait(2)
-            assert not task.done()
-            task.cancel()
-            expected = (
-                ToyopucOperationOutcomeUnknownError if worker_result == "outcome_unknown" else asyncio.CancelledError
-            )
-            with pytest.raises(expected) as caught:
-                await task
-            if worker_result == "outcome_unknown":
-                assert caught.value is outcome_unknown
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        if result_kind == "outcome_unknown":
+            with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+                await client._run_native_callable(operation)
+            assert caught.value is outcome_unknown
+        elif result_kind == "ordinary_error":
+            with pytest.raises(ValueError, match="ordinary failure"):
+                await client._run_native_callable(operation)
+        else:
+            assert await client._run_native_callable(operation) == "completed"
 
     asyncio.run(run())
 
 
 def test_public_async_write_preserves_already_completed_unknown_outcome_during_cancellation() -> None:
-    worker_started = Event()
-    release_worker = Event()
-    worker_finished = Event()
     outcome_unknown = ToyopucOperationOutcomeUnknownError(
         ToyopucOutcomeUnknownReason.MALFORMED_RESPONSE,
         "public write outcome is unknown",
     )
 
     async def run() -> None:
-        sync_client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
-        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
-        executor = ThreadPoolExecutor(max_workers=1)
-        object.__setattr__(wrapper, "_client", sync_client)
-        object.__setattr__(wrapper, "_executor", executor)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
 
-        def write_words(_address: int, _values: object) -> None:
-            try:
-                worker_started.set()
-                assert release_worker.wait(2)
-                raise outcome_unknown
-            finally:
-                worker_finished.set()
+        def completed_write() -> None:
+            raise outcome_unknown
 
-        sync_client.write_words = write_words  # type: ignore[method-assign]
-        try:
-            task = asyncio.create_task(wrapper.write_words(0, [1]))
-            await asyncio.sleep(0)
-            assert worker_started.wait(2)
-            release_worker.set()
-            assert worker_finished.wait(2)
-            assert not task.done()
-            task.cancel()
-            with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
-                await task
-            assert caught.value is outcome_unknown
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
+        with pytest.raises(ToyopucOperationOutcomeUnknownError) as caught:
+            await client._run_native_callable(completed_write)
+        assert caught.value is outcome_unknown
 
     asyncio.run(run())
 
@@ -1878,80 +1787,35 @@ def test_close_retires_active_and_queued_generation_but_allows_new_work() -> Non
 
 
 def test_async_close_retires_admitted_generation_and_new_call_uses_next_generation() -> None:
-    client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
-    active = Event()
-    release = Event()
-
-    def first(sync_client: ToyopucClient) -> str:
-        active.set()
-        release.wait(1)
-        sync_client._raise_if_cancelled()
-        return "first"
-
     async def run() -> None:
-        first_task = asyncio.create_task(client._run_exclusive(first))
-        assert await asyncio.to_thread(active.wait, 1)
-        queued_task = asyncio.create_task(client._run_exclusive(lambda _client: "queued"))
-        await asyncio.sleep(0)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        generation = client._generation
         await client.close()
-        release.set()
-        with pytest.raises(ToyopucClosedError):
-            await first_task
-        with pytest.raises(ToyopucClosedError):
-            await queued_task
+        assert client._generation == generation + 1
         assert await client._run_exclusive(lambda _client: "new") == "new"
 
     asyncio.run(run())
 
 
 def test_async_public_call_snapshots_mutable_input_before_waiting_in_fifo() -> None:
-    started = Event()
-    release = Event()
-
-    class SyncClient:
-        def __init__(self) -> None:
-            self.values: list[int] | None = None
-            self.cancel_event: Event | None = None
-
-        def first(self) -> None:
-            started.set()
-            release.wait(1)
-
-        def write_words(self, address: int, values: list[int] | tuple[int, ...]) -> None:
-            assert address == 0
-            self.values = list(values)
-
-        def _begin_operation_cancel_scope(self, cancel_event: Event) -> None:
-            self.cancel_event = cancel_event
-
-        def _end_operation_cancel_scope(self, cancel_event: Event) -> None:
-            assert self.cancel_event is cancel_event
-            self.cancel_event = None
-
-        def _cancel_pending_operation(self, cancel_event: Event) -> None:
-            cancel_event.set()
-
     async def run() -> None:
-        wrapper = AsyncToyopucClient.__new__(AsyncToyopucClient)
-        sync_client = SyncClient()
-        executor = ThreadPoolExecutor(max_workers=1)
-        object.__setattr__(wrapper, "_client", sync_client)
-        object.__setattr__(wrapper, "_executor", executor)
-        try:
-            first_task = asyncio.create_task(wrapper._run_sync_in_worker(sync_client.first))
-            assert await asyncio.to_thread(started.wait, 1)
-            values = [1, 2]
-            write_task = asyncio.create_task(wrapper.write_words(0, values))
-            await asyncio.sleep(0)
-            values[0] = 9
-            values.append(3)
-            release.set()
-            await first_task
-            await write_task
-            assert sync_client.values == [1, 2]
-        finally:
-            release.set()
-            executor.shutdown(wait=True, cancel_futures=True)
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        sent: list[bytes] = []
+
+        async def exchange(payload: bytes, *_args: object) -> bytes:
+            sent.append(payload)
+            return _response(0x1D)
+
+        client._exchange = exchange  # type: ignore[method-assign]
+        await client._operation_lock.acquire()
+        values = [1, 2]
+        write_task = asyncio.create_task(client.write_words(0, values))
+        await asyncio.sleep(0)
+        values[0] = 9
+        values.append(3)
+        client._operation_lock.release()
+        await write_task
+        assert sent == [client_module.build_word_write(0, [1, 2])]
 
     asyncio.run(run())
 
@@ -1976,7 +1840,7 @@ def test_sync_public_call_snapshots_each_logical_input_once(monkeypatch: pytest.
     assert len(visits) == 4  # address, collection, and its two scalar values
 
 
-def test_async_public_call_does_not_resnapshot_in_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_public_call_does_not_resnapshot_during_native_execution(monkeypatch: pytest.MonkeyPatch) -> None:
     original = client_module._snapshot_operation_argument
     visits: list[object] = []
 
@@ -1984,25 +1848,23 @@ def test_async_public_call_does_not_resnapshot_in_worker(monkeypatch: pytest.Mon
         visits.append(value)
         return original(value)
 
-    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
-        raise ToyopucNotConnectedError("synthetic disconnected client")
-
     monkeypatch.setattr(client_module, "_snapshot_operation_argument", counting_snapshot)
-    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
 
     async def run() -> None:
         client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
-        try:
-            with pytest.raises(ToyopucNotConnectedError):
-                await client.write_words(0, [1, 2])
-        finally:
-            client._executor.shutdown(wait=True, cancel_futures=True)
+
+        async def reject_exchange(*_args: object) -> bytes:
+            raise ToyopucNotConnectedError("synthetic disconnected client")
+
+        client._exchange = reject_exchange  # type: ignore[method-assign]
+        with pytest.raises(ToyopucNotConnectedError):
+            await client.write_words(0, [1, 2])
 
     asyncio.run(run())
-    assert len(visits) == 4  # the worker consumes only the private prepared call
+    assert len(visits) == 4  # native execution consumes only the private prepared call
 
 
-def test_async_generator_is_consumed_once_before_worker_submission(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_generator_is_consumed_once_before_fifo_execution(monkeypatch: pytest.MonkeyPatch) -> None:
     consumed: list[int] = []
 
     def values():
@@ -2010,21 +1872,18 @@ def test_async_generator_is_consumed_once_before_worker_submission(monkeypatch: 
             consumed.append(value)
             yield value
 
-    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
-        raise ToyopucNotConnectedError("synthetic disconnected client")
-
-    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
-
     async def run() -> None:
         client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
-        try:
-            operation = client.write_words(0, values())
-            assert consumed == []
-            with pytest.raises(ToyopucNotConnectedError):
-                await operation
-            assert consumed == [1, 2]
-        finally:
-            client._executor.shutdown(wait=True, cancel_futures=True)
+
+        async def reject_exchange(*_args: object) -> bytes:
+            raise ToyopucNotConnectedError("synthetic disconnected client")
+
+        client._exchange = reject_exchange  # type: ignore[method-assign]
+        operation = client.write_words(0, values())
+        assert consumed == []
+        with pytest.raises(ToyopucNotConnectedError):
+            await operation
+        assert consumed == [1, 2]
 
     asyncio.run(run())
 
@@ -2066,11 +1925,13 @@ def test_high_level_delegation_does_not_resnapshot_mapping(
                 transport="tcp",
                 plc_profile="toyopuc:generic",
             )
-            try:
-                with pytest.raises(ToyopucNotConnectedError):
-                    await client.write_many(items)
-            finally:
-                client._executor.shutdown(wait=True, cancel_futures=True)
+
+            async def reject_exchange(*_args: object) -> bytes:
+                raise ToyopucNotConnectedError("synthetic disconnected client")
+
+            client._exchange = reject_exchange  # type: ignore[method-assign]
+            with pytest.raises(ToyopucNotConnectedError):
+                await client.write_many(items)
 
         asyncio.run(run())
 

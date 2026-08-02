@@ -17,9 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- BREAKING: Async clients no longer own a private sync-client executor or `_run_sync_in_worker` compatibility seam. Private executor/sync-client substitutions were never public API; tests and extensions must use the documented async methods.
+- Library: Async TCP/UDP communication now uses native asyncio socket waits under one FIFO turn and one absolute deadline across DNS, connect, send, receive, validation, and decode. Queued cancellation sends nothing; active cancellation retires the transport; a post-send state change remains outcome-unknown.
+- Library: Direct/relay aggregate reads retain fully validated prepared segment frames, normalize relay hops once, and decode into the final result without segment result lists. Async aggregates execute one native prepared sequence without replaying completed segment decode work. Typed response and nested relay decoding use private memory views while public raw responses remain owned bytes.
+- Tests: Replaced private worker tests with native async FIFO/DNS/socket integration tests and added prepared-segment, borrowed-view, relay-route, public-ownership, and no-worker contract coverage.
+
 - BREAKING: A data-bearing NG response must echo the active request command before it can be published as a definitive PLC error. A mismatch is malformed, retires the transport, and becomes outcome-unknown for a possibly applied state change; the no-data `RC=0x10` special error form retains its existing command-byte meaning.
-- Library: Async task cancellation no longer hides an already-completed worker `ToyopucOperationOutcomeUnknownError`. That established unknown outcome wins the race, while completed success and ordinary worker failures still preserve `asyncio.CancelledError`.
-- Tests: Added sync/async data-bearing NG command-correlation and deterministic completed-worker cancellation-race regressions.
+- Library: Async task cancellation no longer hides an already-established `ToyopucOperationOutcomeUnknownError`. That established unknown outcome wins the completion race, while completed success and ordinary failures still preserve `asyncio.CancelledError`.
+- Tests: Added sync/async data-bearing NG command-correlation and deterministic native-async cancellation-race regressions.
 - Library: Explicit and lazy TCP/UDP connection establishment now uses one monotonic absolute deadline covering IPv4 DNS, first-IPv4 selection, socket creation, UDP bind/connect, TCP configuration, and final adoption. Late resolver/socket results cannot mutate client state and abandoned sockets are closed; deadline expiry remains Timeout while a pre-deadline native connection failure remains Transport.
 - Library: Sync and async clients now serialize ordinary operations in arrival-order FIFO turns, snapshot timeout and transport generation at admission, lazily connect, and let `close()` retire active and already queued work without coupling independent client instances.
 - Library: Connect, transmit, receive, and response decode now share one monotonic request deadline. Timeout and cancellation retire the transport, and no request is automatically resent after it may have been sent, including reads and PLC retry-required responses.
@@ -54,8 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library: Public PC10 multi-bit reads retain one Boolean per requested device while now enforcing their exact `4 + ceil(count / 8)` response size; malformed responses raise `ToyopucProtocolError` instead of leaking `IndexError`.
 - Library: Random/sparse write duplicate detection now uses the complete encoded wire identity, including extended and relay routes.
 - Library: Sync and async state-changing operations now classify EOF and malformed post-send responses as `ToyopucOperationOutcomeUnknownError`; affected fixed-endpoint UDP clients are tainted before reuse.
-- Library: Async cancellation is generation-scoped, waits for the active worker to finish, and cannot leak a stale cancellation request into a later operation.
-- Library: Iterable inputs are snapshotted exactly once before validation and encoding so caller mutation or a one-shot iterable cannot change the transmitted request. Async admission passes a private prepared call to its worker, and high-level delegation does not repeat the same logical snapshot.
+- Library: Async cancellation is generation-scoped, retires the active transport, and cannot leak a stale cancellation request into a later operation.
+- Library: Iterable inputs are snapshotted exactly once before validation and encoding so caller mutation or a one-shot iterable cannot change the transmitted request. Async admission passes private prepared inputs into native async execution, and high-level delegation does not repeat the same logical snapshot.
 - Library: `write_bit_in_word` rejects every non-`bool` value and invalid bit index before its read-modify-write I/O.
 
 ### Tests

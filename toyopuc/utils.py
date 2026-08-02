@@ -224,9 +224,10 @@ async def write_words_single_request(
     """
 
     sync_client = cast(Any, client._client)
-    runner = cast(Any, client._run_sync_in_worker)
+    runner = cast(Any, client._run_native_callable)
     resolved = sync_client.resolve_device(device)
-    await runner(sync_client._write_resolved_word_values, resolved, values)
+    values_snapshot = tuple(values)
+    await runner(sync_client._write_resolved_word_values, resolved, values_snapshot)
 
 
 async def write_dwords_single_request(

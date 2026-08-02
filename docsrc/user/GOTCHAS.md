@@ -79,10 +79,10 @@ protocol error as their cause. The affected transport is retired, and a
 fixed-local-port UDP client is tainted. Validation failures found before send do
 not retire the transport.
 
-Cancellation does not prove that a write was unapplied. If the synchronous
-worker had already completed with `ToyopucOperationOutcomeUnknownError` when the
-async task was cancelled, the async API returns that unknown outcome instead of
-`asyncio.CancelledError`.
+Cancellation does not prove that a write was unapplied. Async clients cancel
+their native socket wait and retire that transport; when a state-changing
+request may already have been sent, they raise
+`ToyopucOperationOutcomeUnknownError` instead of implying non-application.
 
 ## Symptom: a multi-address `read_named` result changes between entries
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from ._shared import _validate_relay_hop
 from .errors import ToyopucProtocolError
-from .protocol import ResponseFrame, parse_response
+from .protocol import ResponseFrame, _ResponseFrameView, parse_response
 
 
 @dataclass(frozen=True)
@@ -116,4 +116,48 @@ def unwrap_relay_response_chain(
             return layers, None
         current, padding = parse_relay_inner_response(inner_raw)
         layers.append(RelayLayer(link_no, station_no, ack, inner_raw, padding))
+    return layers, current
+
+
+@dataclass(frozen=True)
+class _RelayLayerView:
+    link_no: int
+    station_no: int
+    ack: int
+
+
+def _unwrap_relay_response_chain_view(
+    response: _ResponseFrameView,
+) -> tuple[list[_RelayLayerView], _ResponseFrameView | None]:
+    """Validate nested relay wrappers without materializing each inner frame."""
+
+    layers: list[_RelayLayerView] = []
+    current = response
+    while current.cmd == 0x60:
+        data = current.data
+        if len(data) < 4:
+            raise ToyopucProtocolError("Relay response data too short")
+        link_no = data[0]
+        station_no = data[1] | (data[2] << 8)
+        ack = data[3]
+        layers.append(_RelayLayerView(link_no, station_no, ack))
+        if ack != 0x06:
+            return layers, None
+        inner = data[4:]
+        if len(inner) < 3:
+            raise ToyopucProtocolError("Inner relay response too short")
+        inner_length = inner[0] | (inner[1] << 8)
+        expected = 2 + inner_length
+        if len(inner) < expected:
+            raise ToyopucProtocolError(
+                f"Inner relay response truncated: expected {expected} bytes, got {len(inner)} bytes"
+            )
+        if inner_length < 1:
+            raise ToyopucProtocolError("Inner relay response length must include CMD")
+        current = _ResponseFrameView(
+            ft=0x80,
+            rc=0x00,
+            cmd=inner[2],
+            data=inner[3:expected],
+        )
     return layers, current

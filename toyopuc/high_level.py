@@ -54,6 +54,7 @@ from .client import (
     _pack_uint32_low_word_first_words,
     _prepare_operation_arguments,
     _PreparedOperationArguments,
+    _PreparedRelayRead,
     _unpack_float32_low_word_first_words,
     _unpack_uint32_low_word_first_words,
 )
@@ -82,6 +83,7 @@ from .protocol import (
     build_word_write,
     unpack_u16_le,
 )
+from .relay import normalize_relay_hops
 
 _BASIC_BIT_AREAS = {"P", "K", "V", "T", "C", "L", "X", "Y", "M"}
 _BASIC_WORD_AREAS = {"S", "N", "R", "D", "B"}
@@ -115,6 +117,17 @@ _PREFIX_REQUIRED_AREAS = {
     "R",
     "D",
 }
+
+
+@dataclass(frozen=True)
+class _PreparedReadSegment:
+    payload: bytes
+    result_offset: int
+    count: int
+    batch_key: str | None
+    relay: _PreparedRelayRead | None = None
+
+
 _PREFIX_PROGRAM_NO = {"P1": 0x01, "P2": 0x02, "P3": 0x03}
 _EXT_BIT_SPECS = {
     "EP": (0x00, 0x0000),
@@ -672,29 +685,29 @@ class ToyopucDeviceClient(ToyopucClient):
         return tuple(plan)
 
     @staticmethod
-    def _preflight_read_batch(devices: list[ResolvedDevice]) -> None:
-        """Build the selected request without transport so the whole read plan is validated first."""
+    def _build_read_batch_payload(devices: list[ResolvedDevice]) -> bytes:
+        """Build and fully validate one owned aggregate-read request."""
 
         key = _batch_key(devices[0])
         if key == "basic-word":
             addrs = [_require(device.basic_addr, "basic_addr") for device in devices]
             if _is_consecutive_basic(devices):
-                build_word_read(addrs[0], len(devices))
+                return build_word_read(addrs[0], len(devices))
             else:
-                build_multi_word_read(addrs)
-            return
+                return build_multi_word_read(addrs)
         if key == "basic-byte":
             addrs = [_require(device.basic_addr, "basic_addr") for device in devices]
             if _is_consecutive_basic(devices):
-                build_byte_read(addrs[0], len(devices))
+                return build_byte_read(addrs[0], len(devices))
             else:
-                build_multi_byte_read(addrs)
-            return
+                return build_multi_byte_read(addrs)
         if key == "ext-word":
             if _is_consecutive_ext_word(devices):
-                build_ext_word_read(_require(devices[0].no, "no"), _require(devices[0].addr, "addr"), len(devices))
+                return build_ext_word_read(
+                    _require(devices[0].no, "no"), _require(devices[0].addr, "addr"), len(devices)
+                )
             else:
-                build_ext_multi_read(
+                return build_ext_multi_read(
                     [],
                     [],
                     [
@@ -702,23 +715,21 @@ class ToyopucDeviceClient(ToyopucClient):
                         for device in devices
                     ],
                 )
-            return
         if key == "ext-byte":
             no = devices[0].no
             addrs = [_require(device.addr, "addr") for device in devices]
             if no is not None and all(
                 device.no == no and device.addr == addrs[0] + index for index, device in enumerate(devices)
             ):
-                build_ext_byte_read(no, addrs[0], len(devices))
+                return build_ext_byte_read(no, addrs[0], len(devices))
             else:
-                build_ext_multi_read(
+                return build_ext_multi_read(
                     [],
                     [(_require(device.no, "no"), addr) for device, addr in zip(devices, addrs, strict=True)],
                     [],
                 )
-            return
         if key == "ext-bit":
-            build_ext_multi_read(
+            return build_ext_multi_read(
                 [
                     (_require(device.no, "no"), _require(device.bit_no, "bit_no"), _require(device.addr, "addr"))
                     for device in devices
@@ -726,32 +737,143 @@ class ToyopucDeviceClient(ToyopucClient):
                 [],
                 [],
             )
-            return
         if key == "pc10-word":
             addrs32 = [_require(device.addr32, "addr32") for device in devices]
             if _is_consecutive_pc10_word(devices):
-                build_pc10_block_read(addrs32[0], len(devices) * 2)
+                return build_pc10_block_read(addrs32[0], len(devices) * 2)
             else:
-                build_pc10_multi_read(_build_pc10_multi_word_read_payload(addrs32))
-            return
+                return build_pc10_multi_read(_build_pc10_multi_word_read_payload(addrs32))
         if key == "pc10-bit":
             addrs32 = [_require(device.addr32, "addr32") for device in devices]
             payload = bytearray([len(addrs32), 0, 0, 0])
             for address in addrs32:
                 payload.extend(address.to_bytes(4, "little"))
-            build_pc10_multi_read(bytes(payload))
-            return
+            return build_pc10_multi_read(bytes(payload))
         if key == "pc10-byte":
             addrs32 = [_require(device.addr32, "addr32") for device in devices]
             if len(addrs32) != 1 and not all(address == addrs32[0] + index for index, address in enumerate(addrs32)):
                 raise ToyopucProtocolError("PC10 byte read planning produced a non-contiguous request")
-            build_pc10_block_read(addrs32[0], len(addrs32))
-            return
+            return build_pc10_block_read(addrs32[0], len(addrs32))
         device = devices[0]
         if device.scheme == "basic-bit":
-            build_bit_read(_require(device.basic_addr, "basic_addr"))
-            return
+            return build_bit_read(_require(device.basic_addr, "basic_addr"))
         raise ValueError(f"Unsupported resolved scheme: {device.scheme}")
+
+    @classmethod
+    def _preflight_read_batch(cls, devices: list[ResolvedDevice]) -> None:
+        """Legacy subclass test seam; production aggregate reads retain the built payload."""
+
+        cls._build_read_batch_payload(devices)
+
+    def _read_runs_legacy(
+        self,
+        devices: list[ResolvedDevice],
+        plan: Sequence[int],
+        *,
+        relay_hops: Any | None = None,
+    ) -> list[Any]:
+        batches: list[list[ResolvedDevice]] = []
+        index = 0
+        for run in plan:
+            batch = devices[index : index + run]
+            self._preflight_read_batch(batch)
+            batches.append(batch)
+            index += run
+        with self._operation_turn():
+            results: list[Any] = [None] * len(devices)
+            index = 0
+            for batch in batches:
+                values = (
+                    self._relay_read_batch(relay_hops, batch) if relay_hops is not None else self._read_batch(batch)
+                )
+                values = _require_batch_result_size(values, len(batch), relay=relay_hops is not None)
+                results[index : index + len(batch)] = values
+                index += len(batch)
+            return results
+
+    @staticmethod
+    def _decode_prepared_read_segment(
+        response: Any,
+        segment: _PreparedReadSegment,
+        results: list[Any],
+    ) -> None:
+        data = memoryview(response.data)
+        key = segment.batch_key
+        count = segment.count
+        start = segment.result_offset
+        if key in {"basic-word", "ext-word"}:
+            for index in range(count):
+                byte_index = index * 2
+                results[start + index] = data[byte_index] | (data[byte_index + 1] << 8)
+            return
+        if key in {"basic-byte", "ext-byte", "pc10-byte"}:
+            for index in range(count):
+                results[start + index] = data[index]
+            return
+        if key == "ext-bit":
+            for index in range(count):
+                results[start + index] = bool((data[index // 8] >> (index % 8)) & 1)
+            return
+        if key == "pc10-bit":
+            for index in range(count):
+                results[start + index] = bool((data[4 + index // 8] >> (index % 8)) & 1)
+            return
+        if key == "pc10-word":
+            value_offset = 0 if response.cmd == 0xC2 else 4
+            for index in range(count):
+                byte_index = value_offset + index * 2
+                results[start + index] = data[byte_index] | (data[byte_index + 1] << 8)
+            return
+        if count == 1:
+            results[start] = bool(data[0])
+            return
+        raise ToyopucProtocolError("Prepared read segment has an unsupported decode layout")
+
+    def _prepare_read_segments(
+        self,
+        devices: list[ResolvedDevice],
+        plan: Sequence[int],
+        *,
+        hops: Any | None = None,
+    ) -> tuple[_PreparedReadSegment, ...]:
+        prepared: list[_PreparedReadSegment] = []
+        normalized_hops = tuple(normalize_relay_hops(hops)) if hops is not None else None
+        index = 0
+        for run in plan:
+            batch_devices = devices[index : index + run]
+            payload = self._build_read_batch_payload(batch_devices)
+            relay = (
+                self._prepare_relay_read_normalized(normalized_hops, payload) if normalized_hops is not None else None
+            )
+            prepared.append(
+                _PreparedReadSegment(
+                    payload=payload,
+                    result_offset=index,
+                    count=run,
+                    batch_key=_batch_key(batch_devices[0]),
+                    relay=relay,
+                )
+            )
+            index += run
+        return tuple(prepared)
+
+    def _execute_prepared_read_segments(
+        self,
+        prepared: Sequence[_PreparedReadSegment],
+        result_count: int,
+    ) -> list[Any]:
+        with self._operation_turn():
+            results: list[Any] = [None] * result_count
+            for segment in prepared:
+
+                def decode_response(response: Any, current: _PreparedReadSegment = segment) -> None:
+                    self._decode_prepared_read_segment(response, current, results)
+
+                if segment.relay is None:
+                    self._send_and_decode(segment.payload, decode_response)
+                else:
+                    self._send_prepared_relay_read_decoded(segment.relay, decode_response)
+            return results
 
     def _require_single_write_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
         if not devices:
@@ -1778,29 +1900,10 @@ class ToyopucDeviceClient(ToyopucClient):
         entry_lengths: Sequence[int] | None = None,
     ) -> list[Any]:
         plan = self._get_read_plan(devices, split_pc10, entry_lengths=entry_lengths)
-        planned_batches: list[list[ResolvedDevice]] = []
-        idx = 0
-        for run in plan:
-            batch_devices = devices[idx : idx + run]
-            self._preflight_read_batch(batch_devices)
-            planned_batches.append(batch_devices)
-            idx += run
-
-        with self._operation_turn():
-            results: list[Any] = [None] * len(devices)
-            idx = 0
-            for batch_devices in planned_batches:
-                raw_batch = self._read_batch(batch_devices)
-                run = len(batch_devices)
-
-                def validate_batch(batch: list[Any] = raw_batch, expected: int = run) -> list[Any]:
-                    return _require_batch_result_size(batch, expected, relay=False)
-
-                batch = self._decode_post_send_result(validate_batch)
-                for offset, value in enumerate(batch):
-                    results[idx + offset] = value
-                idx += run
-            return results
+        if type(self) is not ToyopucDeviceClient:
+            return self._read_runs_legacy(devices, plan)
+        prepared = self._prepare_read_segments(devices, plan)
+        return self._execute_prepared_read_segments(prepared, len(devices))
 
     # ------------------------------------------------------------------
     # Batch-read helpers (relay)
@@ -1968,29 +2071,10 @@ class ToyopucDeviceClient(ToyopucClient):
         entry_lengths: Sequence[int] | None = None,
     ) -> list[Any]:
         plan = self._get_read_plan(devices, split_pc10, entry_lengths=entry_lengths)
-        planned_batches: list[list[ResolvedDevice]] = []
-        idx = 0
-        for run in plan:
-            batch_devices = devices[idx : idx + run]
-            self._preflight_read_batch(batch_devices)
-            planned_batches.append(batch_devices)
-            idx += run
-
-        with self._operation_turn():
-            results: list[Any] = [None] * len(devices)
-            idx = 0
-            for batch_devices in planned_batches:
-                raw_batch = self._relay_read_batch(hops, batch_devices)
-                run = len(batch_devices)
-
-                def validate_batch(batch: list[Any] = raw_batch, expected: int = run) -> list[Any]:
-                    return _require_batch_result_size(batch, expected, relay=True)
-
-                batch = self._decode_post_send_result(validate_batch)
-                for offset, value in enumerate(batch):
-                    results[idx + offset] = value
-                idx += run
-            return results
+        if type(self) is not ToyopucDeviceClient:
+            return self._read_runs_legacy(devices, plan, relay_hops=hops)
+        prepared = self._prepare_read_segments(devices, plan, hops=hops)
+        return self._execute_prepared_read_segments(prepared, len(devices))
 
     # ------------------------------------------------------------------
     # Batch-write helpers

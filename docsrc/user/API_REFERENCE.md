@@ -27,8 +27,8 @@ receive, and decode. IPv4 literals bypass DNS; IPv6 and alternate-family
 fallback remain unsupported. Deadline expiry is `ToyopucTimeoutError`, while a
 native connection failure completed before expiry is `ToyopucTransportError`.
 Late resolver and socket results are discarded and cannot create client state.
-Mutable async inputs are snapshotted exactly once on the caller thread before
-worker submission. The private prepared call then performs normal request
+Mutable async inputs are snapshotted exactly once before FIFO admission. The
+private prepared call then performs normal request
 validation and encoding without traversing the same logical input again.
 Direct synchronous calls use the same one-snapshot boundary.
 
@@ -85,10 +85,10 @@ A data-bearing NG response must echo the active request command. A mismatch is
 state changes, and the transport is retired. Empty-data `RC=0x10` responses keep
 their special command-byte error-code semantics.
 
-When asyncio task cancellation races with an already-terminal worker,
-`ToyopucOperationOutcomeUnknownError` takes precedence if that is the worker's
-result. Completed success and ordinary worker exceptions preserve
-`asyncio.CancelledError`.
+Async clients use native asyncio socket waits rather than a client-owned
+executor. Cancellation retires the active transport; after a state-changing
+request may have been sent it raises `ToyopucOperationOutcomeUnknownError`,
+while pre-send or read cancellation preserves `asyncio.CancelledError`.
 
 ## Public Symbol Index
 
