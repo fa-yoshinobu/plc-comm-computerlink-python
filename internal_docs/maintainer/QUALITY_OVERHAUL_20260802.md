@@ -166,3 +166,62 @@ is an intentional safety correction with no compatibility alias or fallback.
   approved cancellation precedence. It is observed, while the caller continues
   to receive `asyncio.CancelledError`.
 - Duplicate findings: none. Deferred findings: none.
+
+## PERF-008A — Snapshot async mutable input exactly once
+
+Decision status: implemented in Computerlink Python on 2026-08-02.
+
+### Implementation scope
+
+The shared synchronous FIFO wrapper, asynchronous worker bridge, and high-level
+delegation wrappers. The private prepared-call type is internal and cannot be
+used as a public validation bypass.
+
+### Target contract
+
+An async public call recursively snapshots mappings, iterables, buffers, and
+nested mutable values exactly once on the caller/event-loop thread before worker
+submission. A generator is consumed exactly once at admission. The worker uses
+the private prepared call and performs normal request validation/encoding without
+re-snapshotting that logical input. A direct sync public call also snapshots once,
+and high-level to low-level delegation does not repeat the snapshot.
+
+### Compatibility and operational impact
+
+Public signatures, snapshot timing, validation, errors, transmitted bytes,
+timeout/cancellation/close behavior, and results do not change. Large async
+iterable requests remove one O(n) traversal, copy, and temporary allocation.
+
+### Machine-verifiable acceptance criteria
+
+1. Mutable and nested async input is recursively snapshotted once before worker submission.
+2. A one-shot generator is consumed once and caller mutation cannot alter worker input.
+3. Direct sync and high-level delegation snapshot each logical input once.
+4. The prepared path remains private and does not skip request-specific validation.
+5. Timeout, cancellation, close, and the accepted temporary connection-worker behavior remain unchanged.
+
+### Acceptance tracking
+
+- [x] Implementation completed in Computerlink Python.
+- [x] Sync, async, generator, nested mapping, and high-to-low delegation tests added or updated.
+- [x] Relevant static, Python 3.10 through 3.13 full test, sample, documentation, package/build, and current-worktree source-archive gates passed on this source state.
+- [x] Codex final self-review completed against the approved contract and cross-library consistency requirements.
+- [x] Live PLC verification is not required for deterministic input ownership.
+- [x] User documentation, maintainer record, changelog, and generated API source agree with the implementation.
+- [x] Final acceptance criteria verified and the item marked complete; traversal-count tests provide deterministic allocation/CPU-work evidence without a wall-clock benchmark.
+
+### PERF-008A self-review classification
+
+- Accepted and corrected: async wrappers snapshotted before worker submission
+  and then entered the synchronous public wrapper, recursively traversing the
+  same input again. The worker now invokes a private prepared entry.
+- Accepted and corrected: high-level to low-level reentrant delegation could
+  repeat the logical snapshot. Prepared-call depth now distinguishes immediate
+  internal delegation without exposing a public bypass or skipping validation.
+- Rejected: a public prepared-input switch or alias would permit callers to
+  bypass the ownership boundary and is not provided.
+- Duplicate findings: none. Deferred findings: none. The final repository and
+  package gates passed, and traversal-count tests provide deterministic
+  allocation/CPU-work evidence without a separate wall-clock benchmark.
+  PERF-009A temporary connection workers and PERF-009B per-blocking-operation
+  remaining-deadline updates are unchanged.

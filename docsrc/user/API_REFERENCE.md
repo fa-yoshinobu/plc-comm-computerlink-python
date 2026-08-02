@@ -27,6 +27,10 @@ receive, and decode. IPv4 literals bypass DNS; IPv6 and alternate-family
 fallback remain unsupported. Deadline expiry is `ToyopucTimeoutError`, while a
 native connection failure completed before expiry is `ToyopucTransportError`.
 Late resolver and socket results are discarded and cannot create client state.
+Mutable async inputs are snapshotted exactly once on the caller thread before
+worker submission. The private prepared call then performs normal request
+validation and encoding without traversing the same logical input again.
+Direct synchronous calls use the same one-snapshot boundary.
 
 ## Device Operations
 

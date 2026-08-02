@@ -183,6 +183,55 @@ def _snapshot_operation_argument(value: object) -> object:
     return value
 
 
+@dataclass(frozen=True)
+class _PreparedOperationArguments:
+    """Detached public inputs that may cross the FIFO or worker boundary once."""
+
+    args: tuple[object, ...]
+    kwargs: dict[str, object]
+
+
+def _prepare_operation_arguments(
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> _PreparedOperationArguments:
+    return _PreparedOperationArguments(
+        tuple(_snapshot_operation_argument(argument) for argument in args),
+        {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()},
+    )
+
+
+def _execute_prepared_operation(
+    client: ToyopucClient,
+    method: Callable[..., object],
+    prepared: _PreparedOperationArguments,
+) -> object:
+    """Execute one private prepared call without traversing its inputs again."""
+
+    with client._operation_turn():
+        depth = int(getattr(client._operation_context, "prepared_call_depth", 0))
+        client._operation_context.prepared_call_depth = depth + 1
+        try:
+            return method(client, *prepared.args, **prepared.kwargs)
+        finally:
+            client._operation_context.prepared_call_depth = depth
+
+
+def _invoke_prepared_operation(
+    bound_method: Callable[..., object],
+    prepared: _PreparedOperationArguments,
+) -> object:
+    """Invoke the private prepared entry attached to an installed public wrapper."""
+
+    prepared_entry = getattr(bound_method, "_toyopuc_prepared_entry", None)
+    owner = getattr(bound_method, "__self__", None)
+    if callable(prepared_entry) and isinstance(owner, ToyopucClient):
+        return prepared_entry(owner, prepared)
+    # Private test doubles and internal adapters may not use the installed
+    # wrapper. Their method receives the already detached values directly.
+    return bound_method(*prepared.args, **prepared.kwargs)
+
+
 def _validate_fr_index(index: int) -> int:
     if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index > _FR_MAX_INDEX:
         raise ValueError("FR index out of range (0x000000-0x1FFFFF)")
@@ -1698,13 +1747,20 @@ _FIFO_OPERATION_METHODS = (
 def _install_fifo_operation(method_name: str) -> None:
     method = getattr(ToyopucClient, method_name)
 
+    def prepared_entry(self: ToyopucClient, prepared: _PreparedOperationArguments) -> object:
+        return _execute_prepared_operation(self, method, prepared)
+
     @wraps(method)
     def fifo_operation(self: ToyopucClient, *args: object, **kwargs: object) -> object:
-        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
-        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
-        with self._operation_turn():
-            return method(self, *admitted_args, **admitted_kwargs)
+        # A nested prepared call executes immediately in the same reentrant
+        # turn, so its internally owned arguments have no queue mutation window.
+        if int(getattr(self._operation_context, "prepared_call_depth", 0)):
+            prepared = _PreparedOperationArguments(args, kwargs)
+        else:
+            prepared = _prepare_operation_arguments(args, kwargs)
+        return prepared_entry(self, prepared)
 
+    fifo_operation._toyopuc_prepared_entry = prepared_entry  # type: ignore[attr-defined]
     setattr(ToyopucClient, method_name, fifo_operation)
 
 

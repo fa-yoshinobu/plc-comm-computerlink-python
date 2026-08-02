@@ -46,12 +46,14 @@ from .address import (
 )
 from .client import (
     ToyopucClient,
+    _execute_prepared_operation,
     _normalize_bit_value,
     _normalize_byte_values,
     _normalize_word_values,
     _pack_float32_low_word_first_words,
     _pack_uint32_low_word_first_words,
-    _snapshot_operation_argument,
+    _prepare_operation_arguments,
+    _PreparedOperationArguments,
     _unpack_float32_low_word_first_words,
     _unpack_uint32_low_word_first_words,
 )
@@ -2293,13 +2295,20 @@ _HIGH_LEVEL_FIFO_METHODS = (
 def _install_high_level_fifo_operation(method_name: str) -> None:
     method = getattr(ToyopucDeviceClient, method_name)
 
+    def prepared_entry(self: ToyopucDeviceClient, prepared: _PreparedOperationArguments) -> object:
+        return _execute_prepared_operation(self, method, prepared)
+
     @wraps(method)
     def fifo_operation(self: ToyopucDeviceClient, *args: object, **kwargs: object) -> object:
-        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
-        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
-        with self._operation_turn():
-            return method(self, *admitted_args, **admitted_kwargs)
+        # Delegation inside a prepared reentrant turn has no queue mutation
+        # window and must not traverse the same logical input a second time.
+        if int(getattr(self._operation_context, "prepared_call_depth", 0)):
+            prepared = _PreparedOperationArguments(args, kwargs)
+        else:
+            prepared = _prepare_operation_arguments(args, kwargs)
+        return prepared_entry(self, prepared)
 
+    fifo_operation._toyopuc_prepared_entry = prepared_entry  # type: ignore[attr-defined]
     setattr(ToyopucDeviceClient, method_name, fifo_operation)
 
 

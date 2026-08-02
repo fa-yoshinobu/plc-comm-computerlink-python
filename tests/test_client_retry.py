@@ -16,10 +16,12 @@ from samples._operational_common import is_retryable as operational_is_retryable
 from samples.polling_reconnect import is_retryable as polling_is_retryable
 from toyopuc import (
     AsyncToyopucClient,
+    AsyncToyopucDeviceClient,
     ToyopucClient,
     ToyopucClosedError,
     ToyopucDeviceClient,
     ToyopucError,
+    ToyopucNotConnectedError,
     ToyopucOperationOutcomeUnknownError,
     ToyopucOutcomeUnknownReason,
     ToyopucPlcError,
@@ -1952,3 +1954,124 @@ def test_async_public_call_snapshots_mutable_input_before_waiting_in_fifo() -> N
             executor.shutdown(wait=True, cancel_futures=True)
 
     asyncio.run(run())
+
+
+def test_sync_public_call_snapshots_each_logical_input_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = client_module._snapshot_operation_argument
+    visits: list[object] = []
+
+    def counting_snapshot(value: object) -> object:
+        visits.append(value)
+        return original(value)
+
+    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
+        raise ToyopucNotConnectedError("synthetic disconnected client")
+
+    monkeypatch.setattr(client_module, "_snapshot_operation_argument", counting_snapshot)
+    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    with pytest.raises(ToyopucNotConnectedError):
+        client.write_words(0, [1, 2])
+
+    assert len(visits) == 4  # address, collection, and its two scalar values
+
+
+def test_async_public_call_does_not_resnapshot_in_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = client_module._snapshot_operation_argument
+    visits: list[object] = []
+
+    def counting_snapshot(value: object) -> object:
+        visits.append(value)
+        return original(value)
+
+    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
+        raise ToyopucNotConnectedError("synthetic disconnected client")
+
+    monkeypatch.setattr(client_module, "_snapshot_operation_argument", counting_snapshot)
+    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
+
+    async def run() -> None:
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        try:
+            with pytest.raises(ToyopucNotConnectedError):
+                await client.write_words(0, [1, 2])
+        finally:
+            client._executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+    assert len(visits) == 4  # the worker consumes only the private prepared call
+
+
+def test_async_generator_is_consumed_once_before_worker_submission(monkeypatch: pytest.MonkeyPatch) -> None:
+    consumed: list[int] = []
+
+    def values():
+        for value in (1, 2):
+            consumed.append(value)
+            yield value
+
+    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
+        raise ToyopucNotConnectedError("synthetic disconnected client")
+
+    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
+
+    async def run() -> None:
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+        try:
+            operation = client.write_words(0, values())
+            assert consumed == []
+            with pytest.raises(ToyopucNotConnectedError):
+                await operation
+            assert consumed == [1, 2]
+        finally:
+            client._executor.shutdown(wait=True, cancel_futures=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_high_level_delegation_does_not_resnapshot_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+    asynchronous: bool,
+) -> None:
+    original = client_module._snapshot_operation_argument
+    visits: list[object] = []
+
+    def counting_snapshot(value: object) -> object:
+        visits.append(value)
+        return original(value)
+
+    def reject_connect(_client: ToyopucClient, _deadline: float) -> None:
+        raise ToyopucNotConnectedError("synthetic disconnected client")
+
+    monkeypatch.setattr(client_module, "_snapshot_operation_argument", counting_snapshot)
+    monkeypatch.setattr(ToyopucClient, "_connect", reject_connect)
+    items = {"B0000": 1, "B0001": 2}
+
+    if not asynchronous:
+        client = ToyopucDeviceClient(
+            "127.0.0.1",
+            1025,
+            transport="tcp",
+            plc_profile="toyopuc:generic",
+        )
+        with pytest.raises(ToyopucNotConnectedError):
+            client.write_many(items)
+    else:
+
+        async def run() -> None:
+            client = AsyncToyopucDeviceClient(
+                "127.0.0.1",
+                1025,
+                transport="tcp",
+                plc_profile="toyopuc:generic",
+            )
+            try:
+                with pytest.raises(ToyopucNotConnectedError):
+                    await client.write_many(items)
+            finally:
+                client._executor.shutdown(wait=True, cancel_futures=True)
+
+        asyncio.run(run())
+
+    assert len(visits) == 5  # mapping plus two key/value pairs, once

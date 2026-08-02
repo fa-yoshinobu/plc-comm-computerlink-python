@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Any, TypeVar, cast
 
-from .client import ToyopucClient, _snapshot_operation_argument
+from .client import ToyopucClient, _invoke_prepared_operation, _prepare_operation_arguments
 from .errors import ToyopucOperationOutcomeUnknownError
 from .high_level import ToyopucDeviceClient
 
@@ -22,9 +22,8 @@ def _shutdown_executor(executor: ThreadPoolExecutor) -> None:
 def _install_async_wrapper(async_cls: type, method_name: str) -> None:
     async def _async_method(self: Any, *args: Any, **kwargs: Any) -> Any:
         bound = getattr(self._client, method_name)
-        admitted_args = tuple(_snapshot_operation_argument(argument) for argument in args)
-        admitted_kwargs = {name: _snapshot_operation_argument(argument) for name, argument in kwargs.items()}
-        return await self._run_sync_in_worker(bound, *admitted_args, **admitted_kwargs)
+        prepared = _prepare_operation_arguments(args, kwargs)
+        return await self._run_sync_in_worker(_invoke_prepared_operation, bound, prepared)
 
     _async_method.__name__ = method_name
     _async_method.__qualname__ = f"{async_cls.__name__}.{method_name}"

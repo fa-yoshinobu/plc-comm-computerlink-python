@@ -219,6 +219,12 @@ of cancellation. Reconcile PLC state even though the awaiting task was being
 cancelled. Completed success or another completed worker exception retains the
 caller-visible `asyncio.CancelledError`.
 
+Mutable inputs to async operations are snapshotted exactly once before worker
+submission. A generator is consumed during that admission step, and changing
+the original list, mapping, buffer, or nested value afterward cannot change the
+request. Direct synchronous calls also snapshot once, so every public
+operation observes one stable logical snapshot.
+
 ## Block reads
 
 ```python

@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library: Random/sparse write duplicate detection now uses the complete encoded wire identity, including extended and relay routes.
 - Library: Sync and async state-changing operations now classify EOF and malformed post-send responses as `ToyopucOperationOutcomeUnknownError`; affected fixed-endpoint UDP clients are tainted before reuse.
 - Library: Async cancellation is generation-scoped, waits for the active worker to finish, and cannot leak a stale cancellation request into a later operation.
-- Library: Iterable inputs are snapshotted once before validation and encoding so caller mutation or a one-shot iterable cannot change the transmitted request.
+- Library: Iterable inputs are snapshotted exactly once before validation and encoding so caller mutation or a one-shot iterable cannot change the transmitted request. Async admission passes a private prepared call to its worker, and high-level delegation does not repeat the same logical snapshot.
 - Library: `write_bit_in_word` rejects every non-`bool` value and invalid bit index before its read-modify-write I/O.
 
 ### Tests
