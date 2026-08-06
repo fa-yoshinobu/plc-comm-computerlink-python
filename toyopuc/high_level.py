@@ -46,14 +46,17 @@ from .address import (
 )
 from .client import (
     ToyopucClient,
+    _BoundArgumentValidator,
     _execute_prepared_operation,
+    _make_operation_preflight,
     _normalize_bit_value,
     _normalize_byte_values,
     _normalize_word_values,
     _pack_float32_low_word_first_words,
     _pack_uint32_low_word_first_words,
-    _prepare_operation_arguments,
+    _prepare_operation_plan,
     _PreparedOperationArguments,
+    _PreparedOperationPlan,
     _PreparedRelayRead,
     _unpack_float32_low_word_first_words,
     _unpack_uint32_low_word_first_words,
@@ -545,7 +548,7 @@ def _require_positive_count(count: int, label: str = "count") -> int:
     return count
 
 
-def _normalize_device_value(resolved: ResolvedDevice, value: object) -> int:
+def _normalize_device_value(resolved: ResolvedDevice, value: object) -> int | bool:
     if resolved.unit == "bit":
         return _normalize_bit_value(value)
     if resolved.unit == "byte":
@@ -1160,6 +1163,54 @@ class ToyopucDeviceClient(ToyopucClient):
             return
         self._write_resolved_device(resolved, value)
 
+    def write_bit_in_word(
+        self,
+        device: str | ResolvedDevice,
+        bit_index: int,
+        value: bool,
+    ) -> None:
+        """Set or clear one bit through an explicit 16-bit read-modify-write.
+
+        One local FIFO turn and one transaction deadline cover the read and
+        write. The operation is not PLC-atomic: PLC logic or another
+        connection can change the word between requests and that update can be
+        lost. Use PLC-side coordination when the complete word is shared.
+        """
+
+        if isinstance(bit_index, bool) or not isinstance(bit_index, int) or not 0 <= bit_index <= 15:
+            raise ValueError(f"bit_index must be 0-15, got {bit_index}")
+        enabled = _normalize_bit_value(value)
+        resolved = self._coerce_device(device)
+        self._ensure_word_device(resolved, "write_bit_in_word()")
+        _require_generic_write_device(resolved)
+        with self._operation_turn():
+            current = int(cast(Any, self.read_one(resolved))) & 0xFFFF
+            mask = 1 << bit_index
+            updated = current | mask if enabled else current & ~mask
+            self.write(resolved, updated & 0xFFFF)
+
+    def relay_write_bit_in_word(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+        bit_index: int,
+        value: bool,
+    ) -> None:
+        """Relay-route form of :meth:`write_bit_in_word` with the same risk contract."""
+
+        if isinstance(bit_index, bool) or not isinstance(bit_index, int) or not 0 <= bit_index <= 15:
+            raise ValueError(f"bit_index must be 0-15, got {bit_index}")
+        enabled = _normalize_bit_value(value)
+        resolved = self._coerce_device(device)
+        self._ensure_word_device(resolved, "relay_write_bit_in_word()")
+        _require_generic_write_device(resolved)
+        normalized_hops = tuple(normalize_relay_hops(hops))
+        with self._operation_turn():
+            current = int(cast(Any, self.relay_read_one(normalized_hops, resolved))) & 0xFFFF
+            mask = 1 << bit_index
+            updated = current | mask if enabled else current & ~mask
+            self.relay_write(normalized_hops, resolved, updated & 0xFFFF)
+
     def read_devices(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
         """Read multiple devices in caller order as one non-atomic FIFO operation."""
         resolved = [self._coerce_device(d) for d in devices]
@@ -1580,7 +1631,7 @@ class ToyopucDeviceClient(ToyopucClient):
         value = _normalize_device_value(resolved, value)
         if resolved.scheme == "basic-bit":
             addr = _require(resolved.basic_addr, "basic_addr")
-            self.write_bit(addr, value == 1)
+            self.write_bit(addr, value)
             return
         if resolved.scheme == "basic-word":
             addr = _require(resolved.basic_addr, "basic_addr")
@@ -1624,7 +1675,7 @@ class ToyopucDeviceClient(ToyopucClient):
             return
         if resolved.scheme == "pc10-bit":
             addr32 = _require(resolved.addr32, "pc10 addr32")
-            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, value)]))
+            self.pc10_multi_write(_pack_pc10_multi_bit_payload([(addr32, 1 if value else 0)]))
             return
         if resolved.scheme == "pc10-word":
             addr32 = _require(resolved.addr32, "pc10 addr32")
@@ -1646,7 +1697,7 @@ class ToyopucDeviceClient(ToyopucClient):
         if resolved.scheme == "basic-bit":
             self.send_via_relay(
                 hops,
-                build_bit_write(_require(resolved.basic_addr, "basic_addr"), value),
+                build_bit_write(_require(resolved.basic_addr, "basic_addr"), 1 if value else 0),
             )
             return
         if resolved.scheme == "basic-word":
@@ -1670,7 +1721,7 @@ class ToyopucDeviceClient(ToyopucClient):
                             _require(resolved.no, "program number"),
                             _require(resolved.bit_no, "program bit"),
                             _require(resolved.addr, "program addr"),
-                            value,
+                            1 if value else 0,
                         )
                     ],
                     [],
@@ -1707,7 +1758,7 @@ class ToyopucDeviceClient(ToyopucClient):
                             _require(resolved.no, "extended number"),
                             _require(resolved.bit_no, "extended bit"),
                             _require(resolved.addr, "extended addr"),
-                            value,
+                            1 if value else 0,
                         )
                     ],
                     [],
@@ -1739,7 +1790,7 @@ class ToyopucDeviceClient(ToyopucClient):
             self.send_via_relay(
                 hops,
                 build_pc10_multi_write(
-                    _pack_pc10_multi_bit_payload([(_require(resolved.addr32, "pc10 addr32"), value)])
+                    _pack_pc10_multi_bit_payload([(_require(resolved.addr32, "pc10 addr32"), 1 if value else 0)])
                 ),
             )
             return
@@ -2120,7 +2171,7 @@ class ToyopucDeviceClient(ToyopucClient):
             [],
         )
 
-    def _write_ext_bit_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
+    def _write_ext_bit_batch(self, devices: list[ResolvedDevice], values: list[bool]) -> None:
         self.write_ext_multi(
             [
                 (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), bool(v))
@@ -2142,10 +2193,10 @@ class ToyopucDeviceClient(ToyopucClient):
             )
         )
 
-    def _write_pc10_bit_batch(self, devices: list[ResolvedDevice], values: list[int]) -> None:
+    def _write_pc10_bit_batch(self, devices: list[ResolvedDevice], values: list[bool]) -> None:
         self.pc10_multi_write(
             _pack_pc10_multi_bit_payload(
-                [(_require(d.addr32, "pc10 addr32"), v) for d, v in zip(devices, values, strict=False)]
+                [(_require(d.addr32, "pc10 addr32"), 1 if v else 0) for d, v in zip(devices, values, strict=False)]
             )
         )
 
@@ -2251,12 +2302,17 @@ class ToyopucDeviceClient(ToyopucClient):
             ),
         )
 
-    def _relay_write_ext_bit_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[int]) -> None:
+    def _relay_write_ext_bit_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[bool]) -> None:
         self.send_via_relay(
             hops,
             build_ext_multi_write(
                 [
-                    (_require(d.no, "no"), _require(d.bit_no, "bit_no"), _require(d.addr, "addr"), v)
+                    (
+                        _require(d.no, "no"),
+                        _require(d.bit_no, "bit_no"),
+                        _require(d.addr, "addr"),
+                        1 if v else 0,
+                    )
                     for d, v in zip(devices, values, strict=False)
                 ],
                 [],
@@ -2279,12 +2335,12 @@ class ToyopucDeviceClient(ToyopucClient):
             ),
         )
 
-    def _relay_write_pc10_bit_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[int]) -> None:
+    def _relay_write_pc10_bit_batch(self, hops: Any, devices: list[ResolvedDevice], values: list[bool]) -> None:
         self.send_via_relay(
             hops,
             build_pc10_multi_write(
                 _pack_pc10_multi_bit_payload(
-                    [(_require(d.addr32, "pc10 addr32"), v) for d, v in zip(devices, values, strict=False)]
+                    [(_require(d.addr32, "pc10 addr32"), 1 if v else 0) for d, v in zip(devices, values, strict=False)]
                 )
             ),
         )
@@ -2355,6 +2411,8 @@ _HIGH_LEVEL_FIFO_METHODS = (
     "read_one",
     "read",
     "write",
+    "write_bit_in_word",
+    "relay_write_bit_in_word",
     "read_devices",
     "write_many",
     "read_dword",
@@ -2376,23 +2434,136 @@ _HIGH_LEVEL_FIFO_METHODS = (
 )
 
 
+def _preflight_high_level_write_value(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+    operation: str,
+) -> None:
+    device_client = cast(ToyopucDeviceClient, client)
+    resolved = device_client._coerce_device(cast(str | ResolvedDevice, arguments["device"]))
+    _require_generic_write_device(resolved)
+    value = arguments["value"]
+    if isinstance(value, (bytes, bytearray, list, tuple)):
+        devices = device_client._seq_devices(resolved, len(value))
+        normalized = tuple(_normalize_device_value(device, item) for device, item in zip(devices, value, strict=True))
+        device_client._require_single_write_request(devices, split_pc10=True, operation=operation)
+        arguments["value"] = normalized
+    else:
+        arguments["value"] = _normalize_device_value(resolved, value)
+    arguments["device"] = resolved
+
+
+def _preflight_high_level_write(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    _preflight_high_level_write_value(client, arguments, "write")
+
+
+def _preflight_high_level_relay_write(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    arguments["hops"] = tuple(normalize_relay_hops(cast(str | Iterable[tuple[int, int]], arguments["hops"])))
+    _preflight_high_level_write_value(client, arguments, "relay_write")
+
+
+def _preflight_high_level_write_many_values(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+    operation: str,
+) -> None:
+    device_client = cast(ToyopucDeviceClient, client)
+    normalized_items: dict[str | ResolvedDevice, object] = {}
+    resolved_devices: list[ResolvedDevice] = []
+    for device, value in cast(Mapping[str | ResolvedDevice, object], arguments["items"]).items():
+        resolved = device_client._coerce_device(device)
+        _require_generic_write_device(resolved)
+        normalized_items[device] = _normalize_device_value(resolved, value)
+        resolved_devices.append(resolved)
+    device_client._require_single_write_request(
+        resolved_devices,
+        split_pc10=True,
+        operation=operation,
+    )
+    arguments["items"] = normalized_items
+
+
+def _preflight_high_level_write_many(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    _preflight_high_level_write_many_values(client, arguments, "write_many")
+
+
+def _preflight_high_level_relay_write_many(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    arguments["hops"] = tuple(normalize_relay_hops(cast(str | Iterable[tuple[int, int]], arguments["hops"])))
+    _preflight_high_level_write_many_values(client, arguments, "relay_write_many")
+
+
+def _preflight_high_level_bit_in_word(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    device_client = cast(ToyopucDeviceClient, client)
+    bit_index = arguments["bit_index"]
+    if isinstance(bit_index, bool) or not isinstance(bit_index, int) or not 0 <= bit_index <= 15:
+        raise ValueError(f"bit_index must be 0-15, got {bit_index}")
+    arguments["value"] = _normalize_bit_value(arguments["value"])
+    resolved = device_client._coerce_device(cast(str | ResolvedDevice, arguments["device"]))
+    device_client._ensure_word_device(resolved, "write_bit_in_word()")
+    _require_generic_write_device(resolved)
+    arguments["device"] = resolved
+
+
+def _preflight_high_level_relay_bit_in_word(
+    client: ToyopucClient,
+    arguments: dict[str, object],
+) -> None:
+    arguments["hops"] = tuple(normalize_relay_hops(cast(str | Iterable[tuple[int, int]], arguments["hops"])))
+    _preflight_high_level_bit_in_word(client, arguments)
+
+
+_HIGH_LEVEL_SEMANTIC_BIT_WRITE_VALIDATORS: dict[str, _BoundArgumentValidator] = {
+    "write": _preflight_high_level_write,
+    "write_many": _preflight_high_level_write_many,
+    "relay_write": _preflight_high_level_relay_write,
+    "relay_write_many": _preflight_high_level_relay_write_many,
+    "write_bit_in_word": _preflight_high_level_bit_in_word,
+    "relay_write_bit_in_word": _preflight_high_level_relay_bit_in_word,
+}
+
+_SELF_MANAGED_HIGH_LEVEL_FIFO_METHODS = {
+    "write_bit_in_word",
+    "relay_write_bit_in_word",
+}
+
+
 def _install_high_level_fifo_operation(method_name: str) -> None:
     method = getattr(ToyopucDeviceClient, method_name)
+    validator = _HIGH_LEVEL_SEMANTIC_BIT_WRITE_VALIDATORS.get(method_name)
+    semantic_preflight = _make_operation_preflight(method, validator) if validator is not None else None
 
-    def prepared_entry(self: ToyopucDeviceClient, prepared: _PreparedOperationArguments) -> object:
-        return _execute_prepared_operation(self, method, prepared)
+    def prepared_entry(self: ToyopucDeviceClient, plan: _PreparedOperationPlan) -> object:
+        if method_name in _SELF_MANAGED_HIGH_LEVEL_FIFO_METHODS:
+            return method(self, *plan.arguments.args, **plan.arguments.kwargs)
+        return _execute_prepared_operation(self, method, plan)
 
     @wraps(method)
     def fifo_operation(self: ToyopucDeviceClient, *args: object, **kwargs: object) -> object:
         # Delegation inside a prepared reentrant turn has no queue mutation
         # window and must not traverse the same logical input a second time.
         if int(getattr(self._operation_context, "prepared_call_depth", 0)):
-            prepared = _PreparedOperationArguments(args, kwargs)
+            plan = _PreparedOperationPlan(_PreparedOperationArguments(args, kwargs))
         else:
-            prepared = _prepare_operation_arguments(args, kwargs)
-        return prepared_entry(self, prepared)
+            plan = _prepare_operation_plan(self, args, kwargs, semantic_preflight)
+        return prepared_entry(self, plan)
 
     fifo_operation._toyopuc_prepared_entry = prepared_entry  # type: ignore[attr-defined]
+    fifo_operation._toyopuc_semantic_preflight = semantic_preflight  # type: ignore[attr-defined]
     setattr(ToyopucDeviceClient, method_name, fifo_operation)
 
 

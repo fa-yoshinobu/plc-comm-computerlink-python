@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-08-07
+
+- Release: Bumped package metadata and `toyopuc.__version__` to `4.0.0` for the approved breaking contract release.
+- Library: Fixed every public semantic bit-write surface to preflight before sync/async FIFO admission and preserve native `bool` values through planning and validation, converting to integer `0`/`1` only at final wire encoding. Valid Boolean writes no longer fail after an internal integer conversion; integer, string, and truthy substitutes fail immediately without waiting for a busy client or sending a request.
+- Library: Added explicit synchronous and asynchronous `write_bit_in_word` and `relay_write_bit_in_word` surfaces. They validate the complete ordinary 16-bit word route before communication, hold one FIFO turn, use one absolute post-admission deadline, and always issue one read followed by one write. The sequence is not PLC-atomic; cancellation or failure after the write may have started is outcome-unknown and requires transport retirement, reconnect, and PLC-state reconciliation.
+- Tests: Added strict native-Boolean preservation and direct/relay bit-in-word read-modify-write contract coverage.
+
 - BREAKING: Async clients no longer own a private sync-client executor or `_run_sync_in_worker` compatibility seam. Private executor/sync-client substitutions were never public API; tests and extensions must use the documented async methods.
 - Library: Async TCP/UDP communication now uses native asyncio socket waits under one FIFO turn and one absolute deadline across DNS, connect, send, receive, validation, and decode. Queued cancellation sends nothing; active cancellation retires the transport; a post-send state change remains outcome-unknown.
 - Library: Direct/relay aggregate reads retain fully validated prepared segment frames, normalize relay hops once, and decode into the final result without segment result lists. Async aggregates execute one native prepared sequence without replaying completed segment decode work. Typed response and nested relay decoding use private memory views while public raw responses remain owned bytes.

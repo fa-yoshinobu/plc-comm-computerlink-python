@@ -182,6 +182,9 @@ result.
 
 Writes are different: `write`, `write_many`, typed array writes, and their relay
 forms reject a plan that would require multiple requests before transport.
+Every semantic bit-write form requires an actual `bool` and performs that pure
+validation before entering the sync FIFO or async lock; raw packed-byte APIs
+remain the separate encoded `0`/`1` wire contract.
 
 For contiguous word ranges, use `read_words_single_request`,
 `read_dwords_single_request`, `write_words_single_request`, or
@@ -189,10 +192,16 @@ For contiguous word ranges, use `read_words_single_request`,
 are no public chunking switches. Write separate explicit calls only when
 partial completion is acceptable.
 
-`write_bit_in_word` is an explicit read-modify-write helper, not part of read
-aggregation. It holds one exclusive FIFO turn across its read and write, but it
-is not PLC-atomic: PLC logic or another connection can still change the word
-between the two requests.
+`ToyopucDeviceClient.write_bit_in_word` and
+`AsyncToyopucDeviceClient.write_bit_in_word` are explicit read-modify-write
+helpers; `relay_write_bit_in_word` provides the corresponding explicit relay
+route. The top-level async `write_bit_in_word` delegates to that same contract.
+Each form validates its complete route before communication, holds one FIFO
+turn, shares one absolute deadline, and always performs one word read followed
+by one word write even when the bit already has the requested state. The
+sequence is not PLC-atomic: PLC logic or another connection can change the word
+between requests. Cancellation or failure after the write may have started is
+outcome-unknown; reconnect and reconcile PLC state before retrying.
 
 ## Timeouts, cancellation, and retry safety
 

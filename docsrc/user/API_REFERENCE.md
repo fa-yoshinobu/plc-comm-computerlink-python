@@ -31,6 +31,8 @@ Mutable async inputs are snapshotted exactly once before FIFO admission. The
 private prepared call then performs normal request
 validation and encoding without traversing the same logical input again.
 Direct synchronous calls use the same one-snapshot boundary.
+Semantic bit-write values are type-checked before sync or async FIFO admission;
+invalid non-Boolean values fail immediately and send no request.
 
 ## Device Operations
 
@@ -58,7 +60,8 @@ Direct synchronous calls use the same one-snapshot boundary.
 | Named read collections and polling | `read_named`, `poll` |
 | Word/dword reads | `read_words`, `read_dwords` |
 | Single-request reads/writes | `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, `write_dwords_single_request` |
-| Bit-in-word write | `write_bit_in_word` |
+| Bit-in-word write | `ToyopucDeviceClient.write_bit_in_word`, `AsyncToyopucDeviceClient.write_bit_in_word`, top-level async `write_bit_in_word` |
+| Relay bit-in-word write | `ToyopucDeviceClient.relay_write_bit_in_word`, `AsyncToyopucDeviceClient.relay_write_bit_in_word` |
 
 `ToyopucDeviceClient.read_one` and `relay_read_one` return one scalar.
 `read`, `relay_read`, `read_fr`, and `relay_read_fr` require an explicit
@@ -68,6 +71,12 @@ Read aggregates split only when required, preserve input order, validate the
 full plan before transport, and hold one FIFO turn; they are non-atomic across
 requests. Write aggregates remain single-request-only. No public chunking or
 `atomic_transfer` switch exists.
+
+Every bit-in-word form keeps its resolved direct or explicit relay route fixed,
+validates both requests before communication, and always performs one read plus
+one write under one FIFO turn and one absolute deadline. The sequence is not
+PLC-atomic. A cancellation or failure after the write may have started is
+outcome-unknown and requires reconnect plus PLC-state reconciliation.
 
 ## Profiles, Relay, And Diagnostics
 

@@ -421,19 +421,7 @@ async def write_bit_in_word(
     if isinstance(bit_index, bool) or not isinstance(bit_index, int) or not 0 <= bit_index <= 15:
         raise ValueError(f"bit_index must be 0-15, got {bit_index}")
     normalized_value = _normalize_bit_value(value)
-
-    def update(sync_client: Any) -> None:
-        from .high_level import _require_generic_write_device
-
-        _require_generic_write_device(sync_client.resolve_device(device))
-        current = int(sync_client.read_one(device)) & 0xFFFF
-        if normalized_value:
-            current |= 1 << bit_index
-        else:
-            current &= ~(1 << bit_index) & 0xFFFF
-        sync_client.write(device, current)
-
-    await client._run_exclusive(update)
+    await client.write_bit_in_word(device, bit_index, normalized_value)
 
 
 # ---------------------------------------------------------------------------

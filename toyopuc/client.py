@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
+from inspect import signature
 from ipaddress import ip_address
 from queue import Empty, Full, Queue
 from threading import Condition, Event, Lock, RLock, Thread, local
@@ -203,6 +204,17 @@ class _PreparedOperationArguments:
     kwargs: dict[str, object]
 
 
+@dataclass(frozen=True)
+class _PreparedOperationPlan:
+    """Detached inputs whose pure semantic preflight completed before FIFO admission."""
+
+    arguments: _PreparedOperationArguments
+
+
+_OperationPreflight = Callable[["ToyopucClient", _PreparedOperationArguments], _PreparedOperationArguments]
+_BoundArgumentValidator = Callable[["ToyopucClient", dict[str, object]], None]
+
+
 def _prepare_operation_arguments(
     args: tuple[object, ...],
     kwargs: dict[str, object],
@@ -213,10 +225,56 @@ def _prepare_operation_arguments(
     )
 
 
+def _make_operation_preflight(
+    method: Callable[..., object],
+    validator: _BoundArgumentValidator,
+) -> _OperationPreflight:
+    method_signature = signature(method)
+
+    def preflight(
+        client: ToyopucClient,
+        prepared: _PreparedOperationArguments,
+    ) -> _PreparedOperationArguments:
+        bound = method_signature.bind(client, *prepared.args, **prepared.kwargs)
+        validator(client, cast(dict[str, object], bound.arguments))
+        return _PreparedOperationArguments(tuple(bound.args[1:]), dict(bound.kwargs))
+
+    return preflight
+
+
+def _prepare_operation_plan(
+    client: ToyopucClient,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+    preflight: _OperationPreflight | None = None,
+) -> _PreparedOperationPlan:
+    prepared = _prepare_operation_arguments(args, kwargs)
+    if preflight is not None:
+        prepared = preflight(client, prepared)
+    return _PreparedOperationPlan(prepared)
+
+
+def _prepare_bound_operation_plan(
+    bound_method: Callable[..., object],
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> _PreparedOperationPlan:
+    owner = getattr(bound_method, "__self__", None)
+    preflight = getattr(bound_method, "_toyopuc_semantic_preflight", None)
+    if not isinstance(owner, ToyopucClient):
+        return _PreparedOperationPlan(_prepare_operation_arguments(args, kwargs))
+    return _prepare_operation_plan(
+        owner,
+        args,
+        kwargs,
+        preflight if callable(preflight) else None,
+    )
+
+
 def _execute_prepared_operation(
     client: ToyopucClient,
     method: Callable[..., object],
-    prepared: _PreparedOperationArguments,
+    plan: _PreparedOperationPlan,
 ) -> object:
     """Execute one private prepared call without traversing its inputs again."""
 
@@ -224,24 +282,24 @@ def _execute_prepared_operation(
         depth = int(getattr(client._operation_context, "prepared_call_depth", 0))
         client._operation_context.prepared_call_depth = depth + 1
         try:
-            return method(client, *prepared.args, **prepared.kwargs)
+            return method(client, *plan.arguments.args, **plan.arguments.kwargs)
         finally:
             client._operation_context.prepared_call_depth = depth
 
 
 def _invoke_prepared_operation(
     bound_method: Callable[..., object],
-    prepared: _PreparedOperationArguments,
+    plan: _PreparedOperationPlan,
 ) -> object:
     """Invoke the private prepared entry attached to an installed public wrapper."""
 
     prepared_entry = getattr(bound_method, "_toyopuc_prepared_entry", None)
     owner = getattr(bound_method, "__self__", None)
     if callable(prepared_entry) and isinstance(owner, ToyopucClient):
-        return prepared_entry(owner, prepared)
+        return prepared_entry(owner, plan)
     # Private test doubles and internal adapters may not use the installed
     # wrapper. Their method receives the already detached values directly.
-    return bound_method(*prepared.args, **prepared.kwargs)
+    return bound_method(*plan.arguments.args, **plan.arguments.kwargs)
 
 
 def _validate_fr_index(index: int) -> int:
@@ -294,10 +352,10 @@ def _normalize_unsigned_values(values: Iterable[int], *, bits: int, label: str) 
     return normalized
 
 
-def _normalize_bit_value(value: object) -> int:
+def _normalize_bit_value(value: object) -> bool:
     if not isinstance(value, bool):
         raise ValueError("bit values must be bool")
-    return int(value)
+    return value
 
 
 def _normalize_timer_seconds(value: object, *, name: str, allow_zero: bool) -> float:
@@ -925,12 +983,14 @@ class ToyopucClient:
             self._operation_context.depth = 1
             self._operation_context.active_generation = admission.generation
             self._operation_context.active_timeout = admission.timeout
+            self._operation_context.active_deadline = time.monotonic() + admission.timeout
         try:
             yield
         finally:
             self._operation_context.depth = 0
             self._operation_context.active_generation = None
             self._operation_context.active_timeout = None
+            self._operation_context.active_deadline = None
             with self._operation_condition:
                 if self._operation_queue and self._operation_queue[0] is admission:
                     self._operation_queue.popleft()
@@ -1088,7 +1148,9 @@ class ToyopucClient:
                 deadline=None,
                 record_diagnostics=False,
             )
-        deadline = time.monotonic() + self._operation_timeout()
+        deadline = getattr(self._operation_context, "active_deadline", None)
+        if deadline is None:
+            deadline = time.monotonic() + self._operation_timeout()
         self._raise_if_cancelled()
         if not self._sock:
             self._connect(deadline)
@@ -1280,7 +1342,8 @@ class ToyopucClient:
 
     def write_bit(self, addr: int, value: bool) -> None:
         """Write one basic-area bit with `CMD=21`; *value* must be `bool`."""
-        self._send_and_recv(build_bit_write(addr, _normalize_bit_value(value)), state_changing=True)
+        normalized = _normalize_bit_value(value)
+        self._send_and_recv(build_bit_write(addr, 1 if normalized else 0), state_changing=True)
 
     def read_dword(self, addr: int) -> int:
         """Read one 32-bit value from two consecutive words."""
@@ -1408,7 +1471,7 @@ class ToyopucClient:
         (manual: "byte address N"), as in :meth:`read_ext_multi`. Each bit
         point value must be an actual `bool`.
         """
-        bits = [(no, bit_no, addr, _normalize_bit_value(value)) for no, bit_no, addr, value in bit_points]
+        bits = [(no, bit_no, addr, 1 if _normalize_bit_value(value) else 0) for no, bit_no, addr, value in bit_points]
         self._send_and_recv(build_ext_multi_write(bits, list(byte_points), list(word_points)), state_changing=True)
 
     def pc10_block_read(self, addr32: int, count: int) -> bytes:
@@ -1894,23 +1957,43 @@ _FIFO_OPERATION_METHODS = (
 )
 
 
+def _validate_write_bit_semantics(_client: ToyopucClient, arguments: dict[str, object]) -> None:
+    arguments["value"] = _normalize_bit_value(arguments["value"])
+
+
+def _validate_write_ext_multi_bit_semantics(_client: ToyopucClient, arguments: dict[str, object]) -> None:
+    arguments["bit_points"] = tuple(
+        (no, bit_no, addr, _normalize_bit_value(value))
+        for no, bit_no, addr, value in cast(Iterable[tuple[int, int, int, object]], arguments["bit_points"])
+    )
+
+
+_LOW_LEVEL_SEMANTIC_BIT_WRITE_VALIDATORS: dict[str, _BoundArgumentValidator] = {
+    "write_bit": _validate_write_bit_semantics,
+    "write_ext_multi": _validate_write_ext_multi_bit_semantics,
+}
+
+
 def _install_fifo_operation(method_name: str) -> None:
     method = getattr(ToyopucClient, method_name)
+    validator = _LOW_LEVEL_SEMANTIC_BIT_WRITE_VALIDATORS.get(method_name)
+    semantic_preflight = _make_operation_preflight(method, validator) if validator is not None else None
 
-    def prepared_entry(self: ToyopucClient, prepared: _PreparedOperationArguments) -> object:
-        return _execute_prepared_operation(self, method, prepared)
+    def prepared_entry(self: ToyopucClient, plan: _PreparedOperationPlan) -> object:
+        return _execute_prepared_operation(self, method, plan)
 
     @wraps(method)
     def fifo_operation(self: ToyopucClient, *args: object, **kwargs: object) -> object:
         # A nested prepared call executes immediately in the same reentrant
         # turn, so its internally owned arguments have no queue mutation window.
         if int(getattr(self._operation_context, "prepared_call_depth", 0)):
-            prepared = _PreparedOperationArguments(args, kwargs)
+            plan = _PreparedOperationPlan(_PreparedOperationArguments(args, kwargs))
         else:
-            prepared = _prepare_operation_arguments(args, kwargs)
-        return prepared_entry(self, prepared)
+            plan = _prepare_operation_plan(self, args, kwargs, semantic_preflight)
+        return prepared_entry(self, plan)
 
     fifo_operation._toyopuc_prepared_entry = prepared_entry  # type: ignore[attr-defined]
+    fifo_operation._toyopuc_semantic_preflight = semantic_preflight  # type: ignore[attr-defined]
     setattr(ToyopucClient, method_name, fifo_operation)
 
 

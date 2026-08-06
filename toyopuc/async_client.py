@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any, TypeVar, cast
 
-from .client import ToyopucClient, ToyopucTraceDirection, _invoke_prepared_operation, _prepare_operation_arguments
+from .client import ToyopucClient, ToyopucTraceDirection, _invoke_prepared_operation, _prepare_bound_operation_plan
 from .errors import (
     ToyopucClosedError,
     ToyopucNotConnectedError,
@@ -59,9 +59,9 @@ class _OperationScript:
 
 def _install_async_wrapper(async_cls: type, method_name: str) -> None:
     async def _async_method(self: Any, *args: Any, **kwargs: Any) -> Any:
-        prepared = _prepare_operation_arguments(args, kwargs)
         bound = getattr(self._client, method_name)
-        return await self._run_native_callable(_invoke_prepared_operation, bound, prepared)
+        plan = _prepare_bound_operation_plan(bound, args, kwargs)
+        return await self._run_native_callable(_invoke_prepared_operation, bound, plan)
 
     _async_method.__name__ = method_name
     _async_method.__qualname__ = f"{async_cls.__name__}.{method_name}"
@@ -502,6 +502,8 @@ _HIGH_LEVEL_ASYNC_METHODS = [
     "read_one",
     "write",
     "write_many",
+    "write_bit_in_word",
+    "relay_write_bit_in_word",
     "read_dword",
     "write_dword",
     "read_dwords",

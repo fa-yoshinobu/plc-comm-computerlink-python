@@ -1,4 +1,6 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -31,6 +33,19 @@ from toyopuc.protocol import build_fr_register, build_pc10_block_write
 
 GENERIC_PROFILE = "toyopuc:generic"
 MAX_TIMER_SECONDS = 2_147_483.647
+
+_INVALID_SEMANTIC_BIT_WRITE_CALLS = [
+    ("low-level-single", lambda client: client.write_bit(0, 1)),
+    ("low-level-aggregate", lambda client: client.write_ext_multi([(1, 0, 0, 1)], [], [])),
+    ("direct-single", lambda client: client.write("P1-M0000", 1)),
+    ("direct-sequence", lambda client: client.write("P1-M0000", [True, 1])),
+    ("direct-mapping", lambda client: client.write_many({"P1-M0000": 1})),
+    ("relay-single", lambda client: client.relay_write("P1-L2:N2", "P1-M0000", 1)),
+    ("relay-sequence", lambda client: client.relay_write("P1-L2:N2", "P1-M0000", [True, 1])),
+    ("relay-mapping", lambda client: client.relay_write_many("P1-L2:N2", {"P1-M0000": 1})),
+    ("direct-rmw", lambda client: client.write_bit_in_word("P1-D0000", 0, 1)),
+    ("relay-rmw", lambda client: client.relay_write_bit_in_word("P1-L2:N2", "P1-D0000", 0, 1)),
+]
 
 
 def _word_addr(text: str) -> int:
@@ -229,6 +244,77 @@ def test_high_level_bit_writes_reject_integer_bits_before_transport(value: int) 
         client.relay_write_many("P1-L2:N2", {"P1-M0000": value})
 
     assert client.send_count == 0
+
+
+@pytest.mark.parametrize(
+    "_surface,invoke",
+    _INVALID_SEMANTIC_BIT_WRITE_CALLS,
+    ids=[item[0] for item in _INVALID_SEMANTIC_BIT_WRITE_CALLS],
+)
+def test_sync_semantic_bit_preflight_rejects_before_held_fifo(
+    _surface: str,
+    invoke,
+) -> None:
+    client = ToyopucDeviceClient(
+        "127.0.0.1",
+        1025,
+        transport="tcp",
+        plc_profile=GENERIC_PROFILE,
+    )
+    entered = Event()
+    release = Event()
+
+    def hold_fifo() -> None:
+        with client._operation_turn():
+            entered.set()
+            release.wait(2)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        holder = executor.submit(hold_fifo)
+        assert entered.wait(1)
+        invalid = executor.submit(invoke, client)
+        try:
+            with pytest.raises(ValueError, match="must be bool"):
+                invalid.result(timeout=0.5)
+        finally:
+            release.set()
+        holder.result(timeout=1)
+
+    assert client.traffic_stats().request_count == 0
+
+
+@pytest.mark.parametrize(
+    "_surface,invoke",
+    _INVALID_SEMANTIC_BIT_WRITE_CALLS,
+    ids=[item[0] for item in _INVALID_SEMANTIC_BIT_WRITE_CALLS],
+)
+def test_async_semantic_bit_preflight_rejects_before_held_lock(
+    _surface: str,
+    invoke,
+) -> None:
+    async def run() -> None:
+        client = AsyncToyopucDeviceClient(
+            "127.0.0.1",
+            1025,
+            transport="tcp",
+            plc_profile=GENERIC_PROFILE,
+        )
+        await client._operation_lock.acquire()
+        task = asyncio.create_task(invoke(client))
+        try:
+            await asyncio.sleep(0)
+            assert task.done(), "semantic preflight waited for the async FIFO lock"
+            with pytest.raises(ValueError, match="must be bool"):
+                await task
+        finally:
+            if not task.done():
+                task.cancel()
+            client._operation_lock.release()
+            await asyncio.gather(task, return_exceptions=True)
+
+        assert client.traffic_stats().request_count == 0
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("bit_index", [True, -1, 16, 1.5, "1"])
@@ -743,6 +829,43 @@ def test_bit_in_word_rmw_runs_read_and_write_in_one_exclusive_turn() -> None:
         assert wrapper._client.written == 8
 
     asyncio.run(run())
+
+
+def test_bit_in_word_preserves_direct_and_relay_routes_and_always_writes() -> None:
+    class RouteCaptureClient(ToyopucDeviceClient):
+        def __init__(self) -> None:
+            super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
+            self.calls: list[tuple[object, ...]] = []
+
+        def read_one(self, device):
+            self.calls.append(("direct-read", device))
+            return 8
+
+        def write(self, device, value):
+            self.calls.append(("direct-write", device, value))
+
+        def relay_read_one(self, hops, device):
+            self.calls.append(("relay-read", tuple(hops), device))
+            return 8
+
+        def relay_write(self, hops, device, value):
+            self.calls.append(("relay-write", tuple(hops), device, value))
+
+    client = RouteCaptureClient()
+    direct = client.resolve_device("B0000")
+    client.write_bit_in_word(direct, 3, True)
+    assert client.calls == [
+        ("direct-read", direct),
+        ("direct-write", direct, 8),
+    ]
+
+    client.calls.clear()
+    relay = client.resolve_device("B0000")
+    client.relay_write_bit_in_word("P1-L2:N2", relay, 3, True)
+    assert client.calls == [
+        ("relay-read", ((0x12, 2),), relay),
+        ("relay-write", ((0x12, 2),), relay, 8),
+    ]
 
 
 def test_dword_and_float_array_counts_are_strict() -> None:

@@ -35,6 +35,18 @@ dword writes accept integers in `0..4294967295`. Boolean values are not word
 or dword integers. Fractional values and numeric strings are never converted.
 Raw frame and payload builders are the wire layer and therefore use validated
 integer `0`/`1` bit fields rather than semantic Boolean values.
+All direct, relay, single, aggregate, and explicit bit-in-word semantic writes
+perform this validation before entering the sync FIFO or async lock. An invalid
+value therefore does not wait behind active communication and sends no request.
+
+## Symptom: a bit-in-word update races with another writer
+
+`write_bit_in_word` and `relay_write_bit_in_word` always issue one word read
+followed by one word write under one local FIFO turn and one absolute deadline.
+They are not PLC-atomic, so PLC logic or another connection can update the word
+between requests. Use PLC-side coordination when the whole word is shared. A
+cancellation or failure after the write may have started is outcome-unknown;
+retire and reconnect the transport and reconcile PLC state before retrying.
 
 ## Symptom: an IPv6 PLC endpoint is rejected
 
