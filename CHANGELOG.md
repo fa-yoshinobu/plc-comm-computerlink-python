@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-08-27
+
+- Release: Bumped the package and runtime metadata to `4.1.0` for the canonical single-request word and DWord read contract.
 - Library: Made `read_words_single_request` and `read_dwords_single_request` reject multi-segment ranges before transport; the former short top-level names now warn and delegate to the canonical APIs.
 
 ## [4.0.0] - 2026-08-07
