@@ -58,7 +58,7 @@ invalid non-Boolean values fail immediately and send no request.
 | Device resolver | `ResolvedDevice`, `resolve_device` |
 | Typed values | `read_typed`, `write_typed` |
 | Named read collections and polling | `read_named`, `poll` |
-| Word/dword reads | `read_words`, `read_dwords` |
+| Deprecated high-level read aliases | `read_words` (use `read_words_single_request`), `read_dwords` (use `read_dwords_single_request`) |
 | Single-request reads/writes | `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, `write_dwords_single_request` |
 | Bit-in-word write | `ToyopucDeviceClient.write_bit_in_word`, `AsyncToyopucDeviceClient.write_bit_in_word`, top-level async `write_bit_in_word` |
 | Relay bit-in-word write | `ToyopucDeviceClient.relay_write_bit_in_word`, `AsyncToyopucDeviceClient.relay_write_bit_in_word` |
@@ -71,6 +71,11 @@ Read aggregates split only when required, preserve input order, validate the
 full plan before transport, and hold one FIFO turn; they are non-atomic across
 requests. Write aggregates remain single-request-only. No public chunking or
 `atomic_transfer` switch exists.
+
+The top-level single-request word and dword helpers validate the complete
+contiguous range before transport and reject any range that would require a
+second segment. The deprecated `read_words` and `read_dwords` top-level helpers
+warn and delegate to that same contract.
 
 Every bit-in-word form keeps its resolved direct or explicit relay route fixed,
 validates both requests before communication, and always performs one read plus

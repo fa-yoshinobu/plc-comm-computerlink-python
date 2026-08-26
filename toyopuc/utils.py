@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import math
 import struct
+import warnings
 from collections.abc import AsyncIterator
 from dataclasses import KW_ONLY, dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -188,13 +189,26 @@ async def read_words_single_request(
     device: str,
     count: int,
 ) -> list[int]:
-    """Read contiguous word values using one high-level logical operation.
+    """Read contiguous word values in exactly one protocol request.
 
-    This name is retained as an explicit statement of the operation's
-    single-request contract.
+    The complete route and request capacity are validated before transport;
+    a range that requires multiple segments is rejected instead of split.
     """
 
-    return await read_words(client, device, count)
+    from .high_level import ToyopucDeviceClient, _require_positive_count
+
+    _require_positive_count(count)
+    sync_client = cast(ToyopucDeviceClient, client._client)
+    resolved = sync_client._coerce_device(device)
+    sync_client._ensure_word_device(resolved, "read_words_single_request()")
+    devices = sync_client._seq_devices(resolved, count)
+    sync_client._require_single_read_request(
+        devices,
+        split_pc10=True,
+        operation="read_words_single_request",
+    )
+    values = await client.read(device, count)
+    return [int(value) & 0xFFFF for value in values]
 
 
 async def read_dwords_single_request(
@@ -202,12 +216,26 @@ async def read_dwords_single_request(
     device: str,
     count: int,
 ) -> list[int]:
-    """Read contiguous dword values using one high-level logical operation.
+    """Read contiguous dword values in exactly one protocol request.
 
-    Dword arrays always use one protocol request; there is no switch that can
-    silently enable splitting.
+    Dword boundaries and the complete request capacity are validated before
+    transport; a range that requires multiple segments is rejected.
     """
 
+    from .high_level import ToyopucDeviceClient, _require_positive_count
+
+    _require_positive_count(count)
+    sync_client = cast(ToyopucDeviceClient, client._client)
+    resolved = sync_client._coerce_device(device)
+    sync_client._ensure_word_device(resolved, "read_dwords_single_request()")
+    word_count = count * 2
+    devices = sync_client._seq_devices(resolved, word_count)
+    sync_client._require_single_read_request(
+        devices,
+        split_pc10=True,
+        operation="read_dwords_single_request",
+        entry_lengths=[2] * count,
+    )
     values = await client.read_dwords(device, count)
     return [int(value) & 0xFFFFFFFF for value in values]
 
@@ -249,7 +277,7 @@ async def read_words(
     device: str,
     count: int,
 ) -> list[int]:
-    """Read *count* contiguous word values starting at *device*.
+    """Deprecated compatibility alias for :func:`read_words_single_request`.
 
     Args:
         client: Connected AsyncToyopucDeviceClient.
@@ -259,8 +287,12 @@ async def read_words(
     Returns:
         List of unsigned 16-bit integers.
     """
-    result = await client.read(device, count)
-    return [int(v) & 0xFFFF for v in result]
+    warnings.warn(
+        "read_words() is deprecated; use read_words_single_request()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return await read_words_single_request(client, device, count)
 
 
 async def read_dwords(
@@ -268,7 +300,7 @@ async def read_dwords(
     device: str,
     count: int,
 ) -> list[int]:
-    """Read *count* contiguous DWord (32-bit unsigned) values starting at *device*.
+    """Deprecated compatibility alias for :func:`read_dwords_single_request`.
 
     Reads ``count * 2`` words and combines adjacent word pairs (lo, hi).
 
@@ -280,8 +312,12 @@ async def read_dwords(
     Returns:
         List of unsigned 32-bit integers.
     """
-    words = await read_words(client, device, count * 2)
-    return [(words[i] | (words[i + 1] << 16)) for i in range(0, count * 2, 2)]
+    warnings.warn(
+        "read_dwords() is deprecated; use read_dwords_single_request()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return await read_dwords_single_request(client, device, count)
 
 
 async def open_and_connect(options: ToyopucConnectionOptions) -> AsyncToyopucDeviceClient:

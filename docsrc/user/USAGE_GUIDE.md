@@ -189,8 +189,10 @@ remain the separate encoded `0`/`1` wire contract.
 For contiguous word ranges, use `read_words_single_request`,
 `read_dwords_single_request`, `write_words_single_request`, or
 `write_dwords_single_request` when one wire request is itself required. There
-are no public chunking switches. Write separate explicit calls only when
-partial completion is acceptable.
+are no public chunking switches: a word or dword range that needs more than one
+segment is rejected before transport. The former top-level `read_words` and
+`read_dwords` names remain deprecated compatibility delegates. Write separate
+explicit calls only when partial completion is acceptable.
 
 `ToyopucDeviceClient.write_bit_in_word` and
 `AsyncToyopucDeviceClient.write_bit_in_word` are explicit read-modify-write

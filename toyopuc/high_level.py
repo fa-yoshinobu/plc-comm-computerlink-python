@@ -592,12 +592,17 @@ class ToyopucDeviceClient(ToyopucClient):
             self._run_plan_cache[key] = plan
         return plan
 
-    def _require_single_read_request(self, devices: list[ResolvedDevice], split_pc10: bool, operation: str) -> None:
+    def _require_single_read_request(
+        self,
+        devices: list[ResolvedDevice],
+        split_pc10: bool,
+        operation: str,
+        *,
+        entry_lengths: Sequence[int] | None = None,
+    ) -> None:
         if not devices:
             raise ValueError(f"{operation} requires at least one device")
-        if len(devices) == 1:
-            return
-        plan = self._get_run_plan(devices, split_pc10)
+        plan = self._get_read_plan(devices, split_pc10, entry_lengths=entry_lengths)
         if len(plan) != 1 or not self._can_read_as_single_request(devices):
             self._raise_implicit_split_error(operation)
 

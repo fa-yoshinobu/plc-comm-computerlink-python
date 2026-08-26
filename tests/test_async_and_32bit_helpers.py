@@ -19,9 +19,11 @@ from toyopuc import (
     parse_address,
     parse_device_address,
     poll,
+    read_dwords,
     read_dwords_single_request,
     read_named,
     read_typed,
+    read_words,
     read_words_single_request,
     try_parse_device_address,
     write_bit_in_word,
@@ -726,9 +728,40 @@ def test_explicit_word_and_dword_surface() -> None:
     assert client.word_writes == [
         (addr0, [10, 11]),
     ]
+    assert client.word_reads == [(addr0, 2)]
     assert client.write_dword_calls == [
         ("B0000", [0x12345678]),
     ]
+
+
+def test_deprecated_word_read_aliases_delegate_to_canonical_helpers() -> None:
+    client = _DummyAsyncSurfaceClient()
+    addr0 = _word_addr("B0000")
+    addr1 = _word_addr("B0001")
+    client.word_map = {addr0: 1, addr1: 2}
+    client.read_dword_map = {"B0000": [0x12345678]}
+
+    async def run_checks() -> None:
+        with pytest.warns(DeprecationWarning, match="read_words_single_request"):
+            assert await read_words(client, "B0000", 2) == [1, 2]
+        with pytest.warns(DeprecationWarning, match="read_dwords_single_request"):
+            assert await read_dwords(client, "B0000", 1) == [0x12345678]
+
+    asyncio.run(run_checks())
+    assert client.word_reads == [(addr0, 2)]
+
+
+def test_single_request_read_helpers_reject_multiple_segments_before_transport() -> None:
+    client = _NoIoAsyncHighLevelClient()
+
+    async def run_checks() -> None:
+        with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+            await read_words_single_request(client, "B0000", 513)
+        with pytest.raises(ToyopucProtocolError, match="one compatible protocol request"):
+            await read_dwords_single_request(client, "B0000", 257)
+
+    asyncio.run(run_checks())
+    assert client._client.send_count == 0
 
 
 def test_read_one_and_contiguous_read_have_stable_return_shapes() -> None:

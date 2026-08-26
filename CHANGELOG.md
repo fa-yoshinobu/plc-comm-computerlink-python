@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Library: Made `read_words_single_request` and `read_dwords_single_request` reject multi-segment ranges before transport; the former short top-level names now warn and delegate to the canonical APIs.
+
 ## [4.0.0] - 2026-08-07
 
 - Release: Bumped package metadata and `toyopuc.__version__` to `4.0.0` for the approved breaking contract release.
