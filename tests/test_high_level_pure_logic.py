@@ -40,7 +40,7 @@ def _devices(names: list[str]) -> list[ResolvedDevice]:
     return [resolve_device(name, profile="toyopuc:generic") for name in names]
 
 
-def test_pc10_multi_bit_payload_packs_addresses_and_bit_values() -> None:
+def test_pc10_multi_bit_payload_interleaves_each_address_and_data_byte() -> None:
     payload = _pack_pc10_multi_bit_payload(
         [
             (0x00100000, 1),
@@ -57,16 +57,15 @@ def test_pc10_multi_bit_payload_packs_addresses_and_bit_values() -> None:
 
     assert payload == bytes.fromhex(
         "09 00 00 00"
-        "00 00 10 00"
-        "01 00 10 00"
-        "02 00 10 00"
-        "00 00 40 00"
-        "01 00 40 00"
-        "02 00 40 00"
-        "03 00 40 00"
-        "04 00 40 00"
-        "05 00 40 00"
-        "ad 01"
+        "00 00 10 00 01"
+        "01 00 10 00 00"
+        "02 00 10 00 01"
+        "00 00 40 00 01"
+        "01 00 40 00 00"
+        "02 00 40 00 01"
+        "03 00 40 00 00"
+        "04 00 40 00 01"
+        "05 00 40 00 01"
     )
 
 
@@ -81,13 +80,18 @@ def test_pc10_multi_word_payloads_pack_counts_addresses_and_values() -> None:
         "00 00 03 0000 00 10 0002 00 10 0000 00 40 00"
     )
 
-    assert _pack_pc10_multi_word_payload([(0x00100000, 0x1234), (0x00100002, 0xFFFF)]) == bytes.fromhex(
-        "00 00 02 0000 00 10 0002 00 10 0034 12 ff ff"
+    assert _pack_pc10_multi_word_payload([(0x00040000, 0x1234), (0x00040200, 0x5678)]) == bytes.fromhex(
+        "00 00 02 00 00 00 04 00 34 12 00 02 04 00 78 56"
     )
     with pytest.raises(ValueError):
         _pack_pc10_multi_word_payload([(0x00400000, 0x10000)])
     with pytest.raises(ValueError):
         _pack_pc10_multi_word_payload([(0x00400002, -1)])
+
+
+def test_pc10_single_point_multi_write_payloads_remain_byte_identical() -> None:
+    assert _pack_pc10_multi_word_payload([(0x04000000, 0x1234)]) == bytes.fromhex("00 00 01 00 00 00 00 04 34 12")
+    assert _pack_pc10_multi_bit_payload([(0x04000000, 1)]) == bytes.fromhex("01 00 00 00 00 00 00 04 01")
 
 
 def test_pc10_payload_helpers_reject_count_wrap_and_oversized_writes() -> None:
@@ -97,6 +101,9 @@ def test_pc10_payload_helpers_reject_count_wrap_and_oversized_writes() -> None:
         _pack_pc10_multi_word_payload([(0x00100000, 0)] * 85)
     with pytest.raises(ValueError, match="CMD=C5"):
         _pack_pc10_multi_bit_payload([(0x00100000 + i, 1) for i in range(124)])
+    _pack_pc10_multi_bit_payload([(0x00100000 + i, 1) for i in range(101)])
+    with pytest.raises(ValueError, match="CMD=C5"):
+        _pack_pc10_multi_bit_payload([(0x00100000 + i, 1) for i in range(102)])
 
 
 def test_pc10_multi_response_parsers_keep_current_bit_and_word_layout() -> None:

@@ -580,13 +580,15 @@ def handle_command(mem: Memory, frame: bytes) -> bytes:
         if len(data) < 4:
             return build_response(cmd, b"", rc=0x01)
         bit_cnt, byte_cnt, word_cnt, long_cnt = data[0], data[1], data[2], data[3]
+        if len(data) != 4 + (bit_cnt + byte_cnt + word_cnt + long_cnt) * 4:
+            return build_response(cmd, b"", rc=0x01)
         idx = 4
         addrs = []
         for _ in range(bit_cnt + byte_cnt + word_cnt + long_cnt):
             addr32 = data[idx] | (data[idx + 1] << 8) | (data[idx + 2] << 16) | (data[idx + 3] << 24)
             idx += 4
             addrs.append(addr32)
-        out = bytearray()
+        out = bytearray(data[:4])
         # bits packed
         if bit_cnt:
             acc = 0
@@ -620,33 +622,44 @@ def handle_command(mem: Memory, frame: bytes) -> bytes:
             return build_response(cmd, b"", rc=0x01)
         bit_cnt, byte_cnt, word_cnt, long_cnt = data[0], data[1], data[2], data[3]
         idx = 4
-        addrs = []
-        for _ in range(bit_cnt + byte_cnt + word_cnt + long_cnt):
+
+        def read_address() -> int:
+            nonlocal idx
+            if idx + 4 > len(data):
+                raise ValueError("truncated PC10 multi-write address")
             addr32 = data[idx] | (data[idx + 1] << 8) | (data[idx + 2] << 16) | (data[idx + 3] << 24)
             idx += 4
-            addrs.append(addr32)
-        # data section
-        # bits packed
-        for i in range(bit_cnt):
-            byte_index = i // 8
-            bit_index = i % 8
-            val = (data[idx + byte_index] >> bit_index) & 0x01
-            mem.pc10[addrs[i]] = val
-        idx += (bit_cnt + 7) // 8
-        offset = bit_cnt
-        for i in range(byte_cnt):
-            mem.pc10[addrs[offset + i]] = data[idx]
-            idx += 1
-        offset += byte_cnt
-        for i in range(word_cnt):
-            v = data[idx] | (data[idx + 1] << 8)
-            mem.pc10[addrs[offset + i]] = v
-            idx += 2
-        offset += word_cnt
-        for i in range(long_cnt):
-            v = data[idx] | (data[idx + 1] << 8) | (data[idx + 2] << 16) | (data[idx + 3] << 24)
-            mem.pc10[addrs[offset + i]] = v
-            idx += 4
+            return addr32
+
+        try:
+            for _ in range(bit_cnt):
+                addr32 = read_address()
+                if idx >= len(data):
+                    raise ValueError("truncated PC10 multi-write bit data")
+                mem.pc10[addr32] = data[idx] & 0x01
+                idx += 1
+            for _ in range(byte_cnt):
+                addr32 = read_address()
+                if idx >= len(data):
+                    raise ValueError("truncated PC10 multi-write byte data")
+                mem.pc10[addr32] = data[idx]
+                idx += 1
+            for _ in range(word_cnt):
+                addr32 = read_address()
+                if idx + 2 > len(data):
+                    raise ValueError("truncated PC10 multi-write word data")
+                mem.pc10[addr32] = data[idx] | (data[idx + 1] << 8)
+                idx += 2
+            for _ in range(long_cnt):
+                addr32 = read_address()
+                if idx + 4 > len(data):
+                    raise ValueError("truncated PC10 multi-write long data")
+                mem.pc10[addr32] = data[idx] | (data[idx + 1] << 8) | (data[idx + 2] << 16) | (data[idx + 3] << 24)
+                idx += 4
+        except ValueError:
+            return build_response(cmd, b"", rc=0x01)
+        if idx != len(data):
+            return build_response(cmd, b"", rc=0x01)
         return build_response(cmd, b"")
 
     if cmd in (0xC6, 0xCA, 0xA0):

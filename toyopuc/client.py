@@ -680,7 +680,7 @@ def _expected_read_response_size_request(request: _RelayInnerRequest) -> int | N
     if command == 0xC4:
         if len(body) < 4:
             raise ValueError("PC10 multi-read request body is too short")
-        return 4 + ((body[0] + 7) // 8) + body[1] + body[2] * 2
+        return 4 + ((body[0] + 7) // 8) + body[1] + body[2] * 2 + body[3] * 4
     return None
 
 
@@ -688,6 +688,20 @@ def _require_response_data_size(command: int, data: bytes | memoryview, expected
     if len(data) != expected:
         raise ToyopucProtocolError(
             f"CMD={command:02X} response data size mismatch: expected={expected}, actual={len(data)}"
+        )
+
+
+def _require_pc10_multi_read_response_counts(
+    request: _RelayInnerRequest,
+    data: bytes | memoryview,
+) -> None:
+    if request.command != 0xC4:
+        return
+    expected_counts = request.body[:4]
+    actual_counts = bytes(data[:4])
+    if actual_counts != expected_counts:
+        raise ToyopucProtocolError(
+            f"CMD=C4 response point counts mismatch: expected={expected_counts.hex()}, actual={actual_counts.hex()}"
         )
 
 
@@ -1284,6 +1298,7 @@ class ToyopucClient:
                 )
             if expected_read_size is not None:
                 _require_response_data_size(request.command, resp.data, expected_read_size)
+            _require_pc10_multi_read_response_counts(request, resp.data)
             if decode is None:
                 return resp
             return decode(resp)
@@ -1633,6 +1648,7 @@ class ToyopucClient:
                         f"CMD={request.command:02X} relay response data size mismatch: "
                         f"expected={expected_read_size}, actual={len(final.data)}"
                     )
+                _require_pc10_multi_read_response_counts(request, final.data)
             return decode(final)
 
         return self._run_post_send_decode(

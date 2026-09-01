@@ -30,10 +30,11 @@ from toyopuc import (
     ToyopucTimeoutError,
     ToyopucTransportError,
 )
-from toyopuc.client import _is_read_only_payload
+from toyopuc.client import _expected_read_response_size, _is_read_only_payload
 from toyopuc.protocol import (
     ResponseFrame,
     build_command,
+    build_pc10_multi_read,
     build_scan_resume,
     build_scan_stop,
     build_scan_stop_release,
@@ -441,6 +442,89 @@ def _response(cmd: int, data: bytes = b"", *, rc: int = 0x00) -> bytes:
 def _relay_success_bytes(inner_cmd: int, inner_data: bytes) -> bytes:
     inner_raw = build_command(inner_cmd, inner_data)[2:]
     return bytes([0x80, 0x00]) + build_command(0x60, bytes([0x12, 0x02, 0x00, 0x06]) + inner_raw)[2:]
+
+
+def test_pc10_multi_read_accepts_four_bytes_per_long_point() -> None:
+    response_data = bytes.fromhex("00 00 00 02 11 22 33 44 55 66 77 88")
+    sock = _FakeSocket([_response(0xC4, response_data)])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    assert client.pc10_multi_read(bytes([0, 0, 0, 2])) == response_data
+
+
+@pytest.mark.parametrize("data_delta", [-1, 1])
+def test_direct_pc10_multi_read_rejects_long_response_length_mismatch(data_delta: int) -> None:
+    request_counts = bytes([0, 0, 0, 2])
+    response_data = request_counts + bytes(8 + data_delta)
+    sock = _FakeSocket([_response(0xC4, response_data)])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="response data size mismatch"):
+        client.pc10_multi_read(request_counts)
+
+
+@pytest.mark.parametrize(
+    ("long_count", "expected_size"),
+    [(0, 4), (1, 8), (3, 16)],
+)
+def test_pc10_multi_read_expected_size_counts_each_long_as_four_bytes(
+    long_count: int,
+    expected_size: int,
+) -> None:
+    assert _expected_read_response_size(build_pc10_multi_read(bytes([0, 0, 0, long_count]))) == expected_size
+
+
+@pytest.mark.parametrize("count_index", range(4))
+def test_pc10_multi_read_rejects_each_mismatched_count_with_expected_total_size(count_index: int) -> None:
+    request_counts = bytes([8, 2, 1, 1])
+    response_counts = bytearray(request_counts)
+    response_counts[count_index] -= 1
+    sock = _FakeSocket([_response(0xC4, bytes(response_counts) + bytes(9))])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="point counts mismatch"):
+        client.pc10_multi_read(request_counts)
+
+
+@pytest.mark.parametrize("data_delta", [-1, 1])
+def test_relay_pc10_multi_read_rejects_long_response_length_mismatch(data_delta: int) -> None:
+    request_counts = bytes([0, 0, 0, 2])
+    response_data = request_counts + bytes(8 + data_delta)
+    sock = _FakeSocket([_relay_success_bytes(0xC4, response_data)])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="relay response data size mismatch"):
+        client.send_via_relay("P1-L2:N2", build_pc10_multi_read(request_counts))
+
+
+def test_relay_pc10_multi_read_rejects_same_size_count_mismatch() -> None:
+    request_counts = bytes([0, 0, 2, 0])
+    response_data = bytes([0, 0, 0, 0, 0x34, 0x12, 0x78, 0x56])
+    sock = _FakeSocket([_relay_success_bytes(0xC4, response_data)])
+    client = ToyopucClient("127.0.0.1", 1025, transport="tcp")
+    client._sock = sock
+
+    with pytest.raises(ToyopucProtocolError, match="point counts mismatch"):
+        client.send_via_relay("P1-L2:N2", build_pc10_multi_read(request_counts))
+
+
+def test_async_pc10_multi_read_uses_the_same_count_correlation() -> None:
+    async def run() -> None:
+        request_counts = bytes([0, 0, 2, 0])
+        client = AsyncToyopucClient("127.0.0.1", 1025, transport="tcp")
+
+        async def exchange(*_args: object) -> bytes:
+            return _response(0xC4, bytes([0, 0, 0, 0, 0x34, 0x12, 0x78, 0x56]))
+
+        client._exchange = exchange  # type: ignore[method-assign]
+        with pytest.raises(ToyopucProtocolError, match="point counts mismatch"):
+            await client.pc10_multi_read(request_counts)
+
+    asyncio.run(run())
 
 
 def test_tcp_fragmented_header_and_body_are_received_under_one_request() -> None:

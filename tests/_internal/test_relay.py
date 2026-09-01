@@ -76,9 +76,8 @@ def _pc10_multi_word_read_payload(addrs32):
 def _pc10_multi_word_write_payload(items):
     items = list(items)
     payload = bytearray([0x00, 0x00, len(items) & 0xFF, 0x00])
-    for addr32, _ in items:
+    for addr32, value in items:
         payload.extend(int(addr32).to_bytes(4, "little"))
-    for _, value in items:
         payload.extend(int(value & 0xFFFF).to_bytes(2, "little"))
     return bytes(payload)
 
@@ -182,7 +181,7 @@ class _DummyAdvancedBatchDirectClient(ToyopucDeviceClient):
     def pc10_multi_read(self, payload):
         self.pc10_multi_reads.append(payload)
         count = payload[2]
-        data = bytearray(4)
+        data = bytearray(payload[:4])
         for i in range(count):
             data.extend((0x1234 + i * 0x4444).to_bytes(2, "little"))
         return bytes(data)
@@ -478,7 +477,7 @@ def _manual_pc10_bit_devices(count: int) -> list[ResolvedDevice]:
 
 
 def test_public_relay_pc10_bit_route_decodes_exact_response_in_caller_order():
-    client = _DummyRelayHighLevelClient(_relay_success_response(0xC4, bytes(4) + bytes([0x55, 0x03])))
+    client = _DummyRelayHighLevelClient(_relay_success_response(0xC4, bytes([10, 0, 0, 0, 0x55, 0x03])))
     assert client.relay_read_devices("P1-L2:N2", _manual_pc10_bit_devices(10)) == [
         True,
         False,
@@ -505,7 +504,7 @@ class _DirectPc10ResponseClient(ToyopucDeviceClient):
 
 
 def test_public_direct_pc10_bit_route_decodes_exact_response_in_caller_order():
-    client = _DirectPc10ResponseClient(bytes(4) + bytes([0x55, 0x03]))
+    client = _DirectPc10ResponseClient(bytes([10, 0, 0, 0, 0x55, 0x03]))
     assert client.read_devices(_manual_pc10_bit_devices(10)) == [
         True,
         False,
@@ -685,6 +684,15 @@ def test_high_level_write_many_pc10_word_sparse_uses_multi_write():
     ]
 
 
+def test_public_direct_pc10_bit_write_route_reaches_interleaved_c5():
+    client = _DummyAdvancedBatchDirectClient()
+    first, second = _manual_pc10_bit_devices(2)
+
+    client.write_many({first: True, second: False})
+
+    assert client.pc10_multi_writes == [bytes.fromhex("02 00 00 00 00 00 00 00 01 01 00 00 00 00")]
+
+
 def test_high_level_relay_read_many_ext_bit_sparse_unpacks_packed_multi_read():
     devices = [f"EM{i:04X}" for i in range(10)]
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
@@ -709,7 +717,7 @@ def test_high_level_relay_read_many_pc10_word_sparse_uses_multi_read():
     devices = ["U08000", "U08100"]
     resolved = [resolve_device(d, profile="toyopuc:generic") for d in devices]
     payload = _pc10_multi_word_read_payload([_r.addr32 for _r in resolved])
-    outer = _relay_success_response(0xC4, b"\x00\x00\x00\x00\x34\x12\x78\x56")
+    outer = _relay_success_response(0xC4, b"\x00\x00\x02\x00\x34\x12\x78\x56")
     client = _DummyRelayHighLevelClient(outer)
 
     values = client.relay_read_devices("P1-L2:N2", devices)
@@ -739,3 +747,14 @@ def test_high_level_relay_write_many_pc10_word_sparse_uses_multi_write():
 
     assert client.inner_calls == [build_pc10_multi_write(payload)]
     assert client.last_inner == build_pc10_multi_write(payload)
+
+
+def test_public_relay_pc10_bit_write_route_reaches_interleaved_c5():
+    client = _DummyRelayHighLevelClient(_relay_success_response(0xC5, b""))
+    first, second = _manual_pc10_bit_devices(2)
+
+    client.relay_write_many("P1-L2:N2", {first: True, second: False})
+
+    expected = bytes.fromhex("00 00 0f 00 c5 02 00 00 00 00 00 00 00 01 01 00 00 00 00")
+    assert client.inner_calls == [expected]
+    assert client.last_inner == expected

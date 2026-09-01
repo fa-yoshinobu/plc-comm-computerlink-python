@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Library: Corrected PC10 C4 response correlation and long-value length calculation for direct, relay, synchronous, asynchronous, and aggregate reads; malformed count echoes are now rejected instead of decoded.
+- Library: Corrected PC10 C5 sparse word and bit writes to encode each address immediately followed by its value/data byte without changing the public API surface or single-point frames.
+- Tests: Added exact C4/C5 regression vectors, all four count-mismatch cases, direct/relay long-response coverage, and unchanged single-point vectors.
+
 ## [4.1.0] - 2026-08-27
 
 - Release: Bumped the package and runtime metadata to `4.1.0` for the canonical single-request word and DWord read contract.

@@ -82,27 +82,26 @@ def _write_pc10_block_word(client: ToyopucClient, addr32: int, value: int) -> No
 
 
 def _pack_pc10_multi_bit_payload(addr32_values: Sequence[tuple[int, int]]) -> bytes:
-    payload = bytearray([len(addr32_values) & 0xFF, 0x00, 0x00, 0x00])
-    for addr32, _ in addr32_values:
-        payload.extend(_require_pc10_address(addr32).to_bytes(4, "little"))
-    bit_bytes = bytearray((len(addr32_values) + 7) // 8)
-    for i, (_, value) in enumerate(addr32_values):
-        packed_value = _require_uint("packed PC10 bit value", value, 1)
-        if packed_value:
-            bit_bytes[i // 8] |= 1 << (i % 8)
-    payload.extend(bit_bytes)
+    items = list(addr32_values)
+    addresses = [_require_pc10_address(addr32) for addr32, _ in items]
+    values = [_require_uint("packed PC10 bit value", value, 1) for _, value in items]
+    payload = bytearray([len(items) & 0xFF, 0x00, 0x00, 0x00])
+    for address, value in zip(addresses, values, strict=True):
+        payload.extend(address.to_bytes(4, "little"))
+        payload.append(value)
     _require_pc10_multi_write_payload(payload)
     return bytes(payload)
 
 
 def _pack_pc10_multi_word_payload(addr32_values: Sequence[tuple[int, int]]) -> bytes:
-    payload = bytearray(4 + len(addr32_values) * 4 + len(addr32_values) * 2)
-    payload[2] = len(addr32_values) & 0xFF
-    for i, (addr32, _) in enumerate(addr32_values):
-        payload[4 + i * 4 : 8 + i * 4] = _require_pc10_address(addr32).to_bytes(4, "little")
-    values_offset = 4 + len(addr32_values) * 4
-    values = _normalize_word_values(value for _, value in addr32_values)
-    for i, value in enumerate(values):
-        payload[values_offset + i * 2 : values_offset + i * 2 + 2] = value.to_bytes(2, "little")
+    items = list(addr32_values)
+    addresses = [_require_pc10_address(addr32) for addr32, _ in items]
+    values = _normalize_word_values(value for _, value in items)
+    payload = bytearray(4 + len(items) * 6)
+    payload[2] = len(items) & 0xFF
+    for i, (address, value) in enumerate(zip(addresses, values, strict=True)):
+        item_offset = 4 + i * 6
+        payload[item_offset : item_offset + 4] = address.to_bytes(4, "little")
+        payload[item_offset + 4 : item_offset + 6] = value.to_bytes(2, "little")
     _require_pc10_multi_write_payload(payload)
     return bytes(payload)

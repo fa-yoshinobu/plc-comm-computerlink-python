@@ -7,6 +7,7 @@ import pytest
 
 from toyopuc import (
     AsyncToyopucDeviceClient,
+    ResolvedDevice,
     ToyopucClient,
     ToyopucConnectionOptions,
     ToyopucDeviceClient,
@@ -31,7 +32,7 @@ from toyopuc import (
     write_typed,
     write_words_single_request,
 )
-from toyopuc.protocol import build_fr_register, build_pc10_block_write
+from toyopuc.protocol import build_command, build_fr_register, build_pc10_block_write, build_relay_nested
 
 GENERIC_PROFILE = "toyopuc:generic"
 MAX_TIMER_SECONDS = 2_147_483.647
@@ -992,3 +993,89 @@ def test_async_client_has_no_private_worker_execution_surface() -> None:
     )
     assert not hasattr(client, "_run_sync_in_worker")
     assert not hasattr(client, "_executor")
+
+
+def _response_frame(command: int, data: bytes) -> bytes:
+    frame = build_command(command, data)
+    return bytes([0x80, 0x00]) + frame[2:]
+
+
+def _relay_response_frame(command: int, data: bytes) -> bytes:
+    inner = build_command(command, data)[2:]
+    outer = build_command(0x60, bytes([0x12, 0x02, 0x00, 0x06]) + inner)
+    return bytes([0x80, 0x00]) + outer[2:]
+
+
+def _manual_pc10_bit(address32: int) -> ResolvedDevice:
+    return ResolvedDevice(
+        text=f"manual-{address32:08x}",
+        scheme="pc10-bit",
+        unit="bit",
+        area="manual",
+        index=address32,
+        addr32=address32,
+        plc_profile=GENERIC_PROFILE,
+    )
+
+
+@pytest.mark.parametrize("use_relay", [False, True])
+@pytest.mark.parametrize("use_bit", [False, True])
+def test_async_pc10_c5_public_routes_send_exact_interleaved_payload(use_relay: bool, use_bit: bool) -> None:
+    async def run() -> None:
+        client = AsyncToyopucDeviceClient(
+            "127.0.0.1",
+            1025,
+            transport="tcp",
+            plc_profile=GENERIC_PROFILE,
+        )
+        sent: list[tuple[bytes, bool]] = []
+
+        async def exchange(payload: bytes, state_changing: bool, *_args: object) -> bytes:
+            sent.append((payload, state_changing))
+            return _relay_response_frame(0xC5, b"") if use_relay else _response_frame(0xC5, b"")
+
+        client._exchange = exchange  # type: ignore[method-assign]
+        if use_bit:
+            items = {
+                _manual_pc10_bit(0x04000000): True,
+                _manual_pc10_bit(0x04000001): False,
+            }
+            expected_inner = bytes.fromhex("00 00 0f 00 c5 02 00 00 00 00 00 00 04 01 01 00 00 04 00")
+        else:
+            items = {"U08000": 0x1234, "U08100": 0x5678}
+            expected_inner = bytes.fromhex("00 00 11 00 c5 00 00 02 00 00 00 04 00 34 12 00 02 04 00 78 56")
+
+        if use_relay:
+            await client.relay_write_many("P1-L2:N2", items)
+            expected = build_relay_nested([(0x12, 0x0002)], expected_inner)
+        else:
+            await client.write_many(items)
+            expected = expected_inner
+
+        assert sent == [(expected, True)]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("use_relay", [False, True])
+def test_async_aggregate_pc10_c4_correlates_response_count_header(use_relay: bool) -> None:
+    async def run() -> None:
+        client = AsyncToyopucDeviceClient(
+            "127.0.0.1",
+            1025,
+            transport="tcp",
+            plc_profile=GENERIC_PROFILE,
+        )
+
+        async def exchange(*_args: object) -> bytes:
+            mismatched = bytes.fromhex("00 00 00 00 34 12 78 56")
+            return _relay_response_frame(0xC4, mismatched) if use_relay else _response_frame(0xC4, mismatched)
+
+        client._exchange = exchange  # type: ignore[method-assign]
+        with pytest.raises(ToyopucProtocolError, match="point counts mismatch"):
+            if use_relay:
+                await client.relay_read_devices("P1-L2:N2", ["U08000", "U08100"])
+            else:
+                await client.read_devices(["U08000", "U08100"])
+
+    asyncio.run(run())
