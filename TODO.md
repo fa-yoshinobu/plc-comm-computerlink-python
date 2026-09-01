@@ -17,6 +17,15 @@ Make the two different FR operations explicit in the Python high-level API:
 
 The current `write_fr` / `relay_write_fr` and `commit_fr` / `relay_commit_fr` names do not express that distinction as clearly as the .NET `WriteFrWorkArea` and `CommitFrBlock` names. The final Python names must also avoid collision with the existing numeric low-level `commit_fr_block` API.
 
+Preferred candidates for later specification discussion are:
+
+- `write_fr_work_area`
+- `relay_write_fr_work_area`
+- `commit_fr_block_by_device`
+- `relay_commit_fr_block_by_device`
+
+These are candidates only. The exact canonical names are not approved by this TODO entry.
+
 This reopens a previously approved language-specific naming decision, so the exact canonical names and transition behavior require separate approval before implementation.
 
 ### Acceptance Criteria
