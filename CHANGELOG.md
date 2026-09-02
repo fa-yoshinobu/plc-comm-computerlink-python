@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-09-02
+
+- Release: Bumped package metadata and `toyopuc.__version__` to `4.2.0` for the named-request, FR naming, program timer/counter, and corrected PC10 C4/C5 contracts.
+- Library: `read_named` and each `poll` cycle now accept one or more unique compatible named addresses only when the complete set fits one protocol request; automatic splitting and partial results are rejected before transport.
+- Library: Added canonical FR names `write_fr_work_area`, `relay_write_fr_work_area`, `commit_fr_block_by_device`, and `relay_commit_fr_block_by_device`; the former four names warn and forward for one release without changing wire behavior.
+- Library: Added direct/relay and sync/async program-explicit timer/counter preset/current operations using native A0 selectors `40` through `43` and mandatory `P1`/`P2`/`P3` device prefixes.
+- Tests: Added one-request named/polling, FR migration, exact A0 selector, response-shape, relay, and pre-transport validation coverage.
 - Library: Corrected PC10 C4 response correlation and long-value length calculation for direct, relay, synchronous, asynchronous, and aggregate reads; malformed count echoes are now rejected instead of decoded.
 - Library: Corrected PC10 C5 sparse word and bit writes to encode each address immediately followed by its value/data byte without changing the public API surface or single-point frames.
 - Tests: Added exact C4/C5 regression vectors, all four count-mismatch cases, direct/relay long-response coverage, and unchanged single-point vectors.

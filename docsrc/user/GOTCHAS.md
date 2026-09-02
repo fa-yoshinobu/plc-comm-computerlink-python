@@ -96,11 +96,11 @@ their native socket wait and retire that transport; when a state-changing
 request may already have been sent, they raise
 `ToyopucOperationOutcomeUnknownError` instead of implying non-application.
 
-## Symptom: a multi-address `read_named` result changes between entries
+## Symptom: a multi-address `read_named` call is rejected before transport
 
 | Root cause | Fix |
 | --- | --- |
-| `read_named` preserves declaration order and holds one client FIFO turn, but protocol limits can require multiple PLC reads. The PLC may update data between those requests. | Use a PLC-side consistency marker when a cross-request atomic snapshot is required. Use a single-request helper only when one wire request is itself the requirement. |
+| The complete named address set does not fit one compatible protocol request. | Reduce the address set or issue multiple explicit calls. `read_named` and each `poll` cycle never split automatically. |
 
 ```python
 import asyncio
@@ -160,11 +160,11 @@ asyncio.run(main())
 
 | Root cause | Fix |
 | --- | --- |
-| `write_fr(...)` updates only the FR work area. It never commits flash. | Call `commit_fr()` separately with the first word of exactly one block only when persistence is intended. |
+| `write_fr_work_area(...)` updates only the FR work area. It never commits flash. | Call `commit_fr_block_by_device()` separately with the first word of exactly one block only when persistence is intended. |
 | An FR word is an unsigned 16-bit value. | Pass an integer in `0..65535`; Boolean, fractional, string, negative, and overflowing values are rejected before communication. |
 
-FR writes are intentionally available only through `write_fr` /
-`relay_write_fr`. Generic, aggregate, typed dword/float, and bit-in-word write
+FR writes are intentionally available only through `write_fr_work_area` /
+`relay_write_fr_work_area`. Generic, aggregate, typed dword/float, and bit-in-word write
 APIs reject an FR address before opening or using the transport. Migrate an
 intentional FR write to the explicit FR work-area API so its separate commit
 lifecycle remains visible.
@@ -177,10 +177,10 @@ def main() -> None:
     with ToyopucDeviceClient(
         "192.168.250.100", 1025, transport="tcp", plc_profile="toyopuc:pc10g:pc10"
     ) as client:
-        # Use only a test FR address. commit_fr persists the staged value
+        # Use only a test FR address. commit_fr_block_by_device persists the staged value
         # to flash and does not restore the previous value automatically.
-        client.write_fr("FR000000", 0x1234)
-        client.commit_fr("FR000000")
+        client.write_fr_work_area("FR000000", 0x1234)
+        client.commit_fr_block_by_device("FR000000")
 
 
 if __name__ == "__main__":

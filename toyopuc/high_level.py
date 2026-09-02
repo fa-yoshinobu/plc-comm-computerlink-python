@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import wraps
@@ -64,6 +65,13 @@ from .client import (
 from .errors import ToyopucProtocolError
 from .profiles import ToyopucAddressingOptions, ToyopucPlcProfiles
 from .protocol import (
+    TimerCounterValues,
+    _build_program_timer_counter_read,
+    _build_program_timer_counter_write_current,
+    _build_program_timer_counter_write_preset,
+    _build_program_timer_counter_write_values,
+    _parse_program_timer_counter_values,
+    _validate_program_timer_counter_write_response,
     build_bit_read,
     build_bit_write,
     build_byte_read,
@@ -534,7 +542,10 @@ def resolve_device(device: str, *, profile: str) -> ResolvedDevice:
 
 
 def _raise_generic_fr_write_error() -> None:
-    raise ValueError("Generic FR writes are disabled; use write_fr() for the work area and commit_fr() separately")
+    raise ValueError(
+        "Generic FR writes are disabled; use write_fr_work_area() for the work area "
+        "and commit_fr_block_by_device() separately"
+    )
 
 
 def _require_generic_write_device(resolved: ResolvedDevice) -> None:
@@ -1092,7 +1103,7 @@ class ToyopucDeviceClient(ToyopucClient):
             raise ValueError("relay_read_fr() requires an FR word device such as FR000000")
         return [int(cast(Any, value)) for value in self.relay_read(hops, resolved, count)]
 
-    def write_fr(
+    def write_fr_work_area(
         self,
         device: str | ResolvedDevice,
         value: Any,
@@ -1100,14 +1111,14 @@ class ToyopucDeviceClient(ToyopucClient):
         """Update FR work-area words with exactly one request; never commit."""
         resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("write_fr() requires an FR word device such as FR000000")
+            raise ValueError("write_fr_work_area() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
             values = list(value)
         else:
             values = [value]
         self.write_fr_words(resolved.index, values)
 
-    def relay_write_fr(
+    def relay_write_fr_work_area(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
@@ -1116,24 +1127,24 @@ class ToyopucDeviceClient(ToyopucClient):
         """Update remote FR work-area words with one request; never commit."""
         resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("relay_write_fr() requires an FR word device such as FR000000")
+            raise ValueError("relay_write_fr_work_area() requires an FR word device such as FR000000")
         if isinstance(value, (list, tuple)):
             values = list(value)
         else:
             values = [value]
         self.relay_write_fr_words(hops, resolved.index, values)
 
-    def commit_fr(
+    def commit_fr_block_by_device(
         self,
         device: str | ResolvedDevice,
     ) -> None:
         """Commit the one FR block whose first word is explicitly specified."""
         resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("commit_fr() requires an FR word device such as FR000000")
+            raise ValueError("commit_fr_block_by_device() requires an FR word device such as FR000000")
         self.commit_fr_block(resolved.index)
 
-    def relay_commit_fr(
+    def relay_commit_fr_block_by_device(
         self,
         hops: str | Iterable[tuple[int, int]],
         device: str | ResolvedDevice,
@@ -1141,8 +1152,53 @@ class ToyopucDeviceClient(ToyopucClient):
         """Commit one explicitly selected remote FR block."""
         resolved = self._coerce_device(device)
         if resolved.area != "FR" or resolved.unit != "word":
-            raise ValueError("relay_commit_fr() requires an FR word device such as FR000000")
+            raise ValueError("relay_commit_fr_block_by_device() requires an FR word device such as FR000000")
         self.relay_commit_fr_block(hops, resolved.index)
+
+    def write_fr(self, device: str | ResolvedDevice, value: Any) -> None:
+        """Compatibility alias for :meth:`write_fr_work_area`."""
+        warnings.warn(
+            "write_fr() is deprecated; use write_fr_work_area().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.write_fr_work_area(device, value)
+
+    def relay_write_fr(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+        value: Any,
+    ) -> None:
+        """Compatibility alias for :meth:`relay_write_fr_work_area`."""
+        warnings.warn(
+            "relay_write_fr() is deprecated; use relay_write_fr_work_area().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.relay_write_fr_work_area(hops, device, value)
+
+    def commit_fr(self, device: str | ResolvedDevice) -> None:
+        """Compatibility alias for :meth:`commit_fr_block_by_device`."""
+        warnings.warn(
+            "commit_fr() is deprecated; use commit_fr_block_by_device().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.commit_fr_block_by_device(device)
+
+    def relay_commit_fr(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+    ) -> None:
+        """Compatibility alias for :meth:`relay_commit_fr_block_by_device`."""
+        warnings.warn(
+            "relay_commit_fr() is deprecated; use relay_commit_fr_block_by_device().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.relay_commit_fr_block_by_device(hops, device)
 
     def read_one(self, device: str | ResolvedDevice) -> object:
         """Read exactly one item and return a scalar."""
@@ -1216,6 +1272,138 @@ class ToyopucDeviceClient(ToyopucClient):
             updated = current | mask if enabled else current & ~mask
             self.relay_write(normalized_hops, resolved, updated & 0xFFFF)
 
+    def read_program_timer_counter_values(
+        self,
+        device: str | ResolvedDevice,
+    ) -> TimerCounterValues:
+        """Read preset and current values for a P1/P2/P3 timer or counter."""
+        program, address = self._program_timer_counter_target(device)
+        return self._send_and_decode(
+            _build_program_timer_counter_read(program, address),
+            lambda response: _parse_program_timer_counter_values(response.data, program),
+        )
+
+    def write_program_timer_counter_values(
+        self,
+        device: str | ResolvedDevice,
+        preset: int,
+        current: int,
+    ) -> None:
+        """Write preset and current values with one native A0 request."""
+        program, address = self._program_timer_counter_target(device)
+        normalized_preset = self._require_timer_counter_value(preset, "preset")
+        normalized_current = self._require_timer_counter_value(current, "current")
+        payload = _build_program_timer_counter_write_values(program, address, normalized_preset, normalized_current)
+        response = self._send_and_recv(payload, state_changing=True)
+        _validate_program_timer_counter_write_response(response.data, program, 0x41)
+
+    def write_program_timer_counter_preset(
+        self,
+        device: str | ResolvedDevice,
+        preset: int,
+    ) -> None:
+        """Write only the preset value with one native A0 request."""
+        program, address = self._program_timer_counter_target(device)
+        normalized = self._require_timer_counter_value(preset, "preset")
+        payload = _build_program_timer_counter_write_preset(program, address, normalized)
+        response = self._send_and_recv(payload, state_changing=True)
+        _validate_program_timer_counter_write_response(response.data, program, 0x42)
+
+    def write_program_timer_counter_current(
+        self,
+        device: str | ResolvedDevice,
+        current: int,
+    ) -> None:
+        """Write only the current value with one native A0 request."""
+        program, address = self._program_timer_counter_target(device)
+        normalized = self._require_timer_counter_value(current, "current")
+        payload = _build_program_timer_counter_write_current(program, address, normalized)
+        response = self._send_and_recv(payload, state_changing=True)
+        _validate_program_timer_counter_write_response(response.data, program, 0x43)
+
+    def relay_read_program_timer_counter_values(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+    ) -> TimerCounterValues:
+        """Relay-route form of :meth:`read_program_timer_counter_values`."""
+        program, address = self._program_timer_counter_target(device)
+        normalized_hops = tuple(normalize_relay_hops(hops))
+        return self._send_via_relay_decoded(
+            normalized_hops,
+            _build_program_timer_counter_read(program, address),
+            lambda response: _parse_program_timer_counter_values(response.data, program),
+        )
+
+    def relay_write_program_timer_counter_values(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+        preset: int,
+        current: int,
+    ) -> None:
+        """Relay-route form of :meth:`write_program_timer_counter_values`."""
+        program, address = self._program_timer_counter_target(device)
+        normalized_preset = self._require_timer_counter_value(preset, "preset")
+        normalized_current = self._require_timer_counter_value(current, "current")
+        normalized_hops = tuple(normalize_relay_hops(hops))
+        response = self.send_via_relay(
+            normalized_hops,
+            _build_program_timer_counter_write_values(program, address, normalized_preset, normalized_current),
+        )
+        _validate_program_timer_counter_write_response(response.data, program, 0x41)
+
+    def relay_write_program_timer_counter_preset(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+        preset: int,
+    ) -> None:
+        """Relay-route form of :meth:`write_program_timer_counter_preset`."""
+        program, address = self._program_timer_counter_target(device)
+        normalized = self._require_timer_counter_value(preset, "preset")
+        normalized_hops = tuple(normalize_relay_hops(hops))
+        response = self.send_via_relay(
+            normalized_hops,
+            _build_program_timer_counter_write_preset(program, address, normalized),
+        )
+        _validate_program_timer_counter_write_response(response.data, program, 0x42)
+
+    def relay_write_program_timer_counter_current(
+        self,
+        hops: str | Iterable[tuple[int, int]],
+        device: str | ResolvedDevice,
+        current: int,
+    ) -> None:
+        """Relay-route form of :meth:`write_program_timer_counter_current`."""
+        program, address = self._program_timer_counter_target(device)
+        normalized = self._require_timer_counter_value(current, "current")
+        normalized_hops = tuple(normalize_relay_hops(hops))
+        response = self.send_via_relay(
+            normalized_hops,
+            _build_program_timer_counter_write_current(program, address, normalized),
+        )
+        _validate_program_timer_counter_write_response(response.data, program, 0x43)
+
+    def _program_timer_counter_target(self, device: str | ResolvedDevice) -> tuple[int, int]:
+        resolved = self._coerce_device(device)
+        if (
+            resolved.scheme != "program-bit"
+            or resolved.area not in {"T", "C"}
+            or resolved.prefix not in {"P1", "P2", "P3"}
+            or resolved.no not in {1, 2, 3}
+        ):
+            raise ValueError("Program timer/counter access requires a P1-/P2-/P3-prefixed T or C device")
+        if not 0 <= resolved.index <= 0x01FF:
+            raise ValueError("A0 program timer/counter access supports device numbers 000-1FF")
+        return resolved.no, 0x0600 + resolved.index
+
+    @staticmethod
+    def _require_timer_counter_value(value: int, name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFF:
+            raise ValueError(f"{name} must be an integer in the range 0..65535")
+        return value
+
     def read_devices(self, devices: Sequence[str | ResolvedDevice]) -> list[object]:
         """Read multiple devices in caller order as one non-atomic FIFO operation."""
         resolved = [self._coerce_device(d) for d in devices]
@@ -1226,10 +1414,17 @@ class ToyopucDeviceClient(ToyopucClient):
 
         normalized_entries = [list(entry) for entry in entries]
         devices = [device for entry in normalized_entries for device in entry]
+        entry_lengths = [len(entry) for entry in normalized_entries]
+        self._require_single_read_request(
+            devices,
+            split_pc10=True,
+            operation="read_named",
+            entry_lengths=entry_lengths,
+        )
         return self._read_runs(
             devices,
             split_pc10=True,
-            entry_lengths=[len(entry) for entry in normalized_entries],
+            entry_lengths=entry_lengths,
         )
 
     def write_many(self, items: Mapping[str | ResolvedDevice, object]) -> None:

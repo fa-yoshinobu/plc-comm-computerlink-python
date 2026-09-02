@@ -161,6 +161,9 @@ def test_packed_pc10_word_detector_and_fr_guard_message() -> None:
 
     with pytest.raises(
         ValueError,
-        match=r"Generic FR writes are disabled; use write_fr\(\) for the work area and commit_fr\(\) separately",
+        match=(
+            r"Generic FR writes are disabled; use write_fr_work_area\(\) for the work area "
+            r"and commit_fr_block_by_device\(\) separately"
+        ),
     ):
         _raise_generic_fr_write_error()

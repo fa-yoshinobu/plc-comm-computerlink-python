@@ -13,8 +13,14 @@ from typing import Any
 
 import pytest
 
+from toyopuc import ToyopucProtocolError
 from toyopuc.protocol import (
     ClockData,
+    _build_program_timer_counter_read,
+    _build_program_timer_counter_write_current,
+    _build_program_timer_counter_write_preset,
+    _build_program_timer_counter_write_values,
+    _parse_program_timer_counter_values,
     build_bit_read,
     build_bit_write,
     build_byte_read,
@@ -147,6 +153,17 @@ def test_a0_cpu_status_frame_and_parse() -> None:
     assert build_cpu_status_read_a0() == bytes([0x00, 0x00, 0x04, 0x00, 0xA0, 0x00, 0x11, 0x00])
     status = parse_cpu_status_data_a0(bytes([0x00, 0x11, 0x00, 0x42, 0, 0, 0, 0, 0, 0, 0]))
     assert status.raw_bytes == bytes([0x42, 0, 0, 0, 0, 0, 0, 0])
+
+
+def test_a0_program_timer_counter_frames_and_parse() -> None:
+    assert _build_program_timer_counter_read(1, 0x0600) == bytes.fromhex("00000600A00140000006")
+    assert _build_program_timer_counter_write_values(1, 0x0600, 10, 8) == bytes.fromhex("00000A00A001410000060A000800")
+    assert _build_program_timer_counter_write_preset(2, 0x0610, 10) == bytes.fromhex("00000800A002420010060A00")
+    assert _build_program_timer_counter_write_current(3, 0x0610, 8) == bytes.fromhex("00000800A003430010060800")
+    values = _parse_program_timer_counter_values(bytes.fromhex("0140000A000800"), 1)
+    assert (values.preset, values.current) == (10, 8)
+    with pytest.raises(ToyopucProtocolError):
+        _parse_program_timer_counter_values(bytes.fromhex("0140000A00080000"), 1)
 
 
 def test_protocol_builders_reject_over_limit_single_frame_requests() -> None:

@@ -13,7 +13,7 @@ but the helpers above are the preferred surface for normal application code
 and generated user documentation.
 """
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 
 from .address import (
     encode_bit_address,
@@ -57,7 +57,7 @@ from .profiles import (
     display_name,
     plc_profile_descriptors,
 )
-from .protocol import ClockData, CpuStatusData
+from .protocol import ClockData, CpuStatusData, TimerCounterValues
 from .relay import RelayLayer, format_relay_hop, normalize_relay_hops, parse_relay_hops
 from .utils import (
     ToyopucAddress,
@@ -89,6 +89,7 @@ __all__ = [
     "ResolvedDevice",
     "ClockData",
     "CpuStatusData",
+    "TimerCounterValues",
     "RelayLayer",
     "ToyopucError",
     "ToyopucOperationOutcomeUnknownError",

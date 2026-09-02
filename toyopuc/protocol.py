@@ -132,6 +132,14 @@ class ClockData:
         return datetime(year, self.month, self.day, self.hour, self.minute, self.second)
 
 
+@dataclass(frozen=True)
+class TimerCounterValues:
+    """Program timer/counter preset and current values returned by ``CMD=A0``."""
+
+    preset: int
+    current: int
+
+
 def _require_year_base(year_base: int) -> int:
     if isinstance(year_base, bool) or not isinstance(year_base, int) or year_base < 0 or year_base % 100 != 0:
         raise ValueError("year_base must be a non-negative century boundary such as 1900, 2000, or 2100")
@@ -521,6 +529,44 @@ def build_cpu_status_read_a0() -> bytes:
     return build_command(0xA0, bytes([0x00, 0x11, 0x00]))
 
 
+def _build_program_timer_counter_command(
+    program_number: int,
+    selector: int,
+    address: int,
+    values: Sequence[int] = (),
+) -> bytes:
+    program = _require_uint("program_number", program_number, 3)
+    if program == 0:
+        raise ValueError("program_number must be 1..3")
+    normalized_address = _require_uint("timer/counter address", address, 0xFFFF)
+    body = bytearray([program, selector, 0x00])
+    body.extend(pack_u16_le(normalized_address))
+    for value in values:
+        body.extend(pack_u16_le(value))
+    return build_command(0xA0, bytes(body))
+
+
+def _build_program_timer_counter_read(program_number: int, address: int) -> bytes:
+    return _build_program_timer_counter_command(program_number, 0x40, address)
+
+
+def _build_program_timer_counter_write_values(
+    program_number: int,
+    address: int,
+    preset: int,
+    current: int,
+) -> bytes:
+    return _build_program_timer_counter_command(program_number, 0x41, address, (preset, current))
+
+
+def _build_program_timer_counter_write_preset(program_number: int, address: int, preset: int) -> bytes:
+    return _build_program_timer_counter_command(program_number, 0x42, address, (preset,))
+
+
+def _build_program_timer_counter_write_current(program_number: int, address: int, current: int) -> bytes:
+    return _build_program_timer_counter_command(program_number, 0x43, address, (current,))
+
+
 def build_scan_resume() -> bytes:
     """Build `CMD=32 / 01 00` scan-resume command."""
     return build_command(0x32, bytes([0x01, 0x00]))
@@ -614,6 +660,27 @@ def parse_cpu_status_data_a0(data: bytes | memoryview) -> CpuStatusData:
 def parse_cpu_status_data_a0_raw(data: bytes | memoryview) -> bytes:
     """Parse `CMD=A0 / 00 11 00` CPU-status payload and return raw status bytes."""
     return parse_cpu_status_data_a0(data).raw_bytes
+
+
+def _parse_program_timer_counter_values(
+    data: bytes | memoryview,
+    program_number: int,
+) -> TimerCounterValues:
+    expected = bytes([program_number, 0x40, 0x00])
+    if len(data) != 7 or bytes(data[:3]) != expected:
+        raise ToyopucProtocolError(f"A0 timer/counter response must be 7 bytes starting with {expected.hex(' ')}")
+    values = unpack_u16_le(data[3:])
+    return TimerCounterValues(preset=values[0], current=values[1])
+
+
+def _validate_program_timer_counter_write_response(
+    data: bytes | memoryview,
+    program_number: int,
+    selector: int,
+) -> None:
+    expected = bytes([program_number, selector, 0x00])
+    if bytes(data) != expected:
+        raise ToyopucProtocolError(f"A0 timer/counter write response must equal {expected.hex(' ')}")
 
 
 def build_word_read(addr: int, count: int) -> bytes:

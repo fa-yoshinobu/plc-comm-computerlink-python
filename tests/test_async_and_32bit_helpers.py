@@ -8,6 +8,7 @@ import pytest
 from toyopuc import (
     AsyncToyopucDeviceClient,
     ResolvedDevice,
+    TimerCounterValues,
     ToyopucClient,
     ToyopucConnectionOptions,
     ToyopucDeviceClient,
@@ -32,7 +33,16 @@ from toyopuc import (
     write_typed,
     write_words_single_request,
 )
-from toyopuc.protocol import build_command, build_fr_register, build_pc10_block_write, build_relay_nested
+from toyopuc.protocol import (
+    _build_program_timer_counter_read,
+    _build_program_timer_counter_write_current,
+    _build_program_timer_counter_write_preset,
+    _build_program_timer_counter_write_values,
+    build_command,
+    build_fr_register,
+    build_pc10_block_write,
+    build_relay_nested,
+)
 
 GENERIC_PROFILE = "toyopuc:generic"
 MAX_TIMER_SECONDS = 2_147_483.647
@@ -507,6 +517,36 @@ def test_read_named_aggregates_multiple_addresses_in_declaration_order() -> None
     assert client.word_reads == [(_word_addr("B0000"), 2)]
 
 
+def test_poll_reads_the_compatible_address_set_in_one_request_per_cycle() -> None:
+    client = _DummyAsyncUtilityClient()
+    client.values = {"B0000": 1, "B0001": 0xFFFF}
+
+    async def run_checks() -> None:
+        iterator = poll(client, ["B0000:U", "B0001:S"], interval=1.0)
+        result = await anext(iterator)
+        await iterator.aclose()
+        assert result == {"B0000:U": 1, "B0001:S": -1}
+
+    asyncio.run(run_checks())
+    assert client.word_reads == [(_word_addr("B0000"), 2)]
+
+
+def test_read_named_rejects_duplicates_incompatible_families_and_capacity_before_io() -> None:
+    client = _NoIoAsyncHighLevelClient()
+
+    async def run_checks() -> None:
+        with pytest.raises(ValueError, match="unique"):
+            await read_named(client, ["B0000:U", "B0000:U"])
+        with pytest.raises(ToyopucProtocolError, match="compatible protocol request"):
+            await read_named(client, ["B0000:U", "P1-D0000:U"])
+        over_capacity = [f"B{index * 2:04X}:U" for index in range(129)]
+        with pytest.raises(ToyopucProtocolError, match="compatible protocol request"):
+            await read_named(client, over_capacity)
+
+    asyncio.run(run_checks())
+    assert client._client.send_count == 0
+
+
 def test_read_named_rejects_invalid_bit_index() -> None:
     client = _DummyAsyncUtilityClient()
     client.values = {"B0000": 0}
@@ -915,7 +955,7 @@ def test_dword_and_float_array_counts_are_strict() -> None:
 def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
     client = _CommitCaptureClient()
 
-    client.write_fr("FR000000", [0x1234, 0x5678])
+    client.write_fr_work_area("FR000000", [0x1234, 0x5678])
     assert client.payloads == [
         build_pc10_block_write(
             encode_fr_word_addr32(0),
@@ -923,7 +963,7 @@ def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
         )
     ]
 
-    client.commit_fr("FR000000")
+    client.commit_fr_block_by_device("FR000000")
     assert client.payloads == [
         build_pc10_block_write(encode_fr_word_addr32(0), bytes.fromhex("34127856")),
         build_fr_register(0x40),
@@ -931,24 +971,119 @@ def test_fr_work_area_write_and_commit_are_separate_single_requests() -> None:
 
     invalid = _NoIoHighLevelClient()
     with pytest.raises(ValueError, match="first word"):
-        invalid.commit_fr("FR000001")
+        invalid.commit_fr_block_by_device("FR000001")
     with pytest.raises(ValueError, match="within one"):
-        invalid.write_fr("FR007FFF", [1, 2])
+        invalid.write_fr_work_area("FR007FFF", [1, 2])
     with pytest.raises(ValueError, match="single-request limit"):
-        invalid.write_fr("FR000000", [0] * 505)
+        invalid.write_fr_work_area("FR000000", [0] * 505)
     assert invalid.send_count == 0
+
+
+def test_fr_canonical_names_and_one_release_aliases_use_identical_operations() -> None:
+    canonical = _CommitCaptureClient()
+    canonical.write_fr_work_area("FR000000", [0x1234])
+    canonical.commit_fr_block_by_device("FR000000")
+
+    compatibility = _CommitCaptureClient()
+    with pytest.warns(DeprecationWarning, match="write_fr_work_area"):
+        compatibility.write_fr("FR000000", [0x1234])
+    with pytest.warns(DeprecationWarning, match="commit_fr_block_by_device"):
+        compatibility.commit_fr("FR000000")
+
+    assert compatibility.payloads == canonical.payloads
+
+
+def test_program_timer_counter_operations_use_native_a0_selectors() -> None:
+    class TimerCounterCaptureClient(ToyopucDeviceClient):
+        def __init__(self) -> None:
+            super().__init__("127.0.0.1", 1025, transport="tcp", plc_profile=GENERIC_PROFILE)
+            self.payloads: list[tuple[bytes, bool]] = []
+            self.relay_payloads: list[tuple[tuple[tuple[int, int], ...], bytes]] = []
+
+        def _send_and_decode(self, payload, decode):
+            self.payloads.append((payload, False))
+            return decode(SimpleNamespace(data=bytes.fromhex("0140000A000800")))
+
+        def _send_and_recv(self, payload, *, state_changing=False):
+            self.payloads.append((payload, state_changing))
+            return SimpleNamespace(data=bytes(payload[5:8]))
+
+        def _send_via_relay_decoded(self, hops, payload, decode):
+            self.relay_payloads.append((tuple(hops), payload))
+            return decode(SimpleNamespace(data=bytes.fromhex("0240000B000900")))
+
+        def send_via_relay(self, hops, payload):
+            self.relay_payloads.append((tuple(hops), payload))
+            return SimpleNamespace(data=bytes(payload[5:8]))
+
+    client = TimerCounterCaptureClient()
+    assert client.read_program_timer_counter_values("P1-T000") == TimerCounterValues(10, 8)
+    client.write_program_timer_counter_values("P1-T000", 10, 8)
+    client.write_program_timer_counter_preset("P1-C000", 11)
+    client.write_program_timer_counter_current("P1-C000", 9)
+    assert client.payloads == [
+        (_build_program_timer_counter_read(1, 0x0600), False),
+        (_build_program_timer_counter_write_values(1, 0x0600, 10, 8), True),
+        (_build_program_timer_counter_write_preset(1, 0x0600, 11), True),
+        (_build_program_timer_counter_write_current(1, 0x0600, 9), True),
+    ]
+
+    assert client.relay_read_program_timer_counter_values("P1-L2:N2", "P2-C000") == TimerCounterValues(11, 9)
+    client.relay_write_program_timer_counter_current("P1-L2:N2", "P2-C000", 9)
+    assert client.relay_payloads == [
+        (((0x12, 2),), _build_program_timer_counter_read(2, 0x0600)),
+        (((0x12, 2),), _build_program_timer_counter_write_current(2, 0x0600, 9)),
+    ]
+
+    class AsyncTimerCounterCaptureClient(AsyncToyopucDeviceClient):
+        def __init__(self, sync_client: TimerCounterCaptureClient) -> None:
+            object.__setattr__(self, "_client", sync_client)
+
+        async def _run_native_callable(self, func, /, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    async_client = AsyncTimerCounterCaptureClient(client)
+
+    async def run_async_checks() -> None:
+        assert await async_client.read_program_timer_counter_values("P1-T000") == TimerCounterValues(10, 8)
+        await async_client.write_program_timer_counter_preset("P1-T000", 11)
+        assert await async_client.relay_read_program_timer_counter_values("P1-L2:N2", "P2-C000") == TimerCounterValues(
+            11, 9
+        )
+        await async_client.relay_write_program_timer_counter_current("P1-L2:N2", "P2-C000", 9)
+
+    asyncio.run(run_async_checks())
+
+
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("read_program_timer_counter_values", ("T000",)),
+        ("read_program_timer_counter_values", ("P1-D0000",)),
+        ("read_program_timer_counter_values", ("P1-T1000",)),
+        ("write_program_timer_counter_preset", ("P1-T000", True)),
+        ("write_program_timer_counter_current", ("P1-C000", 0x10000)),
+    ],
+)
+def test_program_timer_counter_operations_reject_invalid_inputs_before_io(
+    method: str, args: tuple[object, ...]
+) -> None:
+    client = _NoIoHighLevelClient()
+    with pytest.raises((ValueError, TypeError)):
+        getattr(client, method)(*args)
+    assert client.send_count == 0
 
 
 @pytest.mark.parametrize("value", [-1, 0x10000, True, 1.5, "1"])
 def test_fr_work_area_write_rejects_values_that_would_be_coerced_or_masked(value: object) -> None:
     direct = _NoIoHighLevelClient()
     with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-        direct.write_fr("FR000000", value)
+        direct.write_fr_work_area("FR000000", value)
     assert direct.send_count == 0
 
     relay = _NoIoHighLevelClient()
     with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-        relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+        relay.relay_write_fr_work_area("P1-L2:N2", "FR000000", value)
     assert relay.send_count == 0
 
 
@@ -959,9 +1094,9 @@ def test_async_fr_work_area_write_rejects_values_before_transport(value: object)
 
     async def run_checks() -> None:
         with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-            await direct.write_fr("FR000000", value)
+            await direct.write_fr_work_area("FR000000", value)
         with pytest.raises(ValueError, match="FR word values must be integers in the range 0..65535"):
-            await relay.relay_write_fr("P1-L2:N2", "FR000000", value)
+            await relay.relay_write_fr_work_area("P1-L2:N2", "FR000000", value)
 
     asyncio.run(run_checks())
     assert direct._client.send_count == 0

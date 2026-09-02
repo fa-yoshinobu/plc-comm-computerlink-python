@@ -544,14 +544,14 @@ def test_relay_state_change_malformed_response_is_outcome_unknown():
 def test_high_level_relay_commit_fr_uses_ca():
     outer = parse_response(bytes.fromhex("8000080060120200060100ca"))
     client = _DummyRelayHighLevelClient(outer)
-    client.relay_commit_fr("P1-L2:N2", "FR000000")
+    client.relay_commit_fr_block_by_device("P1-L2:N2", "FR000000")
     assert client.last_hops == [(0x12, 0x0002)]
     assert client.last_inner == build_fr_register(0x40)
 
 
 def test_high_level_relay_write_fr_stages_once_without_implicit_commit():
     client = _DummyRelayHighLevelClient(_relay_success_response(0xC3, b""))
-    client.relay_write_fr("P1-L2:N2", "FR000000", [0x1234, 0x5678])
+    client.relay_write_fr_work_area("P1-L2:N2", "FR000000", [0x1234, 0x5678])
     assert client.inner_calls == [build_pc10_block_write(encode_fr_word_addr32(0), bytes.fromhex("34127856"))]
 
 

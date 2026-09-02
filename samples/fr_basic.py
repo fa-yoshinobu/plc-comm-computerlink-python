@@ -82,9 +82,9 @@ def main() -> int:
         print("before =", hex(before))
         print("write  =", hex(args.value & 0xFFFF))
         print("commit =", args.commit)
-        plc.write_fr(args.target, args.value)
+        plc.write_fr_work_area(args.target, args.value)
         if args.commit:
-            plc.commit_fr(args.target)
+            plc.commit_fr_block_by_device(args.target)
         after = plc.read_fr_one(args.target)
         print("after  =", hex(after))
 

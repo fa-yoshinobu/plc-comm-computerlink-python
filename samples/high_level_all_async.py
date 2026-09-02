@@ -191,7 +191,7 @@ async def demo_bit_in_word(plc: AsyncToyopucDeviceClient) -> None:
 
 async def demo_read_named(plc: AsyncToyopucDeviceClient) -> None:
     """
-    read_named - read one named device with an explicit value view.
+    read_named - read one compatible named-address set in one request.
 
     Address notation (same as ToyopucDeviceClient):
         "P1-D0100"    unsigned 16-bit (default)
@@ -201,12 +201,12 @@ async def demo_read_named(plc: AsyncToyopucDeviceClient) -> None:
         "P1-D0100:L"  signed 32-bit
         "P1-D0100.3"  bit 3 inside P1-D0100 (bool)
 
-    Use case: reading typed process values while making each request boundary explicit.
+    Use case: reading compatible typed process values in one explicit request boundary.
     """
-    for address in ["P1-D0100", "P1-D0300:F", "P1-D0200:L", "P1-D0100.3"]:
-        snapshot = await read_named(plc, [address])
-        for addr, value in snapshot.items():
-            print(f"[read_named] {addr} = {value!r}")
+    addresses = ["P1-D0100:U", "P1-D0300:F", "P1-D0200:L", "P1-D0100.3"]
+    snapshot = await read_named(plc, addresses)
+    for addr, value in snapshot.items():
+        print(f"[read_named] {addr} = {value!r}")
 
 
 async def demo_poll(plc: AsyncToyopucDeviceClient, count: int) -> None:

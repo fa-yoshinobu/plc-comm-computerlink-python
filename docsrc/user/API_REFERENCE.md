@@ -62,6 +62,8 @@ invalid non-Boolean values fail immediately and send no request.
 | Single-request reads/writes | `read_words_single_request`, `read_dwords_single_request`, `write_words_single_request`, `write_dwords_single_request` |
 | Bit-in-word write | `ToyopucDeviceClient.write_bit_in_word`, `AsyncToyopucDeviceClient.write_bit_in_word`, top-level async `write_bit_in_word` |
 | Relay bit-in-word write | `ToyopucDeviceClient.relay_write_bit_in_word`, `AsyncToyopucDeviceClient.relay_write_bit_in_word` |
+| FR work-area and block commit | `write_fr_work_area`, `relay_write_fr_work_area`, `commit_fr_block_by_device`, `relay_commit_fr_block_by_device` |
+| Program timer/counter values | `read_program_timer_counter_values`, `write_program_timer_counter_values`, `write_program_timer_counter_preset`, `write_program_timer_counter_current`, and `relay_` counterparts |
 
 `ToyopucDeviceClient.read_one` and `relay_read_one` return one scalar.
 `read`, `relay_read`, `read_fr`, and `relay_read_fr` require an explicit
@@ -109,7 +111,7 @@ while pre-send or read cancellation preserves `asyncio.CancelledError`.
 The package exports these public names from `toyopuc.__all__`:
 
 `AsyncToyopucClient`, `AsyncToyopucDeviceClient`, `ClockData`,
-`CpuStatusData`, `RelayLayer`, `ResolvedDevice`, `ToyopucAddress`,
+`CpuStatusData`, `RelayLayer`, `ResolvedDevice`, `TimerCounterValues`, `ToyopucAddress`,
 `ToyopucAddressRange`, `ToyopucAreaDescriptor`,
 `ToyopucClient`, `ToyopucConnectionOptions`, `ToyopucDeviceCatalog`,
 `ToyopucDeviceClient`, `ToyopucDeviceMatrixRow`, `ToyopucError`,

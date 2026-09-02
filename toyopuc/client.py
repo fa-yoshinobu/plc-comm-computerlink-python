@@ -616,8 +616,10 @@ def _is_read_only_payload(payload: bytes) -> bool:
 def _is_read_only_request(request: _RelayInnerRequest) -> bool:
     command = request.command
     body = request.body
-    if command in {0x1C, 0x1E, 0x20, 0x22, 0x24, 0x94, 0x96, 0x98, 0xA0, 0xC2, 0xC4}:
+    if command in {0x1C, 0x1E, 0x20, 0x22, 0x24, 0x94, 0x96, 0x98, 0xC2, 0xC4}:
         return True
+    if command == 0xA0 and len(body) >= 3 and body[2] == 0x00:
+        return body[1] in {0x11, 0x40}
     return command == 0x32 and body[:2] in {bytes([0x70, 0x00]), bytes([0x11, 0x00])}
 
 
@@ -640,6 +642,8 @@ def _expected_state_response_data_request(request: _RelayInnerRequest) -> bytes 
         bytes([0x02, 0x00]),
     }:
         return body[:2]
+    if command == 0xA0 and len(body) >= 3 and body[1] in {0x41, 0x42, 0x43} and body[2] == 0x00:
+        return body[:3]
     return None
 
 
@@ -675,6 +679,10 @@ def _expected_read_response_size_request(request: _RelayInnerRequest) -> int | N
         if len(body) < 3:
             raise ValueError("extended multi-read request body is too short")
         return ((body[0] + 7) // 8) + body[1] + body[2] * 2
+    if command == 0xA0 and len(body) >= 3 and body[1] == 0x11 and body[2] == 0x00:
+        return 11
+    if command == 0xA0 and len(body) >= 3 and body[1] == 0x40 and body[2] == 0x00:
+        return 7
     if command == 0xC2:
         return u16(4)
     if command == 0xC4:

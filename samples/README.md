@@ -70,4 +70,4 @@ python samples/clock_and_status.py --host 192.168.250.100 --port 1025 --profile 
 | Data type suffixes use `:`. | `P1-D0100:D`, `P1-D0100:F` |
 | Bit-in-word uses `.`. | `P1-D0100.3` |
 | Packed bit-family views use `W`, `L`, or `H`. | `P1-M0010W`, `P1-M0010L` |
-| FR writes are two-phase. | `write_fr(...)` updates one work-area range; `commit_fr()` separately commits one explicit block. |
+| FR writes are two-phase. | `write_fr_work_area(...)` updates one work-area range; `commit_fr_block_by_device()` separately commits one explicit block. |

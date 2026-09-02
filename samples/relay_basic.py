@@ -169,9 +169,9 @@ def main() -> int:
         if args.mode == "fr-write":
             if args.count != 1:
                 raise SystemExit("--mode fr-write currently requires --count 1")
-            plc.relay_write_fr(args.hops, args.device, args.value)
+            plc.relay_write_fr_work_area(args.hops, args.device, args.value)
             if args.commit:
-                plc.relay_commit_fr(args.hops, args.device)
+                plc.relay_commit_fr_block_by_device(args.hops, args.device)
             fr_readback = plc.relay_read_fr(args.hops, args.device, count=1)
             print("fr write device =", args.device)
             print("fr write value =", f"0x{args.value & 0xFFFF:04X}")
@@ -182,7 +182,7 @@ def main() -> int:
         if args.mode == "fr-commit":
             if args.count != 1:
                 raise SystemExit("--mode fr-commit accepts exactly one explicit block")
-            plc.relay_commit_fr(args.hops, args.device)
+            plc.relay_commit_fr_block_by_device(args.hops, args.device)
             print("fr commit device =", args.device)
             return 0
 

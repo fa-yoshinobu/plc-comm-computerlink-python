@@ -172,13 +172,12 @@ asyncio.run(main())
 
 `ToyopucDeviceClient.read` reads a contiguous range. Its `count` is required and
 it always returns a list. Use `read_one` only when a scalar is intended.
-`read`, `read_devices`, relay read aggregates, and `read_named` preserve caller
-order and automatically split only when a protocol limit, route family, or
-PC10 block boundary requires another read request. Every entry is indivisible,
-the entire plan is validated before transport, and all requests hold one FIFO
-client turn. The result is non-atomic because the PLC can change between
-requests; the API returns all values or raises without returning a partial
-result.
+`read`, `read_devices`, and relay read aggregates preserve caller order and
+automatically split only when a protocol limit, route family, or PC10 block
+boundary requires another read request. `read_named` is intentionally stricter:
+the complete unique compatible address set must fit exactly one request or the
+call is rejected before transport. Each `poll` cycle uses the same one-request
+rule. Neither operation returns a partial result.
 
 Writes are different: `write`, `write_many`, typed array writes, and their relay
 forms reject a plan that would require multiple requests before transport.
@@ -364,15 +363,15 @@ def main() -> None:
     ) as client:
         before = client.read_fr_one("FR000000")
         try:
-            client.write_fr("FR000000", 0x1234)
+            client.write_fr_work_area("FR000000", 0x1234)
             after = client.read_fr_one("FR000000")
             print(before, after)
         finally:
-            client.write_fr("FR000000", before)
+            client.write_fr_work_area("FR000000", before)
 
-        # Call commit_fr only when the staged FR value is intentionally
+        # Call commit_fr_block_by_device only when the staged FR value is intentionally
         # persistent. Committed FR writes survive PLC power cycles.
-        # client.commit_fr("FR000000")
+        # client.commit_fr_block_by_device("FR000000")
 
 
 if __name__ == "__main__":
@@ -381,11 +380,23 @@ if __name__ == "__main__":
 
 FR work-area values must be integers in `0..65535`. The library rejects negative, overflowing, Boolean, fractional, and string values instead of masking or converting them.
 
-Use only `write_fr` / `relay_write_fr` for FR writes. Generic `write` and
+Use only `write_fr_work_area` / `relay_write_fr_work_area` for FR writes. Generic `write` and
 `write_many`, typed dword/float, and bit-in-word write helpers reject FR before
 transport. This is a breaking contract: callers that previously passed FR to a
 generic or typed write must migrate to the explicit FR work-area API and invoke
-`commit_fr` separately only when persistence is intended.
+`commit_fr_block_by_device` separately only when persistence is intended. The
+former `write_fr`, `relay_write_fr`, `commit_fr`, and `relay_commit_fr` names
+remain warning-emitting aliases for one release.
+
+## Program timer/counter values
+
+Use `read_program_timer_counter_values`, `write_program_timer_counter_values`,
+`write_program_timer_counter_preset`, and
+`write_program_timer_counter_current` with an explicit `P1`, `P2`, or `P3`
+device prefix such as `P1-T000` or `P2-C010`. The operations use native A0
+selectors `40` through `43` and never fall back to a program-implicit CMD `32`
+operation. Relay variants use the `relay_` prefix; async clients expose the same
+method names.
 
 ## Relay helpers
 

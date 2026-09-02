@@ -248,7 +248,7 @@ def main() -> None:
         print(f"[read_float32s] P1-D0300 x 4 = {[round(f, 4) for f in floats]}")
 
         # ---------------------------------------------------------------
-        # 8. read_fr / write_fr - FR file register access
+        # 8. read_fr / write_fr_work_area - FR file register access
         #
         # FR is a large non-volatile file register area (up to 2 M words).
         # It requires separate work-area update and explicit block commit.
@@ -262,16 +262,16 @@ def main() -> None:
         # Write to FR RAM without committing to flash (fast, temporary).
         # Restore the previous value before leaving this sample.
         try:
-            plc.write_fr("FR000000", 999)
-            print("[write_fr] Wrote 999 -> FR000000 (RAM only, not committed)")
+            plc.write_fr_work_area("FR000000", 999)
+            print("[write_fr_work_area] Wrote 999 -> FR000000 (RAM only, not committed)")
         finally:
-            plc.write_fr("FR000000", fr_val)
-            print("[write_fr] Restored original FR000000 value (RAM only)")
+            plc.write_fr_work_area("FR000000", fr_val)
+            print("[write_fr_work_area] Restored original FR000000 value (RAM only)")
 
-        # commit_fr explicitly flushes the modified block to flash.
+        # commit_fr_block_by_device explicitly flushes the modified block to flash.
         # Uncomment only when the staged FR value is intentionally persistent.
-        # plc.commit_fr("FR000000")
-        # print("[commit_fr] Issued one commit for the FR000000 block")
+        # plc.commit_fr_block_by_device("FR000000")
+        # print("[commit_fr_block_by_device] Issued one commit for the FR000000 block")
 
     print("Done.")
 
