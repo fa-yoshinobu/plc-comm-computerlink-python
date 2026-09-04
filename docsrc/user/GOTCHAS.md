@@ -78,8 +78,11 @@ A connected UDP socket accepts datagrams only from its configured PLC endpoint.
 However, Computerlink has no request serial that can distinguish a late response
 from a later request to the same endpoint. After a request may have been sent and
 a fixed-local-port UDP session times out or fails, that client instance is
-terminal. Create a new client only after the network can no longer contain the
-late response; prefer `local_port=0` unless a fixed source port is required.
+terminal. The PLC's UDP Other Node Table identifies the peer PC by a fixed IP
+address and port, so `local_port` must match that configured port. Create a new
+client with the same fixed port only after the network can no longer contain
+the late response. A value of `local_port=0` selects an arbitrary ephemeral
+port and does not match this PLC configuration.
 
 When a state-changing request may already have reached the PLC, Python raises
 `ToyopucOperationOutcomeUnknownError`. Reconcile PLC state before retrying.

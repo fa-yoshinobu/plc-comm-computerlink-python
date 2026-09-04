@@ -69,6 +69,35 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## UDP connection
+
+TCP and UDP are never inferred. For UDP, configure the PC IP address and a
+fixed PC port in the PLC's Other Node Table, then set `local_port` to that same
+port. This example assumes the PLC peer port is `12000`:
+
+```python
+import asyncio
+
+from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed
+
+
+async def main() -> None:
+    options = ToyopucConnectionOptions(
+        host="192.168.250.100",
+        port=1035,
+        transport="udp",
+        plc_profile="toyopuc:plus:extended",
+        local_port=12000,
+    )
+
+    async with await open_and_connect(options) as client:
+        value = await read_typed(client, "P1-D0000", "U")
+        print(f"P1-D0000 = {value}")
+
+
+asyncio.run(main())
+```
+
 ## First write
 
 Use a known-safe test word. Do not write to production outputs or motion-related registers while testing.
