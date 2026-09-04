@@ -33,9 +33,9 @@ Run commands from the repository root. Use an exact canonical profile string fro
 ```powershell
 python samples/high_level_minimal.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
 python samples/high_level_basic.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
-python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
-python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 --profile toyopuc:plus:extended
-python samples/polling_reconnect.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended
+python samples/high_level_all_sync.py --host 192.168.250.100 --transport tcp --port 1025 --profile toyopuc:plus:extended
+python samples/high_level_all_async.py --host 192.168.250.100 --transport tcp --port 1025 --poll-count 2 --profile toyopuc:plus:extended
+python samples/polling_reconnect.py --host 192.168.250.100 --transport tcp --port 1025 --profile toyopuc:plus:extended
 python samples/multi_plc_monitor.py --plc line-a=192.168.250.100,toyopuc:plus:extended,1025,tcp --tag d0100=P1-D0100:U --cycles 1 --dry-run
 python samples/config_polling.py --config samples/config_polling.example.json --dry-run
 python samples/high_level_udp.py --host 192.168.250.100 --port 1035 --local-port 12000 --profile toyopuc:plus:extended
@@ -50,9 +50,9 @@ python samples/clock_and_status.py --host 192.168.250.100 --port 1025 --profile 
 | --- | --- |
 | First TCP read/write | `python samples/high_level_minimal.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
 | Daily high-level operations | `python samples/high_level_basic.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
-| Full synchronous walkthrough | `python samples/high_level_all_sync.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
-| Full async walkthrough | `python samples/high_level_all_async.py --host 192.168.250.100 --port 1025 --poll-count 2 --profile toyopuc:plus:extended` |
-| Read-only polling with reconnect | `python samples/polling_reconnect.py --host 192.168.250.100 --port 1025 --profile toyopuc:plus:extended` |
+| Full synchronous walkthrough | `python samples/high_level_all_sync.py --host 192.168.250.100 --transport tcp --port 1025 --profile toyopuc:plus:extended` |
+| Full async walkthrough | `python samples/high_level_all_async.py --host 192.168.250.100 --transport tcp --port 1025 --poll-count 2 --profile toyopuc:plus:extended` |
+| Read-only polling with reconnect | `python samples/polling_reconnect.py --host 192.168.250.100 --transport tcp --port 1025 --profile toyopuc:plus:extended` |
 | Multi-PLC read-only monitor | `python samples/multi_plc_monitor.py --plc line-a=192.168.250.100,toyopuc:plus:extended,1025,tcp --tag d0100=P1-D0100:U --cycles 1 --dry-run` |
 | Config-driven read-only polling | `python samples/config_polling.py --config samples/config_polling.example.json --dry-run` |
 | UDP with a fixed local port | `python samples/high_level_udp.py --host 192.168.250.100 --port 1035 --local-port 12000 --profile toyopuc:plus:extended` |
