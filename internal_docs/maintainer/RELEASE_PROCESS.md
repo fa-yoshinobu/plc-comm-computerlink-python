@@ -5,7 +5,7 @@ Related documents:
 - [README.md](../../README.md)
 - [CHANGELOG.md](../../CHANGELOG.md)
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
-- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
+- [Computerlink Device Ranges](https://plc-comm-docs-site.fa-labo.com/plc-setup/computerlink/device-ranges/)
 
 This document is a practical checklist for releasing the library as a package.
 
@@ -13,7 +13,7 @@ Naming used by this project:
 
 - GitHub repository: `plc-comm-computerlink-python`
 - GitHub URL: `https://github.com/fa-yoshinobu/plc-comm-computerlink-python`
-- Docs site: `https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/GETTING_STARTED/`
+- Docs site: `https://plc-comm-docs-site.fa-labo.com/computerlink/python/GETTING_STARTED/`
 - package name: `plc-comm-toyopuc`
 - import name: `toyopuc`
 
@@ -25,7 +25,7 @@ Confirm what is part of the release.
   - `toyopuc/`
   - `README.md`
   - `internal_docs/maintainer/TESTING_GUIDE.md`
-  - [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
+  - [Computerlink Device Ranges](https://plc-comm-docs-site.fa-labo.com/plc-setup/computerlink/device-ranges/)
   - `TODO.md`
   - `LICENSE`
   - `pyproject.toml`
@@ -103,7 +103,7 @@ Verify that the docs match the code.
   - supported / unsupported behavior notes
 - [TESTING_GUIDE.md](TESTING_GUIDE.md)
   - test tools usage
-- [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/)
+- [Computerlink Device Ranges](https://plc-comm-docs-site.fa-labo.com/plc-setup/computerlink/device-ranges/)
   - model-specific writable ranges
 - [TODO.md](../../TODO.md)
   - active open items only
@@ -214,6 +214,6 @@ Prepare a short release note in `CHANGELOG.md` and the GitHub Releases body with
 After release:
 
 - verify that the immutable tag, package metadata, GitHub Release, and PyPI version all match
-- keep [Computerlink Device Ranges](https://fa-yoshinobu.github.io/plc-comm-docs-site/plc-setup/computerlink/device-ranges/) updated when new hardware is tested
+- keep [Computerlink Device Ranges](https://plc-comm-docs-site.fa-labo.com/plc-setup/computerlink/device-ranges/) updated when new hardware is tested
 - keep [TODO.md](../../TODO.md) limited to active items
 

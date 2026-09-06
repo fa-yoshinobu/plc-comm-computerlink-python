@@ -1,7 +1,7 @@
 
 # Scripts
 
-[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://fa-yoshinobu.github.io/plc-comm-docs-site/computerlink/python/GETTING_STARTED/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://plc-comm-docs-site.fa-labo.com/computerlink/python/GETTING_STARTED/)
 
 This directory contains Python helper programs only. The old per-device and
 per-scenario batch wrappers were removed after the bring-up validation phase.
