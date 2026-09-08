@@ -116,9 +116,12 @@ asyncio.run(main())
 
 ## Write single
 
+These controlled-test examples restore only confirmed writes, in reverse order. An outcome-unknown write stops further writes and propagates its original error; inspect and reconcile the PLC state before proceeding. A readback failure after a confirmed write still attempts restoration. A restoration failure is reported and stops the remaining restoration steps.
+
 ```python
 import asyncio
 
+from toyopuc.errors import ToyopucOperationOutcomeUnknownError
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed, write_typed
 
 
@@ -133,12 +136,23 @@ async def main() -> None:
     async with await open_and_connect(options) as client:
         original_d0001 = await read_typed(client, "P1-D0001", "U")
         original_d0200 = await read_typed(client, "P1-D0200", "L")
+        write_1_confirmed = False
+        write_2_confirmed = False
+        outcome_unknown = False
         try:
             await write_typed(client, "P1-D0001", "U", 1234)
+            write_2_confirmed = True
             await write_typed(client, "P1-D0200", "L", -500)
+            write_1_confirmed = True
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            await write_typed(client, "P1-D0200", "L", original_d0200)
-            await write_typed(client, "P1-D0001", "U", original_d0001)
+            if not outcome_unknown:
+                if write_1_confirmed:
+                    await write_typed(client, "P1-D0200", "L", original_d0200)
+                if write_2_confirmed:
+                    await write_typed(client, "P1-D0001", "U", original_d0001)
 
 
 asyncio.run(main())
@@ -272,6 +286,7 @@ Use `.` for one bit inside a word. Use `:` for data type suffixes.
 ```python
 import asyncio
 
+from toyopuc.errors import ToyopucOperationOutcomeUnknownError
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_named, write_bit_in_word
 
 
@@ -286,12 +301,20 @@ async def main() -> None:
     async with await open_and_connect(options) as client:
         before = await read_named(client, ["P1-D0100.3"])
         original_bit = bool(before["P1-D0100.3"])
+        write_confirmed = False
+        outcome_unknown = False
         try:
             await write_bit_in_word(client, "P1-D0100", bit_index=3, value=True)
+            write_confirmed = True
             snapshot = await read_named(client, ["P1-D0100.3"])
             print(snapshot)
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            await write_bit_in_word(client, "P1-D0100", bit_index=3, value=original_bit)
+            if not outcome_unknown:
+                if write_confirmed:
+                    await write_bit_in_word(client, "P1-D0100", bit_index=3, value=original_bit)
 
 
 asyncio.run(main())
@@ -351,6 +374,7 @@ python samples/config_polling.py --config samples/config_polling.example.json --
 FR writes update RAM first. Persist the touched FR block only when you intentionally call the commit phase.
 
 ```python
+from toyopuc.errors import ToyopucOperationOutcomeUnknownError
 from toyopuc import ToyopucDeviceClient
 
 
@@ -362,12 +386,20 @@ def main() -> None:
         plc_profile="toyopuc:pc10g:pc10",
     ) as client:
         before = client.read_fr_one("FR000000")
+        write_confirmed = False
+        outcome_unknown = False
         try:
             client.write_fr_work_area("FR000000", 0x1234)
+            write_confirmed = True
             after = client.read_fr_one("FR000000")
             print(before, after)
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            client.write_fr_work_area("FR000000", before)
+            if not outcome_unknown:
+                if write_confirmed:
+                    client.write_fr_work_area("FR000000", before)
 
         # Call commit_fr_block_by_device only when the staged FR value is intentionally
         # persistent. Committed FR writes survive PLC power cycles.

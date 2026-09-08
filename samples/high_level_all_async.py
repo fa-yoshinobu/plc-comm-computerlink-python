@@ -40,7 +40,7 @@ from toyopuc import (
     write_bit_in_word,
     write_typed,
 )
-from toyopuc.errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
+from toyopuc.errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,15 +140,29 @@ async def demo_typed_rw(plc: AsyncToyopucDeviceClient) -> None:
     original_u = await read_typed(plc, "P1-D0100", "U")
     original_f = await read_typed(plc, "P1-D0300", "F")
     original_l = await read_typed(plc, "P1-D0200", "L")
+    write_1_confirmed = False
+    write_2_confirmed = False
+    write_3_confirmed = False
+    outcome_unknown = False
     try:
         await write_typed(plc, "P1-D0100", "U", 42)
+        write_3_confirmed = True
         await write_typed(plc, "P1-D0300", "F", 3.14)
+        write_2_confirmed = True
         await write_typed(plc, "P1-D0200", "L", -500)
+        write_1_confirmed = True
         print("[write_typed] Wrote 42->P1-D0100, 3.14->P1-D0300, -500->P1-D0200")
+    except ToyopucOperationOutcomeUnknownError:
+        outcome_unknown = True
+        raise
     finally:
-        await write_typed(plc, "P1-D0200", "L", original_l)
-        await write_typed(plc, "P1-D0300", "F", original_f)
-        await write_typed(plc, "P1-D0100", "U", original_u)
+        if not outcome_unknown:
+            if write_1_confirmed:
+                await write_typed(plc, "P1-D0200", "L", original_l)
+            if write_2_confirmed:
+                await write_typed(plc, "P1-D0300", "F", original_f)
+            if write_3_confirmed:
+                await write_typed(plc, "P1-D0100", "U", original_u)
 
 
 async def demo_array_reads(plc: AsyncToyopucDeviceClient) -> None:
@@ -180,13 +194,22 @@ async def demo_bit_in_word(plc: AsyncToyopucDeviceClient) -> None:
     """
     original_word = await read_typed(plc, "P1-D0100", "U")
     original_bit = bool(int(original_word) & 0x0001)
+    write_confirmed = False
+    outcome_unknown = False
     try:
         await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=True)
+        write_confirmed = True
         print("[write_bit_in_word] Set   bit 0 of P1-D0100")
         await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=False)
+        write_confirmed = True
         print("[write_bit_in_word] Clear bit 0 of P1-D0100")
+    except ToyopucOperationOutcomeUnknownError:
+        outcome_unknown = True
+        raise
     finally:
-        await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=original_bit)
+        if not outcome_unknown:
+            if write_confirmed:
+                await write_bit_in_word(plc, "P1-D0100", bit_index=0, value=original_bit)
 
 
 async def demo_read_named(plc: AsyncToyopucDeviceClient) -> None:

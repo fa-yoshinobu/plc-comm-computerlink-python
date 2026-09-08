@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Samples: Restore only confirmed test writes in reverse order; preserve outcome-unknown failures without further writes.
+- Tests: Exercise sample cleanup after rejected writes, readback failures, and uncertain write or restoration outcomes.
+- Library: Retain the concrete async client type through context-manager entry without changing runtime behavior or Python requirements.
+
 ## [4.2.0] - 2026-09-02
 
 - Release: Bumped package metadata and `toyopuc.__version__` to `4.2.0` for the named-request, FR naming, program timer/counter, and corrected PC10 C4/C5 contracts.

@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from toyopuc import ToyopucDeviceClient
-from toyopuc.errors import ToyopucError, ToyopucProtocolError, ToyopucTimeoutError
+from toyopuc.errors import ToyopucError, ToyopucOperationOutcomeUnknownError, ToyopucProtocolError, ToyopucTimeoutError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,20 +136,36 @@ def main() -> None:
         val = plc.read_one("P1-D0100")
         print(f"[read]  P1-D0100 = {val}")
 
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write("P1-D0100", 1234)
+            write_confirmed = True
             print("[write] Wrote 1234 -> P1-D0100")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write("P1-D0100", val)
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write("P1-D0100", val)
 
         bit = plc.read_one("P1-M0010")
         print(f"[read]  P1-M0010 (bit) = {bit}")
 
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write("P1-M0010", 1)
+            write_confirmed = True
             print("[write] Set P1-M0010 = 1")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write("P1-M0010", bit)
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write("P1-M0010", bit)
 
         # ---------------------------------------------------------------
         # 2. read / write with byte/word suffixes on bit areas
@@ -178,6 +194,8 @@ def main() -> None:
         values = plc.read_devices(["P1-D0100", "P1-D0101"])
         print(f"[read_devices]  P1-D0100={values[0]}  P1-D0101={values[1]}")
 
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write_many(
                 {
@@ -185,14 +203,20 @@ def main() -> None:
                     "P1-D0101": 20,
                 }
             )
+            write_confirmed = True
             print("[write_many] Wrote {P1-D0100: 10, P1-D0101: 20}")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write_many(
-                {
-                    "P1-D0100": values[0],
-                    "P1-D0101": values[1],
-                }
-            )
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write_many(
+                        {
+                            "P1-D0100": values[0],
+                            "P1-D0101": values[1],
+                        }
+                    )
 
         # ---------------------------------------------------------------
         # 4. read_dword / write_dword - 32-bit unsigned integer access
@@ -205,11 +229,19 @@ def main() -> None:
         dword = plc.read_dword("P1-D0200")
         print(f"[read_dword]  P1-D0200 = {dword}")
 
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write_dword("P1-D0200", 0x12345678)
+            write_confirmed = True
             print("[write_dword] Wrote 0x12345678 -> P1-D0200-D0201")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write_dword("P1-D0200", dword)
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write_dword("P1-D0200", dword)
 
         # ---------------------------------------------------------------
         # 5. read_dwords - read multiple 32-bit values
@@ -231,11 +263,19 @@ def main() -> None:
         f32 = plc.read_float32("P1-D0300")
         print(f"[read_float32]  P1-D0300 = {f32}")
 
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write_float32("P1-D0300", 3.14)
+            write_confirmed = True
             print("[write_float32] Wrote 3.14 -> P1-D0300-D0301")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write_float32("P1-D0300", f32)
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write_float32("P1-D0300", f32)
 
         # ---------------------------------------------------------------
         # 7. read_float32s - read multiple float32 values
@@ -261,12 +301,21 @@ def main() -> None:
 
         # Write to FR RAM without committing to flash (fast, temporary).
         # Restore the previous value before leaving this sample.
+        write_confirmed = False
+        outcome_unknown = False
         try:
             plc.write_fr_work_area("FR000000", 999)
+            write_confirmed = True
             print("[write_fr_work_area] Wrote 999 -> FR000000 (RAM only, not committed)")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            plc.write_fr_work_area("FR000000", fr_val)
-            print("[write_fr_work_area] Restored original FR000000 value (RAM only)")
+            if not outcome_unknown:
+                if write_confirmed:
+                    plc.write_fr_work_area("FR000000", fr_val)
+                if write_confirmed:
+                    print("Restored confirmed test writes.")
 
         # commit_fr_block_by_device explicitly flushes the modified block to flash.
         # Uncomment only when the staged FR value is intentionally persistent.

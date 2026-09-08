@@ -100,11 +100,14 @@ asyncio.run(main())
 
 ## First write
 
+These controlled-test examples restore only confirmed writes, in reverse order. An outcome-unknown write stops further writes and propagates its original error; inspect and reconcile the PLC state before proceeding. A readback failure after a confirmed write still attempts restoration. A restoration failure is reported and stops the remaining restoration steps.
+
 Use a known-safe test word. Do not write to production outputs or motion-related registers while testing.
 
 ```python
 import asyncio
 
+from toyopuc.errors import ToyopucOperationOutcomeUnknownError
 from toyopuc import ToyopucConnectionOptions, open_and_connect, read_typed, write_typed
 
 
@@ -118,12 +121,20 @@ async def main() -> None:
 
     async with await open_and_connect(options) as client:
         original = await read_typed(client, "P1-D0001", "U")
+        write_confirmed = False
+        outcome_unknown = False
         try:
             await write_typed(client, "P1-D0001", "U", 1234)
+            write_confirmed = True
             value = await read_typed(client, "P1-D0001", "U")
             print(f"P1-D0001 = {value}")
+        except ToyopucOperationOutcomeUnknownError:
+            outcome_unknown = True
+            raise
         finally:
-            await write_typed(client, "P1-D0001", "U", original)
+            if not outcome_unknown:
+                if write_confirmed:
+                    await write_typed(client, "P1-D0001", "U", original)
 
 
 asyncio.run(main())

@@ -20,6 +20,7 @@ from .errors import (
 from .high_level import ToyopucDeviceClient, _require_positive_count
 
 _T = TypeVar("_T")
+_ClientT = TypeVar("_ClientT", bound="_AsyncToyopucClientBase")
 _UDP_RECEIVE_BUFFER_SIZE = 65_535
 
 
@@ -322,7 +323,7 @@ class _AsyncToyopucClientBase:
             return
         setattr(self._client, name, value)
 
-    async def __aenter__(self) -> _AsyncToyopucClientBase:
+    async def __aenter__(self: _ClientT) -> _ClientT:
         await self.connect()
         return self
 
